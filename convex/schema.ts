@@ -24,6 +24,18 @@ export default defineSchema({
     senderId: v.id("users"),
     senderName: v.string(),
     senderPhoto: v.optional(v.string()),
-    content: v.string(),
+    content: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
+    isEdited: v.optional(v.boolean()),
   }).index("by_chat_room", ["chatRoomId"]),
+
+  typingIndicators: defineTable({
+    chatRoomId: v.id("chatRooms"),
+    userId: v.id("users"),
+    userName: v.string(),
+    lastTypedAt: v.number(),
+  })
+    .index("by_room", ["chatRoomId"])
+    .index("by_user_and_room", ["userId", "chatRoomId"]),
 });
