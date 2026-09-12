@@ -1,56 +1,286 @@
-# Welcome to your Expo app 👋
+# Modern Chat
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Modern Chat — сучасний мобільний застосунок для обміну повідомленнями, створений на базі **React Native + Expo** з використанням **Expo Router**, **Convex** та **Convex Auth**.
 
-## Get started
+## Технологічний стек
 
-1. Install dependencies
+* **React Native**
+* **Expo**
+* **Expo Router**
+* **TypeScript**
+* **NativeWind / Tailwind CSS**
+* **Convex**
+* **Convex Auth**
+* **Expo Secure Store**
+* **React Native Gesture Handler**
+* **EAS**
 
-   ```bash
-   npm install
-   ```
+## Можливості
 
-2. Start the app
+* Реєстрація та авторизація користувачів
+* Створення та видалення чатів
+* Надсилання текстових повідомлень
+* Редагування та видалення повідомлень
+* Відповіді на повідомлення
+* Індикатор набору тексту
+* Swipe-жести
+* Надсилання зображень
+* Аватар користувача
+* Редагування профілю
+* Перегляд публічного профілю користувача
+* Зберігання файлів через Convex Storage
+* Захищене зберігання токенів через Expo Secure Store
 
-   ```bash
-   npx expo start
-   ```
+## Структура проєкту
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```text
+modernchat/
+├── app/
+│   ├── (auth)/
+│   ├── (tabs)/
+│   ├── chat/
+│   ├── profile/
+│   ├── settings/
+│   ├── user/
+│   └── _layout.tsx
+├── components/
+├── convex/
+│   ├── auth.ts
+│   ├── schema.ts
+│   ├── users.ts
+│   └── ...
+├── constants/
+├── assets/
+├── app.config.ts
+├── eas.json
+├── package.json
+└── README.md
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Середовища
 
-### Other setup steps
+Проєкт використовує три середовища EAS:
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+* `development`
+* `preview`
+* `production`
 
-## Learn more
+Конфігурація застосунку визначається за допомогою змінної `APP_ENV`.
 
-To learn more about developing your project with Expo, look at the following resources:
+### Development
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Ідентифікатор застосунку:
 
-## Join the community
+```text
+com.musdev13.modernchat.dev
+```
 
-Join our community of developers creating universal apps.
+Назва застосунку:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```text
+Modern Chat Dev
+```
+
+Scheme:
+
+```text
+modernchat-dev
+```
+
+### Preview
+
+Ідентифікатор застосунку:
+
+```text
+com.musdev13.modernchat.preview
+```
+
+Назва:
+
+```text
+Modern Chat Preview
+```
+
+Scheme:
+
+```text
+modernchat-preview
+```
+
+### Production
+
+Основний ідентифікатор:
+
+```text
+com.musdev13.modernchat
+```
+
+Назва:
+
+```text
+Modern Chat
+```
+
+Scheme:
+
+```text
+modernchat
+```
+
+## Змінні середовища
+
+Основна змінна:
+
+```text
+EXPO_PUBLIC_CONVEX_URL
+```
+
+Вона налаштована в EAS для всіх трьох середовищ.
+
+Production Convex deployment:
+
+```text
+https://brave-woodpecker-411.convex.cloud
+```
+
+Локальна розробка використовує окремий development deployment Convex.
+
+> Секретні та локальні змінні середовища не повинні додаватися до Git.
+
+## EAS
+
+Конфігурація збірок знаходиться у файлі `eas.json`.
+
+Доступні профілі:
+
+```text
+development
+preview
+production
+```
+
+Preview-профіль налаштований для створення Android APK.
+
+Production використовує автоматичне збільшення версії застосунку.
+
+## Convex
+
+Backend реалізований за допомогою Convex.
+
+Production deployment:
+
+```text
+brave-woodpecker-411
+```
+
+Production deployment було успішно виконано разом із застосуванням схеми бази даних, функцій та індексів Convex.
+
+Для production-деплою використовується:
+
+```bash
+npx convex deploy
+```
+
+Для локальної розробки:
+
+```bash
+npx convex dev
+```
+
+## Запуск проєкту
+
+Встановлення залежностей:
+
+```bash
+npm install
+```
+
+Запуск Expo:
+
+```bash
+npx expo start
+```
+
+Для локальної розробки backend:
+
+```bash
+npx convex dev
+```
+
+## Конфігурація застосунку
+
+Динамічна конфігурація Expo знаходиться у файлі:
+
+```text
+app.config.ts
+```
+
+Конфігурація автоматично вибирається залежно від значення:
+
+```text
+APP_ENV
+```
+
+Доступні значення:
+
+```text
+development
+preview
+production
+```
+
+## EAS Project
+
+Expo/EAS проєкт:
+
+```text
+@musdev13/modernchat
+```
+
+EAS Project ID:
+
+```text
+53ed0c51-a88c-4f35-89cc-a49c1f88bc88
+```
+
+## Іконки
+
+Для різних середовищ використовуються окремі іконки:
+
+```text
+assets/images/icons/
+├── icon-dev.png
+├── icon-preview.png
+├── android-icon-foreground-dev.png
+└── android-icon-foreground-preview.png
+```
+
+Production використовує основні іконки застосунку.
+
+## Безпека
+
+* Токени авторизації зберігаються за допомогою `expo-secure-store`.
+* Production URL Convex налаштовується через змінні середовища.
+* Файли користувачів зберігаються через Convex Storage.
+* `.env.local` використовується для локальної розробки та не повинен потрапляти до Git.
+
+## Статус
+
+* [x] Expo / EAS Project
+* [x] Динамічний `app.config.ts`
+* [x] Development environment
+* [x] Preview environment
+* [x] Production environment
+* [x] EAS build profiles
+* [x] Змінні середовища EAS
+* [x] Окремі іконки для середовищ
+* [x] Production Convex deployment
+* [x] Авторизація
+* [x] Чати
+* [x] Повідомлення
+* [x] Відповіді на повідомлення
+* [x] Редагування та видалення повідомлень
+* [x] Профілі користувачів
+* [x] Завантаження аватарів
+* [x] Convex Storage
+* [x] Gesture interactions
