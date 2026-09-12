@@ -17,7 +17,11 @@ export const sendMessage = mutation({
   args: {
     chatRoomId: v.id("chatRooms"),
     content: v.string(),
+    replyToId: v.optional(v.id("messages")),
+    replyToSender: v.optional(v.string()),
+    replyToText: v.optional(v.string()),
   },
+
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
 
@@ -40,13 +44,17 @@ export const sendMessage = mutation({
     const messageId = await ctx.db.insert("messages", {
       chatRoomId: args.chatRoomId,
       senderId: userId,
-      senderName: user.name ?? user.email ?? "Гравець",
+      senderName: user.name ?? user.email ?? "Користувач",
       senderPhoto: user.image,
       content: trimmedContent,
+
+      replyToId: args.replyToId,
+      replyToSender: args.replyToSender,
+      replyToText: args.replyToText,
     });
 
     await ctx.db.patch(args.chatRoomId, {
-      lastMessage: trimmedContent,
+      lastMessage: `${user.name ?? "Користувач"}: ${trimmedContent}`,
       lastMessageAt: Date.now(),
     });
 
@@ -156,6 +164,9 @@ export const sendMediaMessage = mutation({
     chatRoomId: v.id("chatRooms"),
     storageId: v.id("_storage"),
     caption: v.optional(v.string()),
+    replyToId: v.optional(v.id("messages")),
+    replyToSender: v.optional(v.string()),
+    replyToText: v.optional(v.string()),
   },
 
   handler: async (ctx, args) => {
@@ -168,31 +179,31 @@ export const sendMediaMessage = mutation({
     const user = await ctx.db.get(userId);
 
     if (!user) {
-      throw new Error("User not found: Користувача не знайдено");
+      throw new Error("Користувача не знайдено");
     }
 
     const imageUrl = await ctx.storage.getUrl(args.storageId);
 
     if (!imageUrl) {
-      throw new Error("Не вдалося отримати URL завантаженого зображення");
+      throw new Error("Не вдалося отримати посилання на збережений файл");
     }
-
-    const trimmedCaption = args.caption?.trim();
 
     const messageId = await ctx.db.insert("messages", {
       chatRoomId: args.chatRoomId,
       senderId: userId,
       senderName: user.name ?? user.email ?? "Користувач",
       senderPhoto: user.image,
+      content: args.caption?.trim() || undefined,
       imageUrl,
       storageId: args.storageId,
-      content: trimmedCaption,
+
+      replyToId: args.replyToId,
+      replyToSender: args.replyToSender,
+      replyToText: args.replyToText,
     });
 
     await ctx.db.patch(args.chatRoomId, {
-      lastMessage: `${user.name ?? "Користувач"}: 📷 Фото ${
-        trimmedCaption ? `(${trimmedCaption})` : ""
-      }`,
+      lastMessage: `${user.name ?? "Користувач"}: 📷 Фотографія`,
       lastMessageAt: Date.now(),
     });
 

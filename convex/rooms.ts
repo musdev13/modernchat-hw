@@ -40,7 +40,9 @@ export const createRoom = mutation({
 });
 
 export const deleteRoom = mutation({
-  args: { roomId: v.id("chatRooms") },
+  args: {
+    roomId: v.id("chatRooms"),
+  },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
 
@@ -51,22 +53,40 @@ export const deleteRoom = mutation({
     const room = await ctx.db.get(args.roomId);
 
     if (!room) {
-      throw new Error("Room not found: Кімнату не знайдено");
+      throw new Error("Кімнату не знайдено");
     }
 
     if (room.creatorId !== userId) {
-      throw new Error("Forbidden: Тільки автор може видалити цю кімнату");
+      throw new Error("Forbidden: Видалити кімнату може лише її творець");
     }
 
+    // Видаляємо всі повідомлення кімнати
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_chat_room", (q) => q.eq("chatRoomId", args.roomId))
       .collect();
 
-    for (const message of messages) {
-      await ctx.db.delete(message._id);
+    for (const msg of messages) {
+      if (msg.storageId) {
+        await ctx.storage.delete(msg.storageId);
+      }
+
+      await ctx.db.delete(msg._id);
     }
 
+    // Видаляємо індикатори набору тексту
+    const typingRecords = await ctx.db
+      .query("typingIndicators")
+      .withIndex("by_room", (q) => q.eq("chatRoomId", args.roomId))
+      .collect();
+
+    for (const record of typingRecords) {
+      await ctx.db.delete(record._id);
+    }
+
+    // Видаляємо кімнату
     await ctx.db.delete(args.roomId);
+
+    return { success: true };
   },
 });
