@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/theme";
+import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
 
 export interface ReplyTarget {
   messageId: string;
@@ -19,7 +20,11 @@ export const ReplyPreviewBar: React.FC<ReplyPreviewBarProps> = ({
   onCancel,
 }) => {
   return (
-    <View className="flex-row items-center justify-between px-4 py-2 bg-surfaceLight/95 border-t border-surface border-l-4 border-l-primary">
+    <Animated.View
+      entering={SlideInDown.duration(250)}
+      exiting={SlideOutDown.duration(200)}
+      className="flex-row items-center justify-between px-4 py-2 bg-surfaceLight/95 border-t border-surface border-l-4 border-l-primary"
+    >
       <View className="flex-row items-center flex-1 mr-2">
         <Ionicons
           name="arrow-undo"
@@ -42,6 +47,6 @@ export const ReplyPreviewBar: React.FC<ReplyPreviewBarProps> = ({
       <TouchableOpacity onPress={onCancel} className="p-1">
         <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 };

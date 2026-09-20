@@ -6,6 +6,9 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   runOnJS,
+  FadeInDown,
+  FadeOutLeft,
+  FadeOutRight,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/theme";
@@ -90,7 +93,11 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   });
 
   return (
-    <View className="relative justify-center my-1">
+    <Animated.View
+      entering={FadeInDown.springify().damping(15)}
+      exiting={isOwn ? FadeOutRight.duration(200) : FadeOutLeft.duration(200)}
+      className="relative justify-center my-1"
+    >
       <Animated.View
         style={animatedIconStyle}
         className="absolute left-2 z-0 items-center justify-center w-8 h-8 rounded-full bg-primary/30"
@@ -173,7 +180,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
           </TouchableOpacity>
         </Animated.View>
       </GestureDetector>
-    </View>
+    </Animated.View>
   );
 };
 

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -15,11 +15,14 @@ import { router, useLocalSearchParams } from "expo-router";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { COLORS } from "@/constants/theme";
+import { ImageViewerModal } from "@/components/ImageViewerModal";
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{
     id: string;
   }>();
+
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
   const currentUser = useQuery(api.users.currentUser);
 
@@ -82,12 +85,17 @@ export default function UserProfileScreen() {
 
         <View className="items-center">
           {userProfile.image ? (
-            <Image
-              source={{
-                uri: userProfile.image,
-              }}
-              className="w-28 h-28 rounded-full mb-4"
-            />
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setFullscreenImage(userProfile.image!)}
+            >
+              <Image
+                source={{
+                  uri: userProfile.image,
+                }}
+                className="w-28 h-28 rounded-full mb-4"
+              />
+            </TouchableOpacity>
           ) : (
             <View className="w-28 h-28 rounded-full bg-secondary items-center justify-center mb-4">
               <Ionicons name="person" size={52} color={COLORS.textMuted} />
@@ -154,6 +162,12 @@ export default function UserProfileScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      <ImageViewerModal
+        visible={!!fullscreenImage}
+        imageUrl={fullscreenImage}
+        onClose={() => setFullscreenImage(null)}
+      />
     </SafeAreaView>
   );
 }

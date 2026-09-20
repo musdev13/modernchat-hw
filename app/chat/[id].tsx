@@ -17,6 +17,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { File } from "expo-file-system";
 import { COLORS } from "@/constants/theme";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { TypingDots } from "@/components/TypingDots";
@@ -25,6 +26,13 @@ import {
   MessageItemData,
 } from "@/components/SwipeableMessageItem";
 import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  ZoomIn,
+  ZoomOut,
+} from "react-native-reanimated";
 
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{
@@ -56,15 +64,10 @@ export default function ChatRoomScreen() {
   });
 
   const sendMessage = useMutation(api.messages.sendMessage);
-
   const sendMediaMessage = useMutation(api.messages.sendMediaMessage);
-
   const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
-
   const editMessage = useMutation(api.messages.editMessage);
-
   const deleteMessage = useMutation(api.messages.deleteMessage);
-
   const setTyping = useMutation(api.typing.setTyping);
 
   const [inputText, setInputText] = useState("");
@@ -72,17 +75,19 @@ export default function ChatRoomScreen() {
     useState<Id<"messages"> | null>(null);
 
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
-
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
-
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
-
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
+  const sendButtonScale = useSharedValue(1);
 
   const flatListRef = useRef<FlatList>(null);
   const lastTypingCallRef = useRef<number>(0);
+
+  const sendButtonAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: sendButtonScale.value }],
+  }));
 
   const handleTextChange = useCallback(
     (text: string) => {
@@ -160,23 +165,35 @@ export default function ChatRoomScreen() {
       } else if (selectedImageUri) {
         const uploadUrl = await generateUploadUrl();
 
-        const response = await fetch(selectedImageUri);
-
-        const blob = await response.blob();
+        const file = new File(selectedImageUri);
 
         const uploadResult = await fetch(uploadUrl, {
           method: "POST",
           headers: {
-            "Content-Type": blob.type || "image/jpeg",
+            "Content-Type": file.type || "image/jpeg",
           },
-          body: blob,
+          body: file,
         });
 
-        const { storageId } = await uploadResult.json();
+        if (!uploadResult.ok) {
+          const errorText = await uploadResult.text();
+
+          throw new Error(
+            `Upload failed: ${uploadResult.status} ${errorText}`,
+          );
+        }
+
+        const uploadData = await uploadResult.json();
+        const storageId = uploadData?.storageId;
+
+        if (!storageId) {
+          console.error("Upload response:", uploadData);
+          throw new Error("Сервер не повернув storageId");
+        }
 
         await sendMediaMessage({
           chatRoomId,
-          storageId,
+          storageId: storageId as Id<"_storage">,
           caption: text || undefined,
           replyToId: replyTarget
             ? (replyTarget.messageId as Id<"messages">)
@@ -348,7 +365,6 @@ export default function ChatRoomScreen() {
       <Stack.Screen
         options={{
           title: room?.title ?? "Чат",
-
           headerRight: () => (
             <TouchableOpacity
               onPress={() => router.push(`/settings/${chatRoomId}`)}
@@ -393,12 +409,18 @@ export default function ChatRoomScreen() {
         />
 
         {showScrollToBottom && (
-          <TouchableOpacity
-            onPress={scrollToBottom}
-            className="absolute right-4 bottom-4 w-11 h-11 rounded-full bg-primary items-center justify-center"
+          <Animated.View
+            entering={ZoomIn.springify()}
+            exiting={ZoomOut.duration(150)}
+            className="absolute right-4 bottom-4"
           >
-            <Ionicons name="arrow-down" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={scrollToBottom}
+              className="w-11 h-11 rounded-full bg-primary items-center justify-center"
+            >
+              <Ionicons name="arrow-down" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </Animated.View>
         )}
       </View>
 
@@ -482,25 +504,33 @@ export default function ChatRoomScreen() {
           multiline
         />
 
-        <TouchableOpacity
-          onPress={handleSend}
-          disabled={(!inputText.trim() && !selectedImageUri) || isSubmitting}
-          className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
-            (!inputText.trim() && !selectedImageUri) || isSubmitting
-              ? "opacity-50"
-              : "active:opacity-80"
-          }`}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Ionicons
-              name={editingMessageId ? "checkmark" : "send"}
-              size={20}
-              color="#FFFFFF"
-            />
-          )}
-        </TouchableOpacity>
+        <Animated.View style={sendButtonAnimatedStyle}>
+          <TouchableOpacity
+            onPress={handleSend}
+            onPressIn={() => {
+              sendButtonScale.value = withSpring(0.86);
+            }}
+            onPressOut={() => {
+              sendButtonScale.value = withSpring(1);
+            }}
+            disabled={(!inputText.trim() && !selectedImageUri) || isSubmitting}
+            className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
+              (!inputText.trim() && !selectedImageUri) || isSubmitting
+                ? "opacity-50"
+                : "active:opacity-80"
+            }`}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons
+                name={editingMessageId ? "checkmark" : "send"}
+                size={20}
+                color="#FFFFFF"
+              />
+            )}
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
       <ImageViewerModal
