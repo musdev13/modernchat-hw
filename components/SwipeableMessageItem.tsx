@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { View, Text, TouchableOpacity, Image } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import Animated, {
@@ -36,7 +36,7 @@ interface SwipeableMessageItemProps {
 
 const SWIPE_THRESHOLD = 50;
 
-export const SwipeableMessageItem: React.FC<SwipeableMessageItemProps> = ({
+const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   item,
   isOwn,
   onLongPress,
@@ -176,3 +176,13 @@ export const SwipeableMessageItem: React.FC<SwipeableMessageItemProps> = ({
     </View>
   );
 };
+
+export const SwipeableMessageItem = memo(
+  SwipeableMessageItemComponent,
+  (prev, next) =>
+    prev.item._id === next.item._id &&
+    prev.item.content === next.item.content &&
+    prev.item.isEdited === next.item.isEdited &&
+    prev.item.imageUrl === next.item.imageUrl &&
+    prev.isOwn === next.isOwn,
+);

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Image,
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
-import { useQuery, useMutation } from "convex/react";
+import { usePaginatedQuery, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
@@ -39,9 +39,15 @@ export default function ChatRoomScreen() {
     roomId: chatRoomId,
   });
 
-  const messages = useQuery(api.messages.listMessages, {
-    chatRoomId,
-  });
+  const { results: messages, status, loadMore } = usePaginatedQuery(
+    api.messages.getPaginatedMessages,
+    {
+      chatRoomId,
+    },
+    {
+      initialNumItems: 25,
+    },
+  );
 
   const currentUser = useQuery(api.users.currentUser);
 
@@ -73,24 +79,29 @@ export default function ChatRoomScreen() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
   const flatListRef = useRef<FlatList>(null);
   const lastTypingCallRef = useRef<number>(0);
 
-  const handleTextChange = (text: string) => {
-    setInputText(text);
+  const handleTextChange = useCallback(
+    (text: string) => {
+      setInputText(text);
 
-    const now = Date.now();
+      const now = Date.now();
 
-    if (now - lastTypingCallRef.current > 1500) {
-      lastTypingCallRef.current = now;
+      if (now - lastTypingCallRef.current > 1500) {
+        lastTypingCallRef.current = now;
 
-      setTyping({
-        chatRoomId,
-      }).catch(() => {});
-    }
-  };
+        setTyping({
+          chatRoomId,
+        }).catch(() => {});
+      }
+    },
+    [chatRoomId, setTyping],
+  );
 
-  const pickImage = async () => {
+  const pickImage = useCallback(async () => {
     try {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -117,9 +128,9 @@ export default function ChatRoomScreen() {
 
       Alert.alert("Помилка", "Не вдалося вибрати зображення");
     }
-  };
+  }, []);
 
-  const handleStartReply = (message: MessageItemData) => {
+  const handleStartReply = useCallback((message: MessageItemData) => {
     setReplyTarget({
       messageId: message._id,
       senderName: message.senderName,
@@ -127,9 +138,9 @@ export default function ChatRoomScreen() {
     });
 
     setEditingMessageId(null);
-  };
+  }, []);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     const text = inputText.trim();
 
     if ((!text && !selectedImageUri) || isSubmitting) {
@@ -198,63 +209,135 @@ export default function ChatRoomScreen() {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [
+    chatRoomId,
+    editMessage,
+    editingMessageId,
+    generateUploadUrl,
+    inputText,
+    isSubmitting,
+    replyTarget,
+    selectedImageUri,
+    sendMediaMessage,
+    sendMessage,
+  ]);
 
-  const handleMessageLongPress = (item: MessageItemData) => {
-    const isOwn = item.senderId === currentUser?._id;
+  const handleMessageLongPress = useCallback(
+    (item: MessageItemData) => {
+      const isOwn = item.senderId === currentUser?._id;
 
-    const options: any[] = [
-      {
-        text: "Відповісти",
-        onPress: () => handleStartReply(item),
-      },
-    ];
+      const options: any[] = [
+        {
+          text: "Відповісти",
+          onPress: () => handleStartReply(item),
+        },
+      ];
 
-    if (isOwn) {
-      if (item.content) {
+      if (isOwn) {
+        if (item.content) {
+          options.push({
+            text: "Редагувати",
+            onPress: () => {
+              setEditingMessageId(item._id);
+              setInputText(item.content || "");
+              setReplyTarget(null);
+            },
+          });
+        }
+
         options.push({
-          text: "Редагувати",
+          text: "Видалити",
+          style: "destructive",
           onPress: () => {
-            setEditingMessageId(item._id);
-            setInputText(item.content || "");
-            setReplyTarget(null);
+            Alert.alert(
+              "Видалити повідомлення?",
+              "Ви впевнені, що хочете видалити повідомлення?",
+              [
+                {
+                  text: "Скасувати",
+                  style: "cancel",
+                },
+                {
+                  text: "Так, видалити",
+                  style: "destructive",
+                  onPress: () =>
+                    deleteMessage({
+                      messageId: item._id,
+                    }),
+                },
+              ],
+            );
           },
         });
       }
 
       options.push({
-        text: "Видалити",
-        style: "destructive",
-        onPress: () => {
-          Alert.alert(
-            "Видалити повідомлення?",
-            "Ви впевнені, що хочете видалити повідомлення?",
-            [
-              {
-                text: "Скасувати",
-                style: "cancel",
-              },
-              {
-                text: "Так, видалити",
-                style: "destructive",
-                onPress: () =>
-                  deleteMessage({
-                    messageId: item._id,
-                  }),
-              },
-            ],
-          );
-        },
+        text: "Скасувати",
+        style: "cancel",
       });
+
+      Alert.alert("Дії з повідомленням", undefined, options);
+    },
+    [currentUser?._id, deleteMessage, handleStartReply],
+  );
+
+  const renderMessageItem = useCallback(
+    ({ item }: { item: MessageItemData }) => (
+      <SwipeableMessageItem
+        item={item}
+        isOwn={item.senderId === currentUser?._id}
+        onLongPress={() => handleMessageLongPress(item)}
+        onReply={handleStartReply}
+        onImagePress={setFullscreenImage}
+        onAuthorPress={(authorId) =>
+          router.push(`/user/${authorId}` as any)
+        }
+      />
+    ),
+    [currentUser?._id, handleMessageLongPress, handleStartReply, router],
+  );
+
+  const handleLoadMore = useCallback(() => {
+    if (status === "CanLoadMore") {
+      loadMore(20);
+    }
+  }, [loadMore, status]);
+
+  const handleScroll = useCallback((event: any) => {
+    setShowScrollToBottom(event.nativeEvent.contentOffset.y > 350);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    flatListRef.current?.scrollToOffset({
+      offset: 0,
+      animated: true,
+    });
+    setShowScrollToBottom(false);
+  }, []);
+
+  const renderListEmpty = useCallback(() => {
+    if (status === "LoadingFirstPage") {
+      return (
+        <View
+          className="flex-1 items-center justify-center"
+          style={{ transform: [{ scaleY: -1 }] }}
+        >
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        </View>
+      );
     }
 
-    options.push({
-      text: "Скасувати",
-      style: "cancel",
-    });
-
-    Alert.alert("Дії з повідомленням", undefined, options);
-  };
+    return (
+      <View
+        className="flex-1 items-center justify-center px-8"
+        style={{ transform: [{ scaleY: -1 }] }}
+      >
+        <Text className="text-white/60 text-center">
+          Повідомлень ще немає
+        </Text>
+      </View>
+    );
+  }, [status]);
 
   return (
     <KeyboardAvoidingView
@@ -281,31 +364,43 @@ export default function ChatRoomScreen() {
         }}
       />
 
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item._id}
-        contentContainerStyle={{
-          padding: 16,
-        }}
-        onContentSizeChange={() =>
-          flatListRef.current?.scrollToEnd({
-            animated: false,
-          })
-        }
-        renderItem={({ item }) => (
-          <SwipeableMessageItem
-            item={item as MessageItemData}
-            isOwn={item.senderId === currentUser?._id}
-            onLongPress={() => handleMessageLongPress(item as MessageItemData)}
-            onReply={handleStartReply}
-            onImagePress={(url) => setFullscreenImage(url)}
-            onAuthorPress={(authorId) =>
-              router.push(`/user/${authorId}` as any)
-            }
-          />
+      <View className="flex-1">
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item._id}
+          inverted={true}
+          contentContainerStyle={{
+            padding: 16,
+          }}
+          renderItem={renderMessageItem}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          ListFooterComponent={
+            status === "LoadingMore" ? (
+              <View className="py-3">
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={renderListEmpty}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+          removeClippedSubviews={Platform.OS === "android"}
+        />
+
+        {showScrollToBottom && (
+          <TouchableOpacity
+            onPress={scrollToBottom}
+            className="absolute right-4 bottom-4 w-11 h-11 rounded-full bg-primary items-center justify-center"
+          >
+            <Ionicons name="arrow-down" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
         )}
-      />
+      </View>
 
       {typingUsers && typingUsers.length > 0 ? (
         <TypingDots typingUsers={typingUsers} />

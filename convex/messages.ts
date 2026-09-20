@@ -1,6 +1,27 @@
-import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { paginationOptsValidator } from "convex/server";
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+
+export const getPaginatedMessages = query({
+  args: {
+    chatRoomId: v.id("chatRooms"),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    return await ctx.db
+      .query("messages")
+      .withIndex("by_chat_room", (q) => q.eq("chatRoomId", args.chatRoomId))
+      .order("desc")
+      .paginate(args.paginationOpts);
+  },
+});
 
 export const listMessages = query({
   args: { chatRoomId: v.id("chatRooms") },
@@ -208,5 +229,57 @@ export const sendMediaMessage = mutation({
     });
 
     return messageId;
+  },
+});
+
+export const seedTestMessages = mutation({
+  args: {
+    chatRoomId: v.id("chatRooms"),
+    count: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const user = await ctx.db.get(userId);
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const total = args.count ?? 40;
+
+    const sampleTexts = [
+      "Привіт усім! Як просувається оптимізація чату?",
+      "Працюємо з Inverted FlatList у React Native 🚀",
+      "Convex курсорна пагінація працює неймовірно швидко!",
+      "Перевіряємо довантаження старіших повідомлень при скролі вгору...",
+      "Плавність 60/120 FPS без блокування інтерфейсу ✨",
+      "React.memo рятує від зайвих перерендерів під час набору тексту.",
+      "Тестове повідомлення для перевірки списку #",
+      "Сучасний мобільний месенджер рівня Telegram готовий!",
+    ];
+
+    for (let i = 0; i < total; i++) {
+      const textIndex = i % sampleTexts.length;
+
+      await ctx.db.insert("messages", {
+        chatRoomId: args.chatRoomId,
+        senderId: userId,
+        senderName: user.name ?? user.email ?? "Студент",
+        senderPhoto: user.image,
+        content: `${sampleTexts[textIndex]} (${total - i})`,
+      });
+    }
+
+    await ctx.db.patch(args.chatRoomId, {
+      lastMessage: `${user.name ?? "Студент"}: ${sampleTexts[0]}`,
+      lastMessageAt: Date.now(),
+    });
+
+    return { success: true, count: total };
   },
 });

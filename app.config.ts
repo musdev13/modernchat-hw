@@ -38,7 +38,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     scheme: dynamicConfig.scheme,
 
     userInterfaceStyle: "dark",
-    newArchEnabled: true,
 
     ios: {
       supportsTablet: true,
@@ -58,8 +57,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: {
       package: dynamicConfig.packageName,
       versionCode: 1,
-
-      edgeToEdgeEnabled: true,
 
       adaptiveIcon: {
         backgroundColor: "#0F172A",
