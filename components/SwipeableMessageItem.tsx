@@ -1,6 +1,7 @@
-import React, { memo } from "react";
+import React, { memo, useRef } from "react";
 import { View, Text, TouchableOpacity, Image } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import * as Haptics from "expo-haptics";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -13,6 +14,8 @@ import Animated, {
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/theme";
 import { Id } from "@/convex/_generated/dataModel";
+import { MessageReactions, ReactionItem } from "./MessageReactions";
+import { ReactionPickerPosition } from "./ReactionPickerModal";
 
 export interface MessageItemData {
   _id: Id<"messages">;
@@ -26,12 +29,18 @@ export interface MessageItemData {
   replyToSender?: string;
   replyToText?: string;
   _creationTime: number;
+  reactions?: ReactionItem[];
 }
 
 interface SwipeableMessageItemProps {
   item: MessageItemData;
   isOwn: boolean;
-  onLongPress: () => void;
+  onLongPress: (
+    position: ReactionPickerPosition,
+    message: MessageItemData,
+  ) => void;
+  onDoubleTap: (message: MessageItemData) => void;
+  onToggleReaction: (emoji: string) => void;
   onReply: (message: MessageItemData) => void;
   onImagePress?: (url: string) => void;
   onAuthorPress?: (userId: Id<"users">) => void;
@@ -43,11 +52,14 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   item,
   isOwn,
   onLongPress,
+  onDoubleTap,
+  onToggleReaction,
   onReply,
   onImagePress,
   onAuthorPress,
 }) => {
   const translateX = useSharedValue(0);
+  const containerRef = useRef<View>(null);
 
   const triggerReply = () => {
     onReply(item);
@@ -70,6 +82,38 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
         stiffness: 200,
       });
     });
+
+  const triggerHaptic = (style: Haptics.ImpactFeedbackStyle) => {
+    void Haptics.impactAsync(style);
+  };
+
+  const measureAndOpenReactionPicker = () => {
+    containerRef.current?.measureInWindow((x, y, width) => {
+      onLongPress({ x: isOwn ? x + width : x, y, isOwn }, item);
+    });
+  };
+
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .maxDuration(250)
+    .onEnd((_event, success) => {
+      if (!success) return;
+      runOnJS(triggerHaptic)(Haptics.ImpactFeedbackStyle.Light);
+      runOnJS(onDoubleTap)(item);
+    });
+
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(350)
+    .onEnd((_event, success) => {
+      if (!success) return;
+      runOnJS(triggerHaptic)(Haptics.ImpactFeedbackStyle.Heavy);
+      runOnJS(measureAndOpenReactionPicker)();
+    });
+
+  const composedGesture = Gesture.Simultaneous(
+    panGesture,
+    Gesture.Exclusive(doubleTapGesture, longPressGesture),
+  );
 
   const animatedBubbleStyle = useAnimatedStyle(() => ({
     transform: [
@@ -105,14 +149,13 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
         <Ionicons name="arrow-undo" size={18} color={COLORS.primary} />
       </Animated.View>
 
-      <GestureDetector gesture={panGesture}>
+      <GestureDetector gesture={composedGesture}>
         <Animated.View
           style={animatedBubbleStyle}
           className={`flex-row ${isOwn ? "justify-end" : "justify-start"}`}
         >
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onLongPress={onLongPress}
+          <View
+            ref={containerRef}
             className={`max-w-[82%] rounded-2xl p-3 ${
               isOwn ? "bg-primary rounded-br-xs" : "bg-secondary rounded-bl-xs"
             }`}
@@ -165,6 +208,12 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
               </Text>
             ) : null}
 
+            <MessageReactions
+              reactions={item.reactions}
+              isOwn={isOwn}
+              onToggleReaction={onToggleReaction}
+            />
+
             <View className="flex-row items-center justify-end mt-1 gap-1">
               {item.isEdited && (
                 <Text className="text-white/60 text-[10px] italic">(ред.)</Text>
@@ -177,7 +226,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                 })}
               </Text>
             </View>
-          </TouchableOpacity>
+          </View>
         </Animated.View>
       </GestureDetector>
     </Animated.View>
@@ -191,5 +240,6 @@ export const SwipeableMessageItem = memo(
     prev.item.content === next.item.content &&
     prev.item.isEdited === next.item.isEdited &&
     prev.item.imageUrl === next.item.imageUrl &&
+    prev.item.reactions === next.item.reactions &&
     prev.isOwn === next.isOwn,
 );

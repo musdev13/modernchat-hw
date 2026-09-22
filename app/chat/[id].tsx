@@ -26,6 +26,10 @@ import {
   MessageItemData,
 } from "@/components/SwipeableMessageItem";
 import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
+import {
+  ReactionPickerModal,
+  ReactionPickerPosition,
+} from "@/components/ReactionPickerModal";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -67,7 +71,7 @@ export default function ChatRoomScreen() {
   const sendMediaMessage = useMutation(api.messages.sendMediaMessage);
   const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
   const editMessage = useMutation(api.messages.editMessage);
-  const deleteMessage = useMutation(api.messages.deleteMessage);
+  const toggleReaction = useMutation(api.messages.toggleReaction);
   const setTyping = useMutation(api.typing.setTyping);
 
   const [inputText, setInputText] = useState("");
@@ -79,6 +83,10 @@ export default function ChatRoomScreen() {
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [pickerState, setPickerState] = useState<{
+    messageId: Id<"messages">;
+    position: ReactionPickerPosition;
+  } | null>(null);
 
   const sendButtonScale = useSharedValue(1);
 
@@ -144,6 +152,17 @@ export default function ChatRoomScreen() {
 
     setEditingMessageId(null);
   }, []);
+
+  const handleToggleReaction = useCallback(
+    async (messageId: Id<"messages">, emoji: string) => {
+      try {
+        await toggleReaction({ messageId, emoji });
+      } catch (error) {
+        console.error("Не вдалося змінити реакцію:", error);
+      }
+    },
+    [toggleReaction],
+  );
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
@@ -239,71 +258,18 @@ export default function ChatRoomScreen() {
     sendMessage,
   ]);
 
-  const handleMessageLongPress = useCallback(
-    (item: MessageItemData) => {
-      const isOwn = item.senderId === currentUser?._id;
-
-      const options: any[] = [
-        {
-          text: "Відповісти",
-          onPress: () => handleStartReply(item),
-        },
-      ];
-
-      if (isOwn) {
-        if (item.content) {
-          options.push({
-            text: "Редагувати",
-            onPress: () => {
-              setEditingMessageId(item._id);
-              setInputText(item.content || "");
-              setReplyTarget(null);
-            },
-          });
-        }
-
-        options.push({
-          text: "Видалити",
-          style: "destructive",
-          onPress: () => {
-            Alert.alert(
-              "Видалити повідомлення?",
-              "Ви впевнені, що хочете видалити повідомлення?",
-              [
-                {
-                  text: "Скасувати",
-                  style: "cancel",
-                },
-                {
-                  text: "Так, видалити",
-                  style: "destructive",
-                  onPress: () =>
-                    deleteMessage({
-                      messageId: item._id,
-                    }),
-                },
-              ],
-            );
-          },
-        });
-      }
-
-      options.push({
-        text: "Скасувати",
-        style: "cancel",
-      });
-
-      Alert.alert("Дії з повідомленням", undefined, options);
-    },
-    [currentUser?._id, deleteMessage, handleStartReply],
-  );
-
   const renderMessageItem = useCallback(
     ({ item }: { item: MessageItemData }) => (
       <SwipeableMessageItem
         item={item}
         isOwn={item.senderId === currentUser?._id}
-        onLongPress={() => handleMessageLongPress(item)}
+        onLongPress={(position) =>
+          setPickerState({ messageId: item._id, position })
+        }
+        onDoubleTap={(message) =>
+          handleToggleReaction(message._id, "❤️")
+        }
+        onToggleReaction={(emoji) => handleToggleReaction(item._id, emoji)}
         onReply={handleStartReply}
         onImagePress={setFullscreenImage}
         onAuthorPress={(authorId) =>
@@ -311,7 +277,7 @@ export default function ChatRoomScreen() {
         }
       />
     ),
-    [currentUser?._id, handleMessageLongPress, handleStartReply, router],
+    [currentUser?._id, handleStartReply, handleToggleReaction, router],
   );
 
   const handleLoadMore = useCallback(() => {
@@ -537,6 +503,17 @@ export default function ChatRoomScreen() {
         visible={!!fullscreenImage}
         imageUrl={fullscreenImage}
         onClose={() => setFullscreenImage(null)}
+      />
+
+      <ReactionPickerModal
+        visible={!!pickerState}
+        position={pickerState?.position ?? null}
+        onClose={() => setPickerState(null)}
+        onSelectEmoji={(emoji) => {
+          if (pickerState) {
+            void handleToggleReaction(pickerState.messageId, emoji);
+          }
+        }}
       />
     </KeyboardAvoidingView>
   );

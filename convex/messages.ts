@@ -15,11 +15,87 @@ export const getPaginatedMessages = query({
       throw new Error("Unauthorized");
     }
 
-    return await ctx.db
+    const paginated = await ctx.db
       .query("messages")
       .withIndex("by_chat_room", (q) => q.eq("chatRoomId", args.chatRoomId))
       .order("desc")
       .paginate(args.paginationOpts);
+
+    const page = await Promise.all(
+      paginated.page.map(async (message) => {
+        const reactions = await ctx.db
+          .query("messageReactions")
+          .withIndex("by_message", (q) => q.eq("messageId", message._id))
+          .collect();
+
+        const grouped = new Map<
+          string,
+          { count: number; hasReacted: boolean }
+        >();
+
+        for (const reaction of reactions) {
+          const current = grouped.get(reaction.emoji) ?? {
+            count: 0,
+            hasReacted: false,
+          };
+          current.count += 1;
+          current.hasReacted ||= reaction.userId === userId;
+          grouped.set(reaction.emoji, current);
+        }
+
+        return {
+          ...message,
+          reactions: Array.from(grouped, ([emoji, reaction]) => ({
+            emoji,
+            ...reaction,
+          })),
+        };
+      }),
+    );
+
+    return { ...paginated, page };
+  },
+});
+
+export const toggleReaction = mutation({
+  args: {
+    messageId: v.id("messages"),
+    emoji: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized: Потрібна авторизація");
+    }
+
+    const message = await ctx.db.get(args.messageId);
+    if (!message) {
+      throw new Error("Message not found: Повідомлення не знайдено");
+    }
+
+    const existing = await ctx.db
+      .query("messageReactions")
+      .withIndex("by_user_and_message", (q) =>
+        q.eq("userId", userId).eq("messageId", args.messageId),
+      )
+      .first();
+
+    if (!existing) {
+      await ctx.db.insert("messageReactions", {
+        messageId: args.messageId,
+        userId,
+        emoji: args.emoji,
+      });
+      return { action: "added", emoji: args.emoji };
+    }
+
+    if (existing.emoji === args.emoji) {
+      await ctx.db.delete(existing._id);
+      return { action: "removed", emoji: args.emoji };
+    }
+
+    await ctx.db.patch(existing._id, { emoji: args.emoji });
+    return { action: "updated", emoji: args.emoji };
   },
 });
 
@@ -152,6 +228,12 @@ export const deleteMessage = mutation({
     if (message.storageId) {
       await ctx.storage.delete(message.storageId);
     }
+
+    const reactions = await ctx.db
+      .query("messageReactions")
+      .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
+      .collect();
+    await Promise.all(reactions.map((reaction) => ctx.db.delete(reaction._id)));
 
     await ctx.db.delete(args.messageId);
 

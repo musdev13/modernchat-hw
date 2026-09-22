@@ -38,6 +38,14 @@ export default defineSchema({
     replyToText: v.optional(v.string()),
   }).index("by_chat_room", ["chatRoomId"]),
 
+  messageReactions: defineTable({
+    messageId: v.id("messages"),
+    userId: v.id("users"),
+    emoji: v.string(),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_user_and_message", ["userId", "messageId"]),
+
   typingIndicators: defineTable({
     chatRoomId: v.id("chatRooms"),
     userId: v.id("users"),
