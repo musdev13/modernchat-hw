@@ -15,6 +15,30 @@ export const currentUser = query({
   },
 });
 
+export const searchUsers = query({
+  args: { query: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+
+    const term = args.query.trim().toLowerCase();
+    const users = await ctx.db.query("users").collect();
+    return users
+      .filter((user) => user._id !== userId)
+      .filter((user) => {
+        const value = `${user.name ?? ""} ${user.username ?? ""} ${user.email ?? ""}`.toLowerCase();
+        return !term || value.includes(term);
+      })
+      .slice(0, 50)
+      .map((user) => ({
+        _id: user._id,
+        name: user.name ?? user.email ?? "Користувач",
+        username: user.username,
+        image: user.image,
+      }));
+  },
+});
+
 export const generateAvatarUploadUrl = mutation(async (ctx) => {
   const userId = await getAuthUserId(ctx);
 

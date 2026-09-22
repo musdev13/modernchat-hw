@@ -19,6 +19,8 @@ export default defineSchema({
     title: v.string(),
     description: v.optional(v.string()),
     creatorId: v.id("users"),
+    participantIds: v.optional(v.array(v.id("users"))),
+    adminIds: v.optional(v.array(v.id("users"))),
     lastMessage: v.optional(v.string()),
     lastMessageAt: v.optional(v.number()),
   }).index("by_creator", ["creatorId"]),
@@ -32,6 +34,7 @@ export default defineSchema({
     imageUrl: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
     isEdited: v.optional(v.boolean()),
+    isSystem: v.optional(v.boolean()),
 
     replyToId: v.optional(v.id("messages")),
     replyToSender: v.optional(v.string()),

@@ -13,6 +13,8 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/theme";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useState } from "react";
+import { AddMembersModal } from "@/components/AddMembersModal";
 
 export default function RoomSettingsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,6 +26,9 @@ export default function RoomSettingsScreen() {
 
   const currentUser = useQuery(api.users.currentUser);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
+  const updateParticipantRole = useMutation(api.rooms.updateParticipantRole);
+  const removeParticipant = useMutation(api.rooms.removeParticipant);
+  const [isAddMembersVisible, setIsAddMembersVisible] = useState(false);
 
   const isLoading = room === undefined || currentUser === undefined;
 
@@ -33,6 +38,59 @@ export default function RoomSettingsScreen() {
     currentUser !== null &&
     currentUser !== undefined &&
     room.creatorId === currentUser._id;
+  const canManageMembers = room?.canManageMembers ?? false;
+
+  const handleRole = async (
+    targetUserId: Id<"users">,
+    role: "admin" | "member",
+  ) => {
+    try {
+      await updateParticipantRole({
+        roomId: id as Id<"chatRooms">,
+        targetUserId,
+        role,
+      });
+    } catch (error: any) {
+      Alert.alert("Помилка", error?.message ?? "Не вдалося змінити роль");
+    }
+  };
+
+  const handleRemove = (targetUserId: Id<"users">, name: string) => {
+    Alert.alert("Вилучити учасника?", `Вилучити ${name} з кімнати?`, [
+      { text: "Скасувати", style: "cancel" },
+      {
+        text: "Вилучити",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await removeParticipant({ roomId: id as Id<"chatRooms">, targetUserId });
+          } catch (error: any) {
+            Alert.alert("Помилка", error?.message ?? "Не вдалося вилучити учасника");
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleLeave = () => {
+    if (!currentUser) return;
+    Alert.alert("Покинути кімнату?", "Ви втратите доступ до цього чату.", [
+      { text: "Скасувати", style: "cancel" },
+      {
+        text: "Покинути",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await removeParticipant({ roomId: id as Id<"chatRooms">, targetUserId: currentUser._id });
+            router.dismissAll();
+            router.replace("/(app)");
+          } catch (error: any) {
+            Alert.alert("Помилка", error?.message ?? "Не вдалося покинути кімнату");
+          }
+        },
+      },
+    ]);
+  };
 
   const handleDelete = () => {
     Alert.alert(
@@ -196,6 +254,37 @@ export default function RoomSettingsScreen() {
           </View>
         </View>
 
+        <View className="mt-8 rounded-2xl border border-surfaceLight bg-secondary p-4">
+          <View className="mb-3 flex-row items-center justify-between">
+            <View>
+              <Text className="text-base font-bold text-white">Учасники ({room.participants.length})</Text>
+              <Text className="mt-0.5 text-xs text-textMuted">👑 Творець · 🛡️ Адміністратор</Text>
+            </View>
+            {canManageMembers && (
+              <TouchableOpacity onPress={() => setIsAddMembersVisible(true)} className="rounded-xl bg-primary px-3 py-2">
+                <Text className="text-xs font-bold text-white">+ Додати</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {room.participants.map((participant) => {
+            const canKick =
+              participant.role !== "creator" &&
+              (isCreator || (room.currentUserRole === "admin" && participant.role === "member"));
+            return (
+              <View key={participant._id} className="flex-row items-center border-t border-surfaceLight/60 py-3">
+                <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-surfaceLight"><Text className="font-bold text-primary">{participant.name.slice(0, 1).toUpperCase()}</Text></View>
+                <View className="flex-1"><Text className="font-semibold text-white">{participant.name}</Text><Text className="text-xs text-textMuted">{participant.role === "creator" ? "👑 Творець" : participant.role === "admin" ? "🛡️ Адміністратор" : "Учасник"}</Text></View>
+                {isCreator && participant.role !== "creator" && (
+                  <TouchableOpacity onPress={() => handleRole(participant._id as Id<"users">, participant.role === "admin" ? "member" : "admin")} className="mr-2 rounded-lg bg-surfaceLight p-2">
+                    <Ionicons name={participant.role === "admin" ? "shield" : "shield-outline"} size={17} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
+                {canKick && <TouchableOpacity onPress={() => handleRemove(participant._id as Id<"users">, participant.name)} className="rounded-lg bg-danger/10 p-2"><Ionicons name="person-remove-outline" size={17} color={COLORS.danger} /></TouchableOpacity>}
+              </View>
+            );
+          })}
+        </View>
+
         {isCreator ? (
           <View className="mt-8">
             <Text className="text-textMuted text-xs font-semibold uppercase mb-3 px-1">
@@ -257,7 +346,20 @@ export default function RoomSettingsScreen() {
             </View>
           </View>
         )}
+
+        {!isCreator && (
+          <TouchableOpacity onPress={handleLeave} className="mt-4 h-13 items-center justify-center rounded-xl border border-danger/40 bg-danger/10">
+            <Text className="font-bold text-danger">Покинути кімнату</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      <AddMembersModal
+        visible={isAddMembersVisible}
+        roomId={id as Id<"chatRooms">}
+        participantIds={room.participantIds}
+        onClose={() => setIsAddMembersVisible(false)}
+      />
     </SafeAreaView>
   );
 }

@@ -11,13 +11,14 @@ import {
   Alert,
   Image,
 } from "react-native";
-import { useLocalSearchParams, useRouter, Stack } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { usePaginatedQuery, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { File } from "expo-file-system";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "@/constants/theme";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { TypingDots } from "@/components/TypingDots";
@@ -47,15 +48,11 @@ export default function ChatRoomScreen() {
 
   const chatRoomId = id as Id<"chatRooms">;
 
-  const room = useQuery(api.rooms.getRoom, {
-    roomId: chatRoomId,
-  });
+  const room = useQuery(api.rooms.getRoom, { roomId: chatRoomId });
 
   const { results: messages, status, loadMore } = usePaginatedQuery(
     api.messages.getPaginatedMessages,
-    {
-      chatRoomId,
-    },
+    { chatRoomId },
     {
       initialNumItems: 25,
     },
@@ -63,9 +60,7 @@ export default function ChatRoomScreen() {
 
   const currentUser = useQuery(api.users.currentUser);
 
-  const typingUsers = useQuery(api.typing.getTypingUsers, {
-    chatRoomId,
-  });
+  const typingUsers = useQuery(api.typing.getTypingUsers, { chatRoomId });
 
   const sendMessage = useMutation(api.messages.sendMessage);
   const sendMediaMessage = useMutation(api.messages.sendMediaMessage);
@@ -89,6 +84,7 @@ export default function ChatRoomScreen() {
   } | null>(null);
 
   const sendButtonScale = useSharedValue(1);
+  const insets = useSafeAreaInsets();
 
   const flatListRef = useRef<FlatList>(null);
   const lastTypingCallRef = useRef<number>(0);
@@ -326,25 +322,38 @@ export default function ChatRoomScreen() {
     <KeyboardAvoidingView
       className="flex-1 bg-surface"
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 56 : 0}
     >
-      <Stack.Screen
-        options={{
-          title: room?.title ?? "Чат",
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => router.push(`/settings/${chatRoomId}`)}
-              className="p-1"
-            >
-              <Ionicons
-                name="information-circle-outline"
-                size={24}
-                color={COLORS.primary}
-              />
-            </TouchableOpacity>
-          ),
-        }}
-      />
+      <View
+        className="flex-row items-center border-b border-surfaceLight bg-surface px-4"
+        style={{ height: insets.top + 56, paddingTop: insets.top }}
+      >
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-secondary"
+          accessibilityRole="button"
+          accessibilityLabel="Назад"
+        >
+          <Ionicons name="arrow-back" size={22} color={COLORS.white} />
+        </TouchableOpacity>
+
+        <Text numberOfLines={1} className="flex-1 text-lg font-bold text-white">
+          {room?.title ?? "Чат"}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => router.push(`/settings/${chatRoomId}`)}
+          className="ml-3 h-10 w-10 items-center justify-center rounded-full bg-secondary"
+          accessibilityRole="button"
+          accessibilityLabel="Інформація про кімнату"
+        >
+          <Ionicons
+            name="information-circle-outline"
+            size={24}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+      </View>
 
       <View className="flex-1">
         <FlatList

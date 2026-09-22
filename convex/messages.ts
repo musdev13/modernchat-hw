@@ -2,6 +2,19 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
+
+async function assertRoomMember(
+  ctx: any,
+  roomId: Id<"chatRooms">,
+  userId: Id<"users">,
+) {
+  const room = await ctx.db.get(roomId);
+  if (!room) throw new Error("Кімнату не знайдено");
+  if (!(room.participantIds ?? [room.creatorId]).includes(userId)) {
+    throw new Error("Access denied: Ви не є учасником цієї кімнати");
+  }
+}
 
 export const getPaginatedMessages = query({
   args: {
@@ -14,6 +27,7 @@ export const getPaginatedMessages = query({
     if (!userId) {
       throw new Error("Unauthorized");
     }
+    await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const paginated = await ctx.db
       .query("messages")
@@ -72,6 +86,7 @@ export const toggleReaction = mutation({
     if (!message) {
       throw new Error("Message not found: Повідомлення не знайдено");
     }
+    await assertRoomMember(ctx, message.chatRoomId, userId);
 
     const existing = await ctx.db
       .query("messageReactions")
@@ -102,6 +117,9 @@ export const toggleReaction = mutation({
 export const listMessages = query({
   args: { chatRoomId: v.id("chatRooms") },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+    await assertRoomMember(ctx, args.chatRoomId, userId);
     return await ctx.db
       .query("messages")
       .withIndex("by_chat_room", (q) => q.eq("chatRoomId", args.chatRoomId))
@@ -131,6 +149,7 @@ export const sendMessage = mutation({
     if (!user) {
       throw new Error("User not found: Користувача не знайдено");
     }
+    await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const trimmedContent = args.content.trim();
 
@@ -176,6 +195,7 @@ export const editMessage = mutation({
     if (!message) {
       throw new Error("Message not found: Повідомлення не знайдено");
     }
+    await assertRoomMember(ctx, message.chatRoomId, userId);
 
     if (message.senderId !== userId) {
       throw new Error(
@@ -220,6 +240,7 @@ export const deleteMessage = mutation({
     if (!message) {
       throw new Error("Message not found: Повідомлення не знайдено");
     }
+    await assertRoomMember(ctx, message.chatRoomId, userId);
 
     if (message.senderId !== userId) {
       throw new Error("Forbidden: Ви можете видаляти лише власні повідомлення");
@@ -284,6 +305,7 @@ export const sendMediaMessage = mutation({
     if (!user) {
       throw new Error("Користувача не знайдено");
     }
+    await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const imageUrl = await ctx.storage.getUrl(args.storageId);
 

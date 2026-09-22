@@ -22,6 +22,7 @@ export default function HomeScreen() {
   const rooms = useQuery(api.rooms.listRooms);
   const currentUser = useQuery(api.users.currentUser);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
+  const removeParticipant = useMutation(api.rooms.removeParticipant);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -44,14 +45,26 @@ export default function HomeScreen() {
 
     if (!isCreator) {
       Alert.alert(
-        "Обмеження доступу",
-        "Лише автор кімнати має право видалити її для всіх учасників.",
+        "Покинути кімнату?",
+        `Ви впевнені, що хочете покинути «${room.title}»?`,
         [
           {
-            text: "Зрозуміло",
-            style: "default",
+            text: "Скасувати",
+            style: "cancel",
           },
-        ]
+          {
+            text: "Покинути",
+            style: "destructive",
+            onPress: async () => {
+              if (!currentUser) return;
+              try {
+                await removeParticipant({ roomId, targetUserId: currentUser._id });
+              } catch (error: any) {
+                Alert.alert("Помилка", error?.message ?? "Не вдалося покинути кімнату");
+              }
+            },
+          },
+        ],
       );
 
       return;

@@ -30,6 +30,7 @@ export interface MessageItemData {
   replyToText?: string;
   _creationTime: number;
   reactions?: ReactionItem[];
+  isSystem?: boolean;
 }
 
 interface SwipeableMessageItemProps {
@@ -135,6 +136,18 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
       ],
     };
   });
+
+  if (item.isSystem) {
+    return (
+      <View className="my-2 items-center justify-center px-6">
+        <View className="rounded-full border border-surfaceLight bg-secondary px-3 py-1.5">
+          <Text className="text-center text-[11px] font-medium text-textMuted">
+            {item.content}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <Animated.View

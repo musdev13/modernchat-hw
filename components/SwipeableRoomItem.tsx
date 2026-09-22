@@ -115,7 +115,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
             />
 
             <Text className="text-white text-[11px] font-bold mt-1">
-              {isCreator ? "Видалити" : "Закрити"}
+              {isCreator ? "Видалити" : "Покинути"}
             </Text>
           </Animated.View>
         </TouchableOpacity>

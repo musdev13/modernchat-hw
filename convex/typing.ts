@@ -22,6 +22,11 @@ export const setTyping = mutation({
       return;
     }
 
+    const room = await ctx.db.get(args.chatRoomId);
+    if (!room || !(room.participantIds ?? [room.creatorId]).includes(userId)) {
+      throw new Error("Access denied: Ви не є учасником цієї кімнати");
+    }
+
     const existing = await ctx.db
       .query("typingIndicators")
       .withIndex("by_user_and_room", (q) =>
@@ -53,6 +58,11 @@ export const getTypingUsers = query({
 
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const room = await ctx.db.get(args.chatRoomId);
+    if (!room || !(room.participantIds ?? [room.creatorId]).includes(userId)) {
+      return [];
+    }
     const threshold = Date.now() - TYPING_TIMEOUT_MS;
 
     const indicators = await ctx.db
