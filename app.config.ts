@@ -21,7 +21,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     "development";
 
   console.log("⚙️ Сборка Modern Chat для среды:", environment);
-
   console.log("📦 Convex URL:", process.env.EXPO_PUBLIC_CONVEX_URL);
 
   const dynamicConfig = getDynamicAppConfig(environment);
@@ -43,14 +42,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       supportsTablet: true,
       bundleIdentifier: dynamicConfig.bundleIdentifier,
       buildNumber: "1",
+      icon: dynamicConfig.icon,
 
       infoPlist: {
         NSCameraUsageDescription:
-          "Додатку потрібен доступ до камери для фотографування та надсилання знімків у чат.",
+          "Додатку Modern Chat потрібен доступ до камери для запису відеокружечків та фотографій.",
         NSPhotoLibraryUsageDescription:
-          "Додатку потрібен доступ до вашої медіатеки для надсилання фотографій та зміни аватарки.",
+          "Додатку Modern Chat потрібен доступ до медіатеки для вибору та надсилання фотографій.",
+        NSPhotoLibraryAddUsageDescription:
+          "Додатку Modern Chat потрібен доступ для збереження фотографій у вашу галерею.",
         NSMicrophoneUsageDescription:
-          "Додатку потрібен доступ до мікрофона для запису голосових повідомлень.",
+          "Додатку Modern Chat потрібен доступ до мікрофона для запису голосових повідомлень та відеокружечків.",
       },
     },
 
@@ -65,12 +67,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         monochromeImage: dynamicConfig.adaptiveIconMonochrome,
       },
 
+      predictiveBackGestureEnabled: false,
+
       permissions: [
         "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.VIBRATE",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
       ],
     },
 
@@ -95,12 +102,43 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         "expo-image-picker",
         {
-          photosPermission: "Додатку потрібен доступ до ваших фотографій.",
-          cameraPermission: "Додатку потрібен доступ до камери.",
+          photosPermission:
+            "Додатку Modern Chat потрібен доступ до ваших фотографій.",
+          cameraPermission: "Додатку Modern Chat потрібен доступ до камери.",
         },
       ],
 
       "expo-secure-store",
+
+      // 🎥 ДЗ 15: камера для відеокружечків
+      [
+        "expo-camera",
+        {
+          cameraPermission:
+            "Додатку Modern Chat потрібен доступ до камери для запису відеокружечків.",
+          microphonePermission:
+            "Додатку Modern Chat потрібен доступ до мікрофона для запису звуку у відеокружечках.",
+          recordAudioAndroid: true,
+        },
+      ],
+
+      // 🎬 ДЗ 15: нативний плеєр відео
+      [
+        "expo-video",
+        {
+          supportsBackgroundPlayback: false,
+          supportsPictureInPicture: false,
+        },
+      ],
+
+      // 🎤 ДЗ 15: запис голосових повідомлень
+      [
+        "expo-audio",
+        {
+          microphonePermission:
+            "Додатку Modern Chat потрібен доступ до мікрофона для запису голосових повідомлень.",
+        },
+      ],
     ],
 
     experiments: {
