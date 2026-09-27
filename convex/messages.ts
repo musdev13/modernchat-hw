@@ -14,6 +14,7 @@ async function assertRoomMember(
   if (!(room.participantIds ?? [room.creatorId]).includes(userId)) {
     throw new Error("Access denied: Ви не є учасником цієї кімнати");
   }
+  return room;
 }
 
 export const getPaginatedMessages = query({
@@ -246,8 +247,15 @@ export const deleteMessage = mutation({
       throw new Error("Forbidden: Ви можете видаляти лише власні повідомлення");
     }
 
+    // 🧹 Каскадно видаляємо всі медіафайли з Convex Storage
     if (message.storageId) {
       await ctx.storage.delete(message.storageId);
+    }
+    if (message.audioStorageId) {
+      await ctx.storage.delete(message.audioStorageId);
+    }
+    if (message.videoStorageId) {
+      await ctx.storage.delete(message.videoStorageId);
     }
 
     const reactions = await ctx.db
@@ -266,7 +274,7 @@ export const deleteMessage = mutation({
 
     await ctx.db.patch(message.chatRoomId, {
       lastMessage: lastRemainingMessage
-        ? `${lastRemainingMessage.senderName}: ${lastRemainingMessage.content}`
+        ? `${lastRemainingMessage.senderName}: ${lastRemainingMessage.content ?? ""}`
         : "Повідомлень немає",
       lastMessageAt: lastRemainingMessage?._creationTime ?? Date.now(),
     });
@@ -329,6 +337,128 @@ export const sendMediaMessage = mutation({
 
     await ctx.db.patch(args.chatRoomId, {
       lastMessage: `${user.name ?? "Користувач"}: 📷 Фотографія`,
+      lastMessageAt: Date.now(),
+    });
+
+    return messageId;
+  },
+});
+
+// 🎤 НОВА МУТАЦІЯ: голосове повідомлення з хвилею
+export const sendVoiceMessage = mutation({
+  args: {
+    chatRoomId: v.id("chatRooms"),
+    audioStorageId: v.id("_storage"),
+    audioDuration: v.number(),
+    waveform: v.optional(v.array(v.number())),
+    replyToId: v.optional(v.id("messages")),
+    replyToSender: v.optional(v.string()),
+    replyToText: v.optional(v.string()),
+  },
+
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+
+    if (!userId) {
+      throw new Error("Unauthorized: Потрібна авторизація");
+    }
+
+    const user = await ctx.db.get(userId);
+
+    if (!user) {
+      throw new Error("Користувача не знайдено");
+    }
+    await assertRoomMember(ctx, args.chatRoomId, userId);
+
+    const audioUrl = await ctx.storage.getUrl(args.audioStorageId);
+
+    if (!audioUrl) {
+      throw new Error("Не вдалося отримати посилання на аудіофайл");
+    }
+
+    // Обрізаємо waveform до 32 значень та нормалізуємо в межах [0.1 .. 1.0]
+    const safeWaveform = args.waveform
+      ? args.waveform
+          .slice(0, 32)
+          .map((value) => Math.max(0.1, Math.min(1.0, Number(value) || 0.1)))
+      : undefined;
+
+    const messageId = await ctx.db.insert("messages", {
+      chatRoomId: args.chatRoomId,
+      senderId: userId,
+      senderName: user.name ?? user.email ?? "Користувач",
+      senderPhoto: user.image,
+      content: undefined,
+      audioUrl,
+      audioStorageId: args.audioStorageId,
+      audioDuration: args.audioDuration,
+      waveform: safeWaveform,
+
+      replyToId: args.replyToId,
+      replyToSender: args.replyToSender,
+      replyToText: args.replyToText,
+    });
+
+    const durationSeconds = Math.max(1, Math.round(args.audioDuration));
+
+    await ctx.db.patch(args.chatRoomId, {
+      lastMessage: `${user.name ?? "Користувач"}: 🎤 Голосове повідомлення (${durationSeconds}с)`,
+      lastMessageAt: Date.now(),
+    });
+
+    return messageId;
+  },
+});
+
+// 📹 НОВА МУТАЦІЯ: кругле відеоповідомлення (Video Note)
+export const sendVideoNote = mutation({
+  args: {
+    chatRoomId: v.id("chatRooms"),
+    videoStorageId: v.id("_storage"),
+    videoDuration: v.number(),
+    replyToId: v.optional(v.id("messages")),
+    replyToSender: v.optional(v.string()),
+    replyToText: v.optional(v.string()),
+  },
+
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+
+    if (!userId) {
+      throw new Error("Unauthorized: Потрібна авторизація");
+    }
+
+    const user = await ctx.db.get(userId);
+
+    if (!user) {
+      throw new Error("Користувача не знайдено");
+    }
+    await assertRoomMember(ctx, args.chatRoomId, userId);
+
+    const videoUrl = await ctx.storage.getUrl(args.videoStorageId);
+
+    if (!videoUrl) {
+      throw new Error("Не вдалося отримати посилання на відеофайл");
+    }
+
+    const messageId = await ctx.db.insert("messages", {
+      chatRoomId: args.chatRoomId,
+      senderId: userId,
+      senderName: user.name ?? user.email ?? "Користувач",
+      senderPhoto: user.image,
+      content: undefined,
+      videoUrl,
+      videoStorageId: args.videoStorageId,
+      videoDuration: args.videoDuration,
+      isVideoNote: true,
+
+      replyToId: args.replyToId,
+      replyToSender: args.replyToSender,
+      replyToText: args.replyToText,
+    });
+
+    await ctx.db.patch(args.chatRoomId, {
+      lastMessage: `${user.name ?? "Користувач"}: 📹 Відеоповідомлення`,
       lastMessageAt: Date.now(),
     });
 

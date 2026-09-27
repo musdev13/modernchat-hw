@@ -16,6 +16,8 @@ import { COLORS } from "@/constants/theme";
 import { Id } from "@/convex/_generated/dataModel";
 import { MessageReactions, ReactionItem } from "./MessageReactions";
 import { ReactionPickerPosition } from "./ReactionPickerModal";
+import { VoiceMessagePlayer } from "./VoiceMessagePlayer";
+import { VideoNotePlayer } from "./VideoNotePlayer";
 
 export interface MessageItemData {
   _id: Id<"messages">;
@@ -24,6 +26,19 @@ export interface MessageItemData {
   senderPhoto?: string;
   content?: string;
   imageUrl?: string;
+
+  // 🎤 Голосові (ДЗ 15)
+  audioUrl?: string;
+  audioStorageId?: Id<"_storage">;
+  audioDuration?: number;
+  waveform?: number[];
+
+  // 📹 Круглі відео (ДЗ 15)
+  videoUrl?: string;
+  videoStorageId?: Id<"_storage">;
+  videoDuration?: number;
+  isVideoNote?: boolean;
+
   isEdited?: boolean;
   replyToId?: Id<"messages">;
   replyToSender?: string;
@@ -48,6 +63,28 @@ interface SwipeableMessageItemProps {
 }
 
 const SWIPE_THRESHOLD = 50;
+
+/**
+ * Формує текст-прев'ю для reply-цитати, враховуючи тип медіа.
+ */
+function getReplyPreviewText(message: MessageItemData): string {
+  if (message.content && message.content.trim().length > 0) {
+    return message.content;
+  }
+  if (message.isVideoNote && message.videoUrl) {
+    return "📹 Відеоповідомлення";
+  }
+  if (message.audioUrl) {
+    const dur = message.audioDuration
+      ? ` (${Math.round(message.audioDuration)}с)`
+      : "";
+    return `🎤 Голосове повідомлення${dur}`;
+  }
+  if (message.imageUrl) {
+    return "📷 Фотографія";
+  }
+  return "";
+}
 
 const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   item,
@@ -149,6 +186,14 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
     );
   }
 
+  const hasVideoNote = !!(item.isVideoNote && item.videoUrl);
+  const hasVoice = !!item.audioUrl;
+
+  // Для кружечків прибираємо внутрішній padding бабла (p-3), щоб відео
+  // заповнило весь круг без зайвих відступів. Для інших типів — p-3.
+  const bubblePadding =
+    hasVideoNote && !item.content && !item.replyToSender ? "p-1.5" : "p-3";
+
   return (
     <Animated.View
       entering={FadeInDown.springify().damping(15)}
@@ -169,7 +214,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
         >
           <View
             ref={containerRef}
-            className={`max-w-[82%] rounded-2xl p-3 ${
+            className={`max-w-[82%] rounded-2xl ${bubblePadding} ${
               isOwn ? "bg-primary rounded-br-xs" : "bg-secondary rounded-bl-xs"
             }`}
           >
@@ -215,6 +260,25 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
               </TouchableOpacity>
             )}
 
+            {/* 📹 Кругле відеоповідомлення */}
+            {hasVideoNote && (
+              <VideoNotePlayer
+                videoUrl={item.videoUrl!}
+                duration={item.videoDuration}
+                isMine={isOwn}
+              />
+            )}
+
+            {/* 🎤 Голосове повідомлення з хвилею */}
+            {hasVoice && (
+              <VoiceMessagePlayer
+                audioUrl={item.audioUrl!}
+                duration={item.audioDuration}
+                waveform={item.waveform}
+                isMine={isOwn}
+              />
+            )}
+
             {item.content ? (
               <Text className="text-white text-base leading-5">
                 {item.content}
@@ -253,6 +317,9 @@ export const SwipeableMessageItem = memo(
     prev.item.content === next.item.content &&
     prev.item.isEdited === next.item.isEdited &&
     prev.item.imageUrl === next.item.imageUrl &&
+    prev.item.audioUrl === next.item.audioUrl &&
+    prev.item.videoUrl === next.item.videoUrl &&
+    prev.item.waveform === next.item.waveform &&
     prev.item.reactions === next.item.reactions &&
     prev.isOwn === next.isOwn,
 );

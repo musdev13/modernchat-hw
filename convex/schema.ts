@@ -31,8 +31,23 @@ export default defineSchema({
     senderName: v.string(),
     senderPhoto: v.optional(v.string()),
     content: v.optional(v.string()),
+
+    // 📷 Зображення (ДЗ 8)
     imageUrl: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
+
+    // 🎤 Голосові повідомлення (ДЗ 15)
+    audioUrl: v.optional(v.string()),
+    audioStorageId: v.optional(v.id("_storage")),
+    audioDuration: v.optional(v.number()),
+    waveform: v.optional(v.array(v.number())),
+
+    // 📹 Круглі відеоповідомлення (ДЗ 15)
+    videoUrl: v.optional(v.string()),
+    videoStorageId: v.optional(v.id("_storage")),
+    videoDuration: v.optional(v.number()),
+    isVideoNote: v.optional(v.boolean()),
+
     isEdited: v.optional(v.boolean()),
     isSystem: v.optional(v.boolean()),
 

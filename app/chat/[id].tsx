@@ -17,6 +17,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as Haptics from "expo-haptics";
 import { File } from "expo-file-system";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "@/constants/theme";
@@ -31,6 +32,8 @@ import {
   ReactionPickerModal,
   ReactionPickerPosition,
 } from "@/components/ReactionPickerModal";
+import { VideoNoteRecorderModal } from "@/components/VideoNoteRecorderModal";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -38,6 +41,9 @@ import Animated, {
   ZoomIn,
   ZoomOut,
 } from "react-native-reanimated";
+
+const WAVEFORM_LIVE_HEIGHT = 26;
+const LIVE_MIN_BAR_HEIGHT = 4;
 
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{
@@ -64,6 +70,8 @@ export default function ChatRoomScreen() {
 
   const sendMessage = useMutation(api.messages.sendMessage);
   const sendMediaMessage = useMutation(api.messages.sendMediaMessage);
+  const sendVoiceMessage = useMutation(api.messages.sendVoiceMessage);
+  const sendVideoNote = useMutation(api.messages.sendVideoNote);
   const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
   const editMessage = useMutation(api.messages.editMessage);
   const toggleReaction = useMutation(api.messages.toggleReaction);
@@ -82,6 +90,19 @@ export default function ChatRoomScreen() {
     messageId: Id<"messages">;
     position: ReactionPickerPosition;
   } | null>(null);
+
+  // 🎤/📹 ДЗ 15
+  const [inputMode, setInputMode] = useState<"audio" | "video">("audio");
+  const [isVideoModalVisible, setIsVideoModalVisible] = useState(false);
+
+  const {
+    isRecording,
+    durationMillis,
+    liveAmplitudes,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+  } = useVoiceRecorder();
 
   const sendButtonScale = useSharedValue(1);
   const insets = useSafeAreaInsets();
@@ -140,10 +161,24 @@ export default function ChatRoomScreen() {
   }, []);
 
   const handleStartReply = useCallback((message: MessageItemData) => {
+    let preview = message.content?.trim() ?? "";
+    if (!preview) {
+      if (message.isVideoNote && message.videoUrl) {
+        preview = "📹 Відеоповідомлення";
+      } else if (message.audioUrl) {
+        const dur = message.audioDuration
+          ? ` (${Math.round(message.audioDuration)}с)`
+          : "";
+        preview = `🎤 Голосове повідомлення${dur}`;
+      } else if (message.imageUrl) {
+        preview = "📷 Фотографія";
+      }
+    }
+
     setReplyTarget({
       messageId: message._id,
       senderName: message.senderName,
-      text: message.content || (message.imageUrl ? "📷 Фотографія" : ""),
+      text: preview,
     });
 
     setEditingMessageId(null);
@@ -158,6 +193,37 @@ export default function ChatRoomScreen() {
       }
     },
     [toggleReaction],
+  );
+
+  const uploadFile = useCallback(
+    async (uri: string, fallbackMime: string): Promise<Id<"_storage">> => {
+      const uploadUrl = await generateUploadUrl();
+      const file = new File(uri);
+
+      const uploadResult = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || fallbackMime,
+        },
+        body: file,
+      });
+
+      if (!uploadResult.ok) {
+        const errorText = await uploadResult.text();
+        throw new Error(`Upload failed: ${uploadResult.status} ${errorText}`);
+      }
+
+      const uploadData = await uploadResult.json();
+      const storageId = uploadData?.storageId;
+
+      if (!storageId) {
+        console.error("Upload response:", uploadData);
+        throw new Error("Сервер не повернув storageId");
+      }
+
+      return storageId as Id<"_storage">;
+    },
+    [generateUploadUrl],
   );
 
   const handleSend = useCallback(async () => {
@@ -178,37 +244,11 @@ export default function ChatRoomScreen() {
 
         setEditingMessageId(null);
       } else if (selectedImageUri) {
-        const uploadUrl = await generateUploadUrl();
-
-        const file = new File(selectedImageUri);
-
-        const uploadResult = await fetch(uploadUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": file.type || "image/jpeg",
-          },
-          body: file,
-        });
-
-        if (!uploadResult.ok) {
-          const errorText = await uploadResult.text();
-
-          throw new Error(
-            `Upload failed: ${uploadResult.status} ${errorText}`,
-          );
-        }
-
-        const uploadData = await uploadResult.json();
-        const storageId = uploadData?.storageId;
-
-        if (!storageId) {
-          console.error("Upload response:", uploadData);
-          throw new Error("Сервер не повернув storageId");
-        }
+        const storageId = await uploadFile(selectedImageUri, "image/jpeg");
 
         await sendMediaMessage({
           chatRoomId,
-          storageId: storageId as Id<"_storage">,
+          storageId,
           caption: text || undefined,
           replyToId: replyTarget
             ? (replyTarget.messageId as Id<"messages">)
@@ -245,14 +285,104 @@ export default function ChatRoomScreen() {
     chatRoomId,
     editMessage,
     editingMessageId,
-    generateUploadUrl,
     inputText,
     isSubmitting,
     replyTarget,
     selectedImageUri,
     sendMediaMessage,
     sendMessage,
+    uploadFile,
   ]);
+
+  // 🎤 ДЗ 15: тап по мікрофону — старт запису
+  const handleMicPress = useCallback(async () => {
+    if (inputMode === "video") {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setIsVideoModalVisible(true);
+      return;
+    }
+
+    const started = await startRecording();
+    if (!started) {
+      Alert.alert(
+        "Дозвіл потрібен",
+        "Надайте доступ до мікрофона для запису голосових повідомлень.",
+      );
+    }
+  }, [inputMode, startRecording]);
+
+  // 🎤 ДЗ 15: довгий тап — перемикач режиму audio/video
+  const handleMicLongPress = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setInputMode((prev) => (prev === "audio" ? "video" : "audio"));
+  }, []);
+
+  // 🎤 ДЗ 15: відправка голосового
+  const handleSendVoice = useCallback(async () => {
+    try {
+      const result = await stopRecording();
+      if (!result) return;
+
+      setIsSubmitting(true);
+
+      const storageId = await uploadFile(result.uri, "audio/m4a");
+
+      await sendVoiceMessage({
+        chatRoomId,
+        audioStorageId: storageId,
+        audioDuration: result.durationSeconds,
+        waveform: result.waveform,
+        replyToId: replyTarget
+          ? (replyTarget.messageId as Id<"messages">)
+          : undefined,
+        replyToSender: replyTarget?.senderName,
+        replyToText: replyTarget?.text,
+      });
+
+      setReplyTarget(null);
+    } catch (error) {
+      console.error("Не вдалося надіслати голосове:", error);
+      Alert.alert("Помилка", "Не вдалося надіслати голосове повідомлення");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [chatRoomId, replyTarget, sendVoiceMessage, stopRecording, uploadFile]);
+
+  // 🎤 ДЗ 15: скасування запису
+  const handleCancelVoice = useCallback(async () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await cancelRecording();
+  }, [cancelRecording]);
+
+  // 📹 ДЗ 15: відправка кружечка
+  const handleSendVideo = useCallback(
+    async (videoUri: string, durationSeconds: number) => {
+      try {
+        setIsSubmitting(true);
+
+        const storageId = await uploadFile(videoUri, "video/mp4");
+
+        await sendVideoNote({
+          chatRoomId,
+          videoStorageId: storageId,
+          videoDuration: durationSeconds,
+          replyToId: replyTarget
+            ? (replyTarget.messageId as Id<"messages">)
+            : undefined,
+          replyToSender: replyTarget?.senderName,
+          replyToText: replyTarget?.text,
+        });
+
+        setReplyTarget(null);
+      } catch (error) {
+        console.error("Не вдалося надіслати кружечок:", error);
+        throw error;
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [chatRoomId, replyTarget, sendVideoNote, uploadFile],
+  );
 
   const renderMessageItem = useCallback(
     ({ item }: { item: MessageItemData }) => (
@@ -262,15 +392,11 @@ export default function ChatRoomScreen() {
         onLongPress={(position) =>
           setPickerState({ messageId: item._id, position })
         }
-        onDoubleTap={(message) =>
-          handleToggleReaction(message._id, "❤️")
-        }
+        onDoubleTap={(message) => handleToggleReaction(message._id, "❤️")}
         onToggleReaction={(emoji) => handleToggleReaction(item._id, emoji)}
         onReply={handleStartReply}
         onImagePress={setFullscreenImage}
-        onAuthorPress={(authorId) =>
-          router.push(`/user/${authorId}` as any)
-        }
+        onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
       />
     ),
     [currentUser?._id, handleStartReply, handleToggleReaction, router],
@@ -317,6 +443,16 @@ export default function ChatRoomScreen() {
       </View>
     );
   }, [status]);
+
+  const formatRecordingTime = (millis: number) => {
+    const total = Math.floor(millis / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
+  };
+
+  const hasText = inputText.trim().length > 0;
+  const showSendButton = hasText || !!selectedImageUri || !!editingMessageId;
 
   return (
     <KeyboardAvoidingView
@@ -453,60 +589,151 @@ export default function ChatRoomScreen() {
         </View>
       )}
 
-      <View className="flex-row items-center p-3 bg-surface border-t border-surfaceLight">
-        <TouchableOpacity
-          onPress={pickImage}
-          disabled={isSubmitting}
-          className="mr-2 p-2 rounded-full bg-surfaceLight"
-        >
-          <Ionicons name="image-outline" size={22} color={COLORS.primary} />
-        </TouchableOpacity>
-
-        <TextInput
-          className="flex-1 bg-background text-white px-4 py-2.5 rounded-full text-base border border-surfaceLight mr-2"
-          placeholder={
-            editingMessageId
-              ? "Змініть текст..."
-              : replyTarget
-                ? `Відповідь для ${replyTarget.senderName}...`
-                : selectedImageUri
-                  ? "Додайте підпис до фото..."
-                  : "Напишіть повідомлення..."
-          }
-          placeholderTextColor={COLORS.textMuted}
-          value={inputText}
-          onChangeText={handleTextChange}
-          multiline
-        />
-
-        <Animated.View style={sendButtonAnimatedStyle}>
+      {/* ── Панель введення (перемикається на recorder, коли йде запис) ── */}
+      {isRecording ? (
+        <View className="flex-row items-center px-3 py-3 bg-surface border-t border-surfaceLight">
+          {/* ✕ Cancel */}
           <TouchableOpacity
-            onPress={handleSend}
-            onPressIn={() => {
-              sendButtonScale.value = withSpring(0.86);
-            }}
-            onPressOut={() => {
-              sendButtonScale.value = withSpring(1);
-            }}
-            disabled={(!inputText.trim() && !selectedImageUri) || isSubmitting}
+            onPress={handleCancelVoice}
+            className="w-11 h-11 rounded-full items-center justify-center bg-surfaceLight mr-3"
+          >
+            <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
+          </TouchableOpacity>
+
+          {/* Жива хвиля + таймер */}
+          <View className="flex-1 flex-row items-center bg-background rounded-full border border-surfaceLight px-3 py-2 mr-3">
+            <View
+              className="w-2 h-2 rounded-full bg-red-500 mr-2"
+              style={{ opacity: 0.9 }}
+            />
+
+            <Text className="text-white text-xs font-bold mr-3 min-w-[38px]">
+              {formatRecordingTime(durationMillis)}
+            </Text>
+
+            <View
+              className="flex-1 flex-row items-center justify-between"
+              style={{ height: WAVEFORM_LIVE_HEIGHT }}
+            >
+              {liveAmplitudes.length === 0
+                ? Array.from({ length: 20 }, (_, i) => (
+                    <View
+                      key={`empty-${i}`}
+                      style={{
+                        width: 2.5,
+                        height: LIVE_MIN_BAR_HEIGHT,
+                        borderRadius: 2,
+                        backgroundColor: "rgba(148, 163, 184, 0.45)",
+                      }}
+                    />
+                  ))
+                : liveAmplitudes.map((amp, idx) => (
+                    <View
+                      key={idx}
+                      style={{
+                        width: 2.5,
+                        height: Math.max(
+                          LIVE_MIN_BAR_HEIGHT,
+                          amp * WAVEFORM_LIVE_HEIGHT,
+                        ),
+                        borderRadius: 2,
+                        backgroundColor: COLORS.primary,
+                      }}
+                    />
+                  ))}
+            </View>
+          </View>
+
+          {/* ✓ Send */}
+          <TouchableOpacity
+            onPress={handleSendVoice}
+            disabled={isSubmitting}
             className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
-              (!inputText.trim() && !selectedImageUri) || isSubmitting
-                ? "opacity-50"
-                : "active:opacity-80"
+              isSubmitting ? "opacity-50" : "active:opacity-80"
             }`}
           >
             {isSubmitting ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Ionicons
-                name={editingMessageId ? "checkmark" : "send"}
-                size={20}
-                color="#FFFFFF"
-              />
+              <Ionicons name="checkmark" size={22} color="#FFFFFF" />
             )}
           </TouchableOpacity>
-        </Animated.View>
-      </View>
+        </View>
+      ) : (
+        <View className="flex-row items-center p-3 bg-surface border-t border-surfaceLight">
+          <TouchableOpacity
+            onPress={pickImage}
+            disabled={isSubmitting}
+            className="mr-2 p-2 rounded-full bg-surfaceLight"
+          >
+            <Ionicons name="image-outline" size={22} color={COLORS.primary} />
+          </TouchableOpacity>
+
+          <TextInput
+            className="flex-1 bg-background text-white px-4 py-2.5 rounded-full text-base border border-surfaceLight mr-2"
+            placeholder={
+              editingMessageId
+                ? "Змініть текст..."
+                : replyTarget
+                  ? `Відповідь для ${replyTarget.senderName}...`
+                  : selectedImageUri
+                    ? "Додайте підпис до фото..."
+                    : "Напишіть повідомлення..."
+            }
+            placeholderTextColor={COLORS.textMuted}
+            value={inputText}
+            onChangeText={handleTextChange}
+            multiline
+          />
+
+          {/* Якщо є текст/фото → Send; інакше → Mic/Camera */}
+          {showSendButton ? (
+            <Animated.View style={sendButtonAnimatedStyle}>
+              <TouchableOpacity
+                onPress={handleSend}
+                onPressIn={() => {
+                  sendButtonScale.value = withSpring(0.86);
+                }}
+                onPressOut={() => {
+                  sendButtonScale.value = withSpring(1);
+                }}
+                disabled={(!inputText.trim() && !selectedImageUri) || isSubmitting}
+                className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
+                  (!inputText.trim() && !selectedImageUri) || isSubmitting
+                    ? "opacity-50"
+                    : "active:opacity-80"
+                }`}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons
+                    name={editingMessageId ? "checkmark" : "send"}
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                )}
+              </TouchableOpacity>
+            </Animated.View>
+          ) : (
+            <TouchableOpacity
+              onPress={handleMicPress}
+              onLongPress={handleMicLongPress}
+              delayLongPress={300}
+              disabled={isSubmitting}
+              className={`w-11 h-11 rounded-full items-center justify-center ${
+                inputMode === "video" ? "bg-primary" : "bg-surfaceLight"
+              }`}
+            >
+              <Ionicons
+                name={inputMode === "video" ? "videocam" : "mic"}
+                size={22}
+                color={inputMode === "video" ? COLORS.white : COLORS.primary}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       <ImageViewerModal
         visible={!!fullscreenImage}
@@ -523,6 +750,12 @@ export default function ChatRoomScreen() {
             void handleToggleReaction(pickerState.messageId, emoji);
           }
         }}
+      />
+
+      <VideoNoteRecorderModal
+        visible={isVideoModalVisible}
+        onClose={() => setIsVideoModalVisible(false)}
+        onSendVideo={handleSendVideo}
       />
     </KeyboardAvoidingView>
   );
