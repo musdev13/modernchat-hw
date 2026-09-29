@@ -1,20 +1,21 @@
-import React, { useState } from "react";
+import { SwipeableRoomItem } from "@/components/SwipeableRoomItem";
+import { COLORS } from "@/constants/theme";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { Ionicons } from "@expo/vector-icons";
+import { useMutation, useQuery } from "convex/react";
+import { Stack, useRouter } from "expo-router";
+import { useState } from "react";
 import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
   ActivityIndicator,
   Alert,
+  FlatList,
+  Image,
+  RefreshControl,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useRouter, Stack } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/theme";
-import { Id } from "@/convex/_generated/dataModel";
-import { SwipeableRoomItem } from "@/components/SwipeableRoomItem";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -58,9 +59,15 @@ export default function HomeScreen() {
             onPress: async () => {
               if (!currentUser) return;
               try {
-                await removeParticipant({ roomId, targetUserId: currentUser._id });
+                await removeParticipant({
+                  roomId,
+                  targetUserId: currentUser._id,
+                });
               } catch (error: any) {
-                Alert.alert("Помилка", error?.message ?? "Не вдалося покинути кімнату");
+                Alert.alert(
+                  "Помилка",
+                  error?.message ?? "Не вдалося покинути кімнату",
+                );
               }
             },
           },
@@ -87,13 +94,12 @@ export default function HomeScreen() {
             } catch (error: any) {
               Alert.alert(
                 "Помилка",
-                error?.message ||
-                  "Не вдалося видалити кімнату"
+                error?.message || "Не вдалося видалити кімнату",
               );
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -106,14 +112,18 @@ export default function HomeScreen() {
           headerLeft: () => (
             <TouchableOpacity
               onPress={() => router.push("/profile")}
-              className="mr-3 w-9 h-9 rounded-full bg-secondary border border-surfaceLight items-center justify-center"
+              className="mr-3 w-9 h-9 rounded-full bg-secondary border border-surfaceLight items-center justify-center overflow-hidden"
               activeOpacity={0.8}
             >
-              <Ionicons
-                name="person"
-                size={18}
-                color={COLORS.primary}
-              />
+              {currentUser?.image ? (
+                <Image
+                  source={{ uri: currentUser.image }}
+                  className="w-9 h-9 rounded-full"
+                  resizeMode="cover"
+                />
+              ) : (
+                <Ionicons name="person" size={18} color={COLORS.primary} />
+              )}
             </TouchableOpacity>
           ),
 
@@ -123,11 +133,7 @@ export default function HomeScreen() {
               className="w-9 h-9 rounded-full bg-primary items-center justify-center shadow-sm"
               activeOpacity={0.8}
             >
-              <Ionicons
-                name="add"
-                size={22}
-                color="#FFFFFF"
-              />
+              <Ionicons name="add" size={22} color="#FFFFFF" />
             </TouchableOpacity>
           ),
         }}
@@ -135,10 +141,7 @@ export default function HomeScreen() {
 
       {rooms === undefined ? (
         <View className="flex-1 justify-center items-center">
-          <ActivityIndicator
-            size="large"
-            color={COLORS.primary}
-          />
+          <ActivityIndicator size="large" color={COLORS.primary} />
 
           <Text className="text-textMuted text-xs mt-3">
             Завантаження кімнат...
@@ -179,12 +182,8 @@ export default function HomeScreen() {
           renderItem={({ item }) => (
             <SwipeableRoomItem
               room={item}
-              isCreator={
-                item.creatorId === currentUser?._id
-              }
-              onPress={() =>
-                router.push(`/chat/${item._id}`)
-              }
+              isCreator={item.creatorId === currentUser?._id}
+              onPress={() => router.push(`/chat/${item._id}`)}
               onDelete={handleDeleteRoom}
             />
           )}

@@ -1,4 +1,8 @@
-import React, { useEffect, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useMutation } from "convex/react";
+import { File } from "expo-file-system";
+import * as ImagePicker from "expo-image-picker";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,14 +13,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
-import { File } from "expo-file-system";
-import { Ionicons } from "@expo/vector-icons";
-import { useMutation } from "convex/react";
 
+import { COLORS } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { COLORS } from "@/constants/theme";
 
 interface EditProfileModalProps {
   visible: boolean;
@@ -45,6 +45,7 @@ export function EditProfileModal({
   const [bio, setBio] = useState(initialBio ?? "");
 
   const [image, setImage] = useState<string | undefined>(initialImage);
+  const [imageError, setImageError] = useState(false);
 
   const [selectedImageUri, setSelectedImageUri] = useState<
     string | undefined
@@ -64,6 +65,7 @@ export function EditProfileModal({
     setUsername(initialUsername ?? "");
     setBio(initialBio ?? "");
     setImage(initialImage);
+    setImageError(false);
     setSelectedImageUri(undefined);
     setSelectedImageMimeType("image/jpeg");
   }, [visible, initialName, initialUsername, initialBio, initialImage]);
@@ -93,6 +95,7 @@ export function EditProfileModal({
     const asset = result.assets[0];
 
     setImage(asset.uri);
+    setImageError(false);
     setSelectedImageUri(asset.uri);
     setSelectedImageMimeType(asset.mimeType ?? "image/jpeg");
   };
@@ -229,10 +232,12 @@ export function EditProfileModal({
             disabled={saving}
             className="items-center mb-6"
           >
-            {image ? (
+            {image && !imageError ? (
               <Image
                 source={{ uri: image }}
                 className="w-24 h-24 rounded-full"
+                resizeMode="cover"
+                onError={() => setImageError(true)}
               />
             ) : (
               <View className="w-24 h-24 rounded-full bg-secondary items-center justify-center">

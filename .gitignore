@@ -44,3 +44,6 @@ example
 
 # Firebase configuration (contains project API keys)
 google-services.json
+
+# Google OAuth credentials (should never be committed)
+client_secret*.json

@@ -1,18 +1,22 @@
+import { COLORS } from "@/constants/theme";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { Ionicons } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
+import { useState } from "react";
 import {
-  Text,
-  View,
-  TouchableOpacity,
-  Alert,
   ActivityIndicator,
-  TextInput,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useAuthActions } from "@convex-dev/auth/react";
-import { useState } from "react";
-import { COLORS } from "@/constants/theme";
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const { signIn } = useAuthActions();
@@ -22,6 +26,7 @@ export default function LoginScreen() {
   const [name, setName] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const handleAuth = async () => {
     if (!email.trim() || !password.trim()) {
@@ -67,6 +72,46 @@ export default function LoginScreen() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    if (isGoogleLoading || isLoading) return;
+
+    try {
+      setIsGoogleLoading(true);
+
+      const redirectTo = Linking.createURL("");
+      const { redirect } = await signIn("google", { redirectTo });
+
+      if (!redirect) {
+        return;
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        redirect.toString(),
+        redirectTo,
+      );
+
+      if (result.type === "success" && result.url) {
+        const code = new URL(result.url).searchParams.get("code");
+
+        if (code) {
+          await signIn("google", { code });
+        } else {
+          Alert.alert("Помилка", "Google не повернув код авторизації.");
+        }
+      } else if (result.type === "cancel") {
+        // пользователь закрыл браузер — молча выходим
+      }
+    } catch (err) {
+      console.error("Google Auth Error", err);
+      Alert.alert(
+        "Помилка входу",
+        "Не вдалося авторизуватися через Google. Спробуйте ще раз.",
+      );
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -78,11 +123,7 @@ export default function LoginScreen() {
       >
         <View className="items-center mt-20">
           <View className="w-20 h-20 rounded-3xl bg-primary/20 items-center justify-center border border-primary/30">
-            <Ionicons
-              name="chatbubbles"
-              size={38}
-              color={COLORS.primary}
-            />
+            <Ionicons name="chatbubbles" size={38} color={COLORS.primary} />
           </View>
 
           <Text className="text-3xl font-bold text-white mt-5 tracking-tight">
@@ -158,11 +199,11 @@ export default function LoginScreen() {
 
           <TouchableOpacity
             className={`flex-row items-center justify-center bg-primary rounded-2xl py-4 w-full max-w-sm mt-3 active:bg-primaryDark ${
-              isLoading ? "opacity-60" : ""
+              isLoading || isGoogleLoading ? "opacity-60" : ""
             }`}
             activeOpacity={0.85}
             onPress={handleAuth}
-            disabled={isLoading}
+            disabled={isLoading || isGoogleLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
@@ -170,6 +211,36 @@ export default function LoginScreen() {
               <Text className="text-white text-base font-bold">
                 {isSignUp ? "Зареєструватися" : "Увійти"}
               </Text>
+            )}
+          </TouchableOpacity>
+
+          <View className="flex-row items-center w-full max-w-sm my-1">
+            <View className="flex-1 h-px bg-surfaceLight" />
+            <Text className="text-textMuted text-xs font-bold px-3 tracking-widest">
+              АБО
+            </Text>
+            <View className="flex-1 h-px bg-surfaceLight" />
+          </View>
+
+          <TouchableOpacity
+            className={`flex-row items-center justify-center bg-secondary border border-surfaceLight rounded-2xl py-4 w-full max-w-sm gap-2.5 ${
+              isLoading || isGoogleLoading ? "opacity-60" : ""
+            }`}
+            activeOpacity={0.85}
+            onPress={handleGoogleSignIn}
+            disabled={isLoading || isGoogleLoading}
+          >
+            {isGoogleLoading ? (
+              <ActivityIndicator color={COLORS.white} size="small" />
+            ) : (
+              <>
+                <Ionicons name="logo-google" size={20} color="#EA4335" />
+                <Text className="text-white text-base font-bold">
+                  {isSignUp
+                    ? "Зареєструватися через Google"
+                    : "Продовжити з Google"}
+                </Text>
+              </>
             )}
           </TouchableOpacity>
 
