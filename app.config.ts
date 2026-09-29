@@ -60,6 +60,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       package: dynamicConfig.packageName,
       versionCode: 1,
 
+      // 🔔 ДЗ 17: Firebase Cloud Messaging (FCM v1) конфигурация
+      googleServicesFile: "./google-services.json",
+
       adaptiveIcon: {
         backgroundColor: "#0F172A",
         foregroundImage: dynamicConfig.adaptiveIconForeground,
@@ -78,6 +81,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO",
+
+        // 🔔 ДЗ 17: системные разрешения для push-уведомлений
+        "android.permission.POST_NOTIFICATIONS", // Обязательно для Android 13+ (API 33+)
       ],
     },
 
@@ -122,7 +128,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
 
-      // 🎬 ДЗ 15: нативний плеєр відео
+      // 🎬 ДЗ 15: нативный плеер видео
       [
         "expo-video",
         {
@@ -131,12 +137,24 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
 
-      // 🎤 ДЗ 15: запис голосових повідомлень
+      // 🎤 ДЗ 15: запись голосовых сообщений
       [
         "expo-audio",
         {
           microphonePermission:
             "Додатку Modern Chat потрібен доступ до мікрофона для запису голосових повідомлень.",
+        },
+      ],
+
+      // 🔔 ДЗ 17: push-уведомления
+      [
+        "expo-notifications",
+        {
+          icon: "./assets/images/icon.png",
+          color: "#3B82F6",
+          defaultChannel: "default",
+          sounds: [],
+          enableBackgroundRemoteNotifications: false,
         },
       ],
     ],

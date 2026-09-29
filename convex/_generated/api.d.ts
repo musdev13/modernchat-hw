@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
 import type * as messages from "../messages.js";
+import type * as pushNotifications from "../pushNotifications.js";
 import type * as rooms from "../rooms.js";
 import type * as typing from "../typing.js";
 import type * as users from "../users.js";
@@ -25,6 +26,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   http: typeof http;
   messages: typeof messages;
+  pushNotifications: typeof pushNotifications;
   rooms: typeof rooms;
   typing: typeof typing;
   users: typeof users;

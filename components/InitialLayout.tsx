@@ -1,9 +1,12 @@
-import { useEffect } from "react";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useConvexAuth } from "@convex-dev/auth/react";
-import * as SplashScreen from "expo-splash-screen";
 import { Stack, useRouter, useSegments } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { useEffect } from "react";
 
 export default function InitialLayout() {
+  usePushNotifications();
+
   const { isAuthenticated, isLoading } = useConvexAuth();
   const segments = useSegments();
   const router = useRouter();

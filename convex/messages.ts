@@ -1,8 +1,9 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { mutation, query } from "./_generated/server";
 
 async function assertRoomMember(
   ctx: any,
@@ -15,6 +16,67 @@ async function assertRoomMember(
     throw new Error("Access denied: Ви не є учасником цієї кімнати");
   }
   return room;
+}
+
+async function schedulePushForNewMessage(
+  ctx: any,
+  params: {
+    roomId: Id<"chatRooms">;
+    senderId: Id<"users">;
+    senderName: string;
+    previewText: string;
+    roomTitle?: string;
+    participantIds: Id<"users">[];
+  },
+) {
+  const {
+    roomId,
+    senderId,
+    senderName,
+    previewText,
+    roomTitle,
+    participantIds,
+  } = params;
+
+  const recipientIds = participantIds.filter((id) => id !== senderId);
+  if (recipientIds.length === 0) return;
+
+  const recipients = await Promise.all(
+    recipientIds.map((id: Id<"users">) => ctx.db.get(id)),
+  );
+
+  const isGroupChat = participantIds.length > 2;
+  const notificationTitle =
+    isGroupChat && roomTitle ? `${roomTitle} • ${senderName}` : senderName;
+
+  const notifications = recipients
+    .filter((user: any) => user && user.pushToken)
+    .map((user: any) => ({
+      pushToken: user.pushToken as string,
+      title: notificationTitle,
+      body: previewText,
+      data: {
+        type: "chat",
+        chatRoomId: roomId,
+        conversationId: roomId,
+      },
+    }));
+
+  if (notifications.length === 0) return;
+
+  if (notifications.length === 1) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.pushNotifications.sendPushNotification,
+      notifications[0],
+    );
+  } else {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.pushNotifications.sendPushNotificationsBatch,
+      { notifications },
+    );
+  }
 }
 
 export const getPaginatedMessages = query({
@@ -150,7 +212,7 @@ export const sendMessage = mutation({
     if (!user) {
       throw new Error("User not found: Користувача не знайдено");
     }
-    await assertRoomMember(ctx, args.chatRoomId, userId);
+    const room = await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const trimmedContent = args.content.trim();
 
@@ -173,6 +235,18 @@ export const sendMessage = mutation({
     await ctx.db.patch(args.chatRoomId, {
       lastMessage: `${user.name ?? "Користувач"}: ${trimmedContent}`,
       lastMessageAt: Date.now(),
+    });
+
+    const senderName = user.name ?? user.email ?? "Користувач";
+    await schedulePushForNewMessage(ctx, {
+      roomId: args.chatRoomId,
+      senderId: userId,
+      senderName,
+      previewText: trimmedContent,
+      roomTitle: room.title,
+      participantIds: (room.participantIds ?? [
+        room.creatorId,
+      ]) as Id<"users">[],
     });
 
     return messageId;
@@ -247,7 +321,6 @@ export const deleteMessage = mutation({
       throw new Error("Forbidden: Ви можете видаляти лише власні повідомлення");
     }
 
-    // 🧹 Каскадно видаляємо всі медіафайли з Convex Storage
     if (message.storageId) {
       await ctx.storage.delete(message.storageId);
     }
@@ -313,7 +386,7 @@ export const sendMediaMessage = mutation({
     if (!user) {
       throw new Error("Користувача не знайдено");
     }
-    await assertRoomMember(ctx, args.chatRoomId, userId);
+    const room = await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const imageUrl = await ctx.storage.getUrl(args.storageId);
 
@@ -340,11 +413,22 @@ export const sendMediaMessage = mutation({
       lastMessageAt: Date.now(),
     });
 
+    const senderName = user.name ?? user.email ?? "Користувач";
+    await schedulePushForNewMessage(ctx, {
+      roomId: args.chatRoomId,
+      senderId: userId,
+      senderName,
+      previewText: args.caption?.trim() || "📷 Фотографія",
+      roomTitle: room.title,
+      participantIds: (room.participantIds ?? [
+        room.creatorId,
+      ]) as Id<"users">[],
+    });
+
     return messageId;
   },
 });
 
-// 🎤 НОВА МУТАЦІЯ: голосове повідомлення з хвилею
 export const sendVoiceMessage = mutation({
   args: {
     chatRoomId: v.id("chatRooms"),
@@ -368,7 +452,7 @@ export const sendVoiceMessage = mutation({
     if (!user) {
       throw new Error("Користувача не знайдено");
     }
-    await assertRoomMember(ctx, args.chatRoomId, userId);
+    const room = await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const audioUrl = await ctx.storage.getUrl(args.audioStorageId);
 
@@ -376,7 +460,6 @@ export const sendVoiceMessage = mutation({
       throw new Error("Не вдалося отримати посилання на аудіофайл");
     }
 
-    // Обрізаємо waveform до 32 значень та нормалізуємо в межах [0.1 .. 1.0]
     const safeWaveform = args.waveform
       ? args.waveform
           .slice(0, 32)
@@ -400,17 +483,29 @@ export const sendVoiceMessage = mutation({
     });
 
     const durationSeconds = Math.max(1, Math.round(args.audioDuration));
+    const previewText = `🎤 Голосове повідомлення (${durationSeconds}с)`;
 
     await ctx.db.patch(args.chatRoomId, {
-      lastMessage: `${user.name ?? "Користувач"}: 🎤 Голосове повідомлення (${durationSeconds}с)`,
+      lastMessage: `${user.name ?? "Користувач"}: ${previewText}`,
       lastMessageAt: Date.now(),
+    });
+
+    const senderName = user.name ?? user.email ?? "Користувач";
+    await schedulePushForNewMessage(ctx, {
+      roomId: args.chatRoomId,
+      senderId: userId,
+      senderName,
+      previewText,
+      roomTitle: room.title,
+      participantIds: (room.participantIds ?? [
+        room.creatorId,
+      ]) as Id<"users">[],
     });
 
     return messageId;
   },
 });
 
-// 📹 НОВА МУТАЦІЯ: кругле відеоповідомлення (Video Note)
 export const sendVideoNote = mutation({
   args: {
     chatRoomId: v.id("chatRooms"),
@@ -433,7 +528,7 @@ export const sendVideoNote = mutation({
     if (!user) {
       throw new Error("Користувача не знайдено");
     }
-    await assertRoomMember(ctx, args.chatRoomId, userId);
+    const room = await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const videoUrl = await ctx.storage.getUrl(args.videoStorageId);
 
@@ -457,9 +552,24 @@ export const sendVideoNote = mutation({
       replyToText: args.replyToText,
     });
 
+    const durationSeconds = Math.max(1, Math.round(args.videoDuration));
+    const previewText = `📹 Відеоповідомлення (${durationSeconds}с)`;
+
     await ctx.db.patch(args.chatRoomId, {
-      lastMessage: `${user.name ?? "Користувач"}: 📹 Відеоповідомлення`,
+      lastMessage: `${user.name ?? "Користувач"}: ${previewText}`,
       lastMessageAt: Date.now(),
+    });
+
+    const senderName = user.name ?? user.email ?? "Користувач";
+    await schedulePushForNewMessage(ctx, {
+      roomId: args.chatRoomId,
+      senderId: userId,
+      senderName,
+      previewText,
+      roomTitle: room.title,
+      participantIds: (room.participantIds ?? [
+        room.creatorId,
+      ]) as Id<"users">[],
     });
 
     return messageId;

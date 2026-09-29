@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Firebase configuration (contains project API keys)
+google-services.json

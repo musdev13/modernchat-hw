@@ -1,6 +1,6 @@
+import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
   ...authTables,
@@ -13,6 +13,7 @@ export default defineSchema({
     username: v.optional(v.string()),
     bio: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
+    pushToken: v.optional(v.string()),
   }).index("by_email", ["email"]),
 
   chatRooms: defineTable({
@@ -32,17 +33,14 @@ export default defineSchema({
     senderPhoto: v.optional(v.string()),
     content: v.optional(v.string()),
 
-    // 📷 Зображення (ДЗ 8)
     imageUrl: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
 
-    // 🎤 Голосові повідомлення (ДЗ 15)
     audioUrl: v.optional(v.string()),
     audioStorageId: v.optional(v.id("_storage")),
     audioDuration: v.optional(v.number()),
     waveform: v.optional(v.array(v.number())),
 
-    // 📹 Круглі відеоповідомлення (ДЗ 15)
     videoUrl: v.optional(v.string()),
     videoStorageId: v.optional(v.id("_storage")),
     videoDuration: v.optional(v.number()),

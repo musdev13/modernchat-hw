@@ -1,6 +1,6 @@
-import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
 
 export const currentUser = query({
   args: {},
@@ -127,5 +127,44 @@ export const getUserProfile = query({
         roomsCreatedCount: createdRooms.length,
       },
     };
+  },
+});
+
+export const savePushToken = mutation({
+  args: {
+    pushToken: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized: Потрібна авторизація");
+    }
+
+    const trimmed = args.pushToken.trim();
+    if (!trimmed || !trimmed.startsWith("ExponentPushToken[")) {
+      throw new Error("Некоректний формат ExponentPushToken");
+    }
+
+    await ctx.db.patch(userId, {
+      pushToken: trimmed,
+    });
+
+    return { success: true };
+  },
+});
+
+export const removePushToken = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      return { success: false, reason: "Not authenticated" };
+    }
+
+    await ctx.db.patch(userId, {
+      pushToken: undefined,
+    });
+
+    return { success: true };
   },
 });
