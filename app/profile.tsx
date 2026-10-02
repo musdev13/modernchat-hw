@@ -1,6 +1,7 @@
 import { useClerk } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
+import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
@@ -22,6 +23,7 @@ export default function ProfileScreen() {
   const { signOut } = useClerk();
 
   const currentUser = useQuery(api.users.currentUser);
+  const removePushToken = useMutation(api.users.removePushToken);
 
   const profileDetails = useQuery(
     api.users.getUserProfile,
@@ -62,7 +64,21 @@ export default function ProfileScreen() {
         style: "destructive",
         onPress: async () => {
           try {
+            // 1. Удаляем push-токен из БД ДО выхода
+            try {
+              await removePushToken();
+            } catch (err) {
+              console.error("Failed to remove push token:", err);
+            }
+
+            // 2. Локально гасим все уведомления на этом устройстве
+            await Notifications.dismissAllNotificationsAsync();
+            await Notifications.cancelAllScheduledNotificationsAsync();
+
+            // 3. Выходим из Clerk
             await signOut();
+
+            // 4. Редирект
             router.replace("/(auth)/login");
           } catch (error) {
             console.error(error);

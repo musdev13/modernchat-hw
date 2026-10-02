@@ -1,57 +1,55 @@
-import { useCallback, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Alert,
-  Image,
-} from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { usePaginatedQuery, useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
-import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
-import * as Haptics from "expo-haptics";
-import { File } from "expo-file-system";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { COLORS } from "@/constants/theme";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
-import { TypingDots } from "@/components/TypingDots";
-import {
-  SwipeableMessageItem,
-  MessageItemData,
-} from "@/components/SwipeableMessageItem";
-import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
 import {
   ReactionPickerModal,
   ReactionPickerPosition,
 } from "@/components/ReactionPickerModal";
+import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
+import {
+  MessageItemData,
+  SwipeableMessageItem,
+} from "@/components/SwipeableMessageItem";
+import { TypingDots } from "@/components/TypingDots";
 import { VideoNoteRecorderModal } from "@/components/VideoNoteRecorderModal";
+import { COLORS } from "@/constants/theme";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import { Ionicons } from "@expo/vector-icons";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { File } from "expo-file-system";
+import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import Animated, {
-  useSharedValue,
   useAnimatedStyle,
+  useSharedValue,
   withSpring,
   ZoomIn,
   ZoomOut,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const WAVEFORM_LIVE_HEIGHT = 26;
 const LIVE_MIN_BAR_HEIGHT = 4;
+const PRESENCE_HEARTBEAT_MS = 15_000;
+const LOCAL_TYPING_TIMEOUT_MS = 3_000;
 
 export default function ChatRoomScreen() {
-  const { id } = useLocalSearchParams<{
-    id: string;
-  }>();
-
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-
   const chatRoomId = id as Id<"chatRooms">;
 
   const room = useQuery(api.rooms.getRoom, { roomId: chatRoomId });
@@ -59,13 +57,10 @@ export default function ChatRoomScreen() {
   const { results: messages, status, loadMore } = usePaginatedQuery(
     api.messages.getPaginatedMessages,
     { chatRoomId },
-    {
-      initialNumItems: 25,
-    },
+    { initialNumItems: 25 },
   );
 
   const currentUser = useQuery(api.users.currentUser);
-
   const typingUsers = useQuery(api.typing.getTypingUsers, { chatRoomId });
 
   const sendMessage = useMutation(api.messages.sendMessage);
@@ -76,6 +71,10 @@ export default function ChatRoomScreen() {
   const editMessage = useMutation(api.messages.editMessage);
   const toggleReaction = useMutation(api.messages.toggleReaction);
   const setTyping = useMutation(api.typing.setTyping);
+  const clearTyping = useMutation(api.typing.clearTyping);
+
+  const setActiveChat = useMutation(api.presence.setActiveChat);
+  const clearActiveChat = useMutation(api.presence.clearActiveChat);
 
   const [inputText, setInputText] = useState("");
   const [editingMessageId, setEditingMessageId] =
@@ -91,7 +90,6 @@ export default function ChatRoomScreen() {
     position: ReactionPickerPosition;
   } | null>(null);
 
-  // 🎤/📹 ДЗ 15
   const [inputMode, setInputMode] = useState<"audio" | "video">("audio");
   const [isVideoModalVisible, setIsVideoModalVisible] = useState(false);
 
@@ -109,32 +107,63 @@ export default function ChatRoomScreen() {
 
   const flatListRef = useRef<FlatList>(null);
   const lastTypingCallRef = useRef<number>(0);
+  const localTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sendButtonAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: sendButtonScale.value }],
   }));
+
+  // Presence heartbeat + очистка typing при выходе из чата
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      const ping = () => {
+        if (!active) return;
+        setActiveChat({ chatRoomId }).catch(() => {});
+      };
+
+      ping();
+      const interval = setInterval(ping, PRESENCE_HEARTBEAT_MS);
+
+      return () => {
+        active = false;
+        clearInterval(interval);
+        clearActiveChat().catch(() => {});
+        clearTyping({ chatRoomId }).catch(() => {});
+
+        if (localTypingTimerRef.current) {
+          clearTimeout(localTypingTimerRef.current);
+          localTypingTimerRef.current = null;
+        }
+      };
+    }, [chatRoomId, setActiveChat, clearActiveChat, clearTyping]),
+  );
 
   const handleTextChange = useCallback(
     (text: string) => {
       setInputText(text);
 
       const now = Date.now();
-
       if (now - lastTypingCallRef.current > 1500) {
         lastTypingCallRef.current = now;
-
-        setTyping({
-          chatRoomId,
-        }).catch(() => {});
+        setTyping({ chatRoomId }).catch(() => {});
       }
+
+      if (localTypingTimerRef.current) {
+        clearTimeout(localTypingTimerRef.current);
+      }
+      localTypingTimerRef.current = setTimeout(() => {
+        clearTyping({ chatRoomId }).catch(() => {});
+        localTypingTimerRef.current = null;
+      }, LOCAL_TYPING_TIMEOUT_MS);
     },
-    [chatRoomId, setTyping],
+    [chatRoomId, setTyping, clearTyping],
   );
 
   const pickImage = useCallback(async () => {
     try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (status !== "granted") {
         Alert.alert(
@@ -155,7 +184,6 @@ export default function ChatRoomScreen() {
       }
     } catch (error) {
       console.error(error);
-
       Alert.alert("Помилка", "Не вдалося вибрати зображення");
     }
   }, []);
@@ -202,9 +230,7 @@ export default function ChatRoomScreen() {
 
       const uploadResult = await fetch(uploadUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": file.type || fallbackMime,
-        },
+        headers: { "Content-Type": file.type || fallbackMime },
         body: file,
       });
 
@@ -226,12 +252,19 @@ export default function ChatRoomScreen() {
     [generateUploadUrl],
   );
 
+  const resetTyping = useCallback(() => {
+    if (localTypingTimerRef.current) {
+      clearTimeout(localTypingTimerRef.current);
+      localTypingTimerRef.current = null;
+    }
+    lastTypingCallRef.current = 0;
+    clearTyping({ chatRoomId }).catch(() => {});
+  }, [chatRoomId, clearTyping]);
+
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
 
-    if ((!text && !selectedImageUri) || isSubmitting) {
-      return;
-    }
+    if ((!text && !selectedImageUri) || isSubmitting) return;
 
     try {
       setIsSubmitting(true);
@@ -241,7 +274,6 @@ export default function ChatRoomScreen() {
           messageId: editingMessageId,
           content: text,
         });
-
         setEditingMessageId(null);
       } else if (selectedImageUri) {
         const storageId = await uploadFile(selectedImageUri, "image/jpeg");
@@ -274,9 +306,9 @@ export default function ChatRoomScreen() {
       }
 
       setInputText("");
+      resetTyping();
     } catch (error) {
       console.error(error);
-
       Alert.alert("Помилка", "Не вдалося надіслати повідомлення");
     } finally {
       setIsSubmitting(false);
@@ -292,9 +324,9 @@ export default function ChatRoomScreen() {
     sendMediaMessage,
     sendMessage,
     uploadFile,
+    resetTyping,
   ]);
 
-  // 🎤 ДЗ 15: тап по мікрофону — старт запису
   const handleMicPress = useCallback(async () => {
     if (inputMode === "video") {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -311,13 +343,11 @@ export default function ChatRoomScreen() {
     }
   }, [inputMode, startRecording]);
 
-  // 🎤 ДЗ 15: довгий тап — перемикач режиму audio/video
   const handleMicLongPress = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setInputMode((prev) => (prev === "audio" ? "video" : "audio"));
   }, []);
 
-  // 🎤 ДЗ 15: відправка голосового
   const handleSendVoice = useCallback(async () => {
     try {
       const result = await stopRecording();
@@ -340,21 +370,27 @@ export default function ChatRoomScreen() {
       });
 
       setReplyTarget(null);
+      resetTyping();
     } catch (error) {
       console.error("Не вдалося надіслати голосове:", error);
       Alert.alert("Помилка", "Не вдалося надіслати голосове повідомлення");
     } finally {
       setIsSubmitting(false);
     }
-  }, [chatRoomId, replyTarget, sendVoiceMessage, stopRecording, uploadFile]);
+  }, [
+    chatRoomId,
+    replyTarget,
+    sendVoiceMessage,
+    stopRecording,
+    uploadFile,
+    resetTyping,
+  ]);
 
-  // 🎤 ДЗ 15: скасування запису
   const handleCancelVoice = useCallback(async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await cancelRecording();
   }, [cancelRecording]);
 
-  // 📹 ДЗ 15: відправка кружечка
   const handleSendVideo = useCallback(
     async (videoUri: string, durationSeconds: number) => {
       try {
@@ -374,6 +410,7 @@ export default function ChatRoomScreen() {
         });
 
         setReplyTarget(null);
+        resetTyping();
       } catch (error) {
         console.error("Не вдалося надіслати кружечок:", error);
         throw error;
@@ -381,7 +418,7 @@ export default function ChatRoomScreen() {
         setIsSubmitting(false);
       }
     },
-    [chatRoomId, replyTarget, sendVideoNote, uploadFile],
+    [chatRoomId, replyTarget, sendVideoNote, uploadFile, resetTyping],
   );
 
   const renderMessageItem = useCallback(
@@ -403,9 +440,7 @@ export default function ChatRoomScreen() {
   );
 
   const handleLoadMore = useCallback(() => {
-    if (status === "CanLoadMore") {
-      loadMore(20);
-    }
+    if (status === "CanLoadMore") loadMore(20);
   }, [loadMore, status]);
 
   const handleScroll = useCallback((event: any) => {
@@ -413,10 +448,7 @@ export default function ChatRoomScreen() {
   }, []);
 
   const scrollToBottom = useCallback(() => {
-    flatListRef.current?.scrollToOffset({
-      offset: 0,
-      animated: true,
-    });
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     setShowScrollToBottom(false);
   }, []);
 
@@ -454,12 +486,12 @@ export default function ChatRoomScreen() {
   const hasText = inputText.trim().length > 0;
   const showSendButton = hasText || !!selectedImageUri || !!editingMessageId;
 
+  // Нижний отступ для панелей — не меньше 12px для визуального комфорта
+  const bottomInset = Math.max(insets.bottom, 12);
+
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-surface"
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 56 : 0}
-    >
+    <View className="flex-1 bg-surface">
+      {/* HEADER — вне KeyboardAvoidingView, чтобы не сжимался при клавиатуре */}
       <View
         className="flex-row items-center border-b border-surfaceLight bg-surface px-4"
         style={{ height: insets.top + 56, paddingTop: insets.top }}
@@ -491,249 +523,250 @@ export default function ChatRoomScreen() {
         </TouchableOpacity>
       </View>
 
-      <View className="flex-1">
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item._id}
-          inverted={true}
-          contentContainerStyle={{
-            padding: 16,
-          }}
-          renderItem={renderMessageItem}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          ListFooterComponent={
-            status === "LoadingMore" ? (
-              <View className="py-3">
-                <ActivityIndicator size="small" color={COLORS.primary} />
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={renderListEmpty}
-          initialNumToRender={15}
-          maxToRenderPerBatch={10}
-          windowSize={10}
-          removeClippedSubviews={Platform.OS === "android"}
-        />
-
-        {showScrollToBottom && (
-          <Animated.View
-            entering={ZoomIn.springify()}
-            exiting={ZoomOut.duration(150)}
-            className="absolute right-4 bottom-4"
-          >
-            <TouchableOpacity
-              onPress={scrollToBottom}
-              className="w-11 h-11 rounded-full bg-primary items-center justify-center"
-            >
-              <Ionicons name="arrow-down" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          </Animated.View>
-        )}
-      </View>
-
-      {typingUsers && typingUsers.length > 0 ? (
-        <TypingDots typingUsers={typingUsers} />
-      ) : null}
-
-      {replyTarget && (
-        <ReplyPreviewBar
-          replyTarget={replyTarget}
-          onCancel={() => setReplyTarget(null)}
-        />
-      )}
-
-      {editingMessageId && (
-        <View className="flex-row items-center justify-between px-4 py-2 bg-surfaceLight border-t border-surface">
-          <View className="flex-row items-center flex-1 mr-2">
-            <Ionicons
-              name="pencil"
-              size={16}
-              color={COLORS.primary}
-              style={{ marginRight: 6 }}
-            />
-
-            <Text className="text-white text-xs font-semibold">
-              Редагування повідомлення
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            onPress={() => {
-              setEditingMessageId(null);
-              setInputText("");
-            }}
-          >
-            <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {selectedImageUri && (
-        <View className="flex-row items-center px-4 py-2 bg-surfaceLight border-t border-surface">
-          <Image
-            source={{
-              uri: selectedImageUri,
-            }}
-            className="w-12 h-12 rounded-lg mr-3"
-          />
-
-          <Text className="text-white text-xs flex-1">Фото прикріплено</Text>
-
-          <TouchableOpacity onPress={() => setSelectedImageUri(null)}>
-            <Ionicons name="close-circle" size={22} color={COLORS.danger} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* ── Панель введення (перемикається на recorder, коли йде запис) ── */}
-      {isRecording ? (
-        <View className="flex-row items-center px-3 py-3 bg-surface border-t border-surfaceLight">
-          {/* ✕ Cancel */}
-          <TouchableOpacity
-            onPress={handleCancelVoice}
-            className="w-11 h-11 rounded-full items-center justify-center bg-surfaceLight mr-3"
-          >
-            <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
-          </TouchableOpacity>
-
-          {/* Жива хвиля + таймер */}
-          <View className="flex-1 flex-row items-center bg-background rounded-full border border-surfaceLight px-3 py-2 mr-3">
-            <View
-              className="w-2 h-2 rounded-full bg-red-500 mr-2"
-              style={{ opacity: 0.9 }}
-            />
-
-            <Text className="text-white text-xs font-bold mr-3 min-w-[38px]">
-              {formatRecordingTime(durationMillis)}
-            </Text>
-
-            <View
-              className="flex-1 flex-row items-center justify-between"
-              style={{ height: WAVEFORM_LIVE_HEIGHT }}
-            >
-              {liveAmplitudes.length === 0
-                ? Array.from({ length: 20 }, (_, i) => (
-                    <View
-                      key={`empty-${i}`}
-                      style={{
-                        width: 2.5,
-                        height: LIVE_MIN_BAR_HEIGHT,
-                        borderRadius: 2,
-                        backgroundColor: "rgba(148, 163, 184, 0.45)",
-                      }}
-                    />
-                  ))
-                : liveAmplitudes.map((amp, idx) => (
-                    <View
-                      key={idx}
-                      style={{
-                        width: 2.5,
-                        height: Math.max(
-                          LIVE_MIN_BAR_HEIGHT,
-                          amp * WAVEFORM_LIVE_HEIGHT,
-                        ),
-                        borderRadius: 2,
-                        backgroundColor: COLORS.primary,
-                      }}
-                    />
-                  ))}
-            </View>
-          </View>
-
-          {/* ✓ Send */}
-          <TouchableOpacity
-            onPress={handleSendVoice}
-            disabled={isSubmitting}
-            className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
-              isSubmitting ? "opacity-50" : "active:opacity-80"
-            }`}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons name="checkmark" size={22} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View className="flex-row items-center p-3 bg-surface border-t border-surfaceLight">
-          <TouchableOpacity
-            onPress={pickImage}
-            disabled={isSubmitting}
-            className="mr-2 p-2 rounded-full bg-surfaceLight"
-          >
-            <Ionicons name="image-outline" size={22} color={COLORS.primary} />
-          </TouchableOpacity>
-
-          <TextInput
-            className="flex-1 bg-background text-white px-4 py-2.5 rounded-full text-base border border-surfaceLight mr-2"
-            placeholder={
-              editingMessageId
-                ? "Змініть текст..."
-                : replyTarget
-                  ? `Відповідь для ${replyTarget.senderName}...`
-                  : selectedImageUri
-                    ? "Додайте підпис до фото..."
-                    : "Напишіть повідомлення..."
+      {/* CONTENT + INPUT — внутри KeyboardAvoidingView */}
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
+        <View className="flex-1">
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item._id}
+            inverted={true}
+            contentContainerStyle={{ padding: 16 }}
+            renderItem={renderMessageItem}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.5}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            ListFooterComponent={
+              status === "LoadingMore" ? (
+                <View className="py-3">
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                </View>
+              ) : null
             }
-            placeholderTextColor={COLORS.textMuted}
-            value={inputText}
-            onChangeText={handleTextChange}
-            multiline
+            ListEmptyComponent={renderListEmpty}
+            initialNumToRender={15}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            removeClippedSubviews={Platform.OS === "android"}
           />
 
-          {/* Якщо є текст/фото → Send; інакше → Mic/Camera */}
-          {showSendButton ? (
-            <Animated.View style={sendButtonAnimatedStyle}>
+          {showScrollToBottom && (
+            <Animated.View
+              entering={ZoomIn.springify()}
+              exiting={ZoomOut.duration(150)}
+              className="absolute right-4 bottom-4"
+            >
               <TouchableOpacity
-                onPress={handleSend}
-                onPressIn={() => {
-                  sendButtonScale.value = withSpring(0.86);
-                }}
-                onPressOut={() => {
-                  sendButtonScale.value = withSpring(1);
-                }}
-                disabled={(!inputText.trim() && !selectedImageUri) || isSubmitting}
-                className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
-                  (!inputText.trim() && !selectedImageUri) || isSubmitting
-                    ? "opacity-50"
-                    : "active:opacity-80"
-                }`}
+                onPress={scrollToBottom}
+                className="w-11 h-11 rounded-full bg-primary items-center justify-center"
               >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Ionicons
-                    name={editingMessageId ? "checkmark" : "send"}
-                    size={20}
-                    color="#FFFFFF"
-                  />
-                )}
+                <Ionicons name="arrow-down" size={20} color="#FFFFFF" />
               </TouchableOpacity>
             </Animated.View>
-          ) : (
-            <TouchableOpacity
-              onPress={handleMicPress}
-              onLongPress={handleMicLongPress}
-              delayLongPress={300}
-              disabled={isSubmitting}
-              className={`w-11 h-11 rounded-full items-center justify-center ${
-                inputMode === "video" ? "bg-primary" : "bg-surfaceLight"
-              }`}
-            >
-              <Ionicons
-                name={inputMode === "video" ? "videocam" : "mic"}
-                size={22}
-                color={inputMode === "video" ? COLORS.white : COLORS.primary}
-              />
-            </TouchableOpacity>
           )}
         </View>
-      )}
+
+        {typingUsers && typingUsers.length > 0 ? (
+          <TypingDots typingUsers={typingUsers} />
+        ) : null}
+
+        {replyTarget && (
+          <ReplyPreviewBar
+            replyTarget={replyTarget}
+            onCancel={() => setReplyTarget(null)}
+          />
+        )}
+
+        {editingMessageId && (
+          <View className="flex-row items-center justify-between px-4 py-2 bg-surfaceLight border-t border-surface">
+            <View className="flex-row items-center flex-1 mr-2">
+              <Ionicons
+                name="pencil"
+                size={16}
+                color={COLORS.primary}
+                style={{ marginRight: 6 }}
+              />
+              <Text className="text-white text-xs font-semibold">
+                Редагування повідомлення
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => {
+                setEditingMessageId(null);
+                setInputText("");
+              }}
+            >
+              <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {selectedImageUri && (
+          <View className="flex-row items-center px-4 py-2 bg-surfaceLight border-t border-surface">
+            <Image
+              source={{ uri: selectedImageUri }}
+              className="w-12 h-12 rounded-lg mr-3"
+            />
+            <Text className="text-white text-xs flex-1">Фото прикріплено</Text>
+            <TouchableOpacity onPress={() => setSelectedImageUri(null)}>
+              <Ionicons name="close-circle" size={22} color={COLORS.danger} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {isRecording ? (
+          <View
+            className="flex-row items-center px-3 pt-3 bg-surface border-t border-surfaceLight"
+            style={{ paddingBottom: bottomInset }}
+          >
+            <TouchableOpacity
+              onPress={handleCancelVoice}
+              className="w-11 h-11 rounded-full items-center justify-center bg-surfaceLight mr-3"
+            >
+              <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
+            </TouchableOpacity>
+
+            <View className="flex-1 flex-row items-center bg-background rounded-full border border-surfaceLight px-3 py-2 mr-3">
+              <View
+                className="w-2 h-2 rounded-full bg-red-500 mr-2"
+                style={{ opacity: 0.9 }}
+              />
+
+              <Text className="text-white text-xs font-bold mr-3 min-w-[38px]">
+                {formatRecordingTime(durationMillis)}
+              </Text>
+
+              <View
+                className="flex-1 flex-row items-center justify-between"
+                style={{ height: WAVEFORM_LIVE_HEIGHT }}
+              >
+                {liveAmplitudes.length === 0
+                  ? Array.from({ length: 20 }, (_, i) => (
+                      <View
+                        key={`empty-${i}`}
+                        style={{
+                          width: 2.5,
+                          height: LIVE_MIN_BAR_HEIGHT,
+                          borderRadius: 2,
+                          backgroundColor: "rgba(148, 163, 184, 0.45)",
+                        }}
+                      />
+                    ))
+                  : liveAmplitudes.map((amp, idx) => (
+                      <View
+                        key={idx}
+                        style={{
+                          width: 2.5,
+                          height: Math.max(
+                            LIVE_MIN_BAR_HEIGHT,
+                            amp * WAVEFORM_LIVE_HEIGHT,
+                          ),
+                          borderRadius: 2,
+                          backgroundColor: COLORS.primary,
+                        }}
+                      />
+                    ))}
+              </View>
+            </View>
+
+            <TouchableOpacity
+              onPress={handleSendVoice}
+              disabled={isSubmitting}
+              className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
+                isSubmitting ? "opacity-50" : "active:opacity-80"
+              }`}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="checkmark" size={22} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View
+            className="flex-row items-center px-3 pt-3 bg-surface border-t border-surfaceLight"
+            style={{ paddingBottom: bottomInset }}
+          >
+            <TouchableOpacity
+              onPress={pickImage}
+              disabled={isSubmitting}
+              className="mr-2 p-2 rounded-full bg-surfaceLight"
+            >
+              <Ionicons name="image-outline" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+
+            <TextInput
+              className="flex-1 bg-background text-white px-4 py-2.5 rounded-full text-base border border-surfaceLight mr-2"
+              placeholder={
+                editingMessageId
+                  ? "Змініть текст..."
+                  : replyTarget
+                    ? `Відповідь для ${replyTarget.senderName}...`
+                    : selectedImageUri
+                      ? "Додайте підпис до фото..."
+                      : "Напишіть повідомлення..."
+              }
+              placeholderTextColor={COLORS.textMuted}
+              value={inputText}
+              onChangeText={handleTextChange}
+              multiline
+            />
+
+            {showSendButton ? (
+              <Animated.View style={sendButtonAnimatedStyle}>
+                <TouchableOpacity
+                  onPress={handleSend}
+                  onPressIn={() => {
+                    sendButtonScale.value = withSpring(0.86);
+                  }}
+                  onPressOut={() => {
+                    sendButtonScale.value = withSpring(1);
+                  }}
+                  disabled={(!inputText.trim() && !selectedImageUri) || isSubmitting}
+                  className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
+                    (!inputText.trim() && !selectedImageUri) || isSubmitting
+                      ? "opacity-50"
+                      : "active:opacity-80"
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Ionicons
+                      name={editingMessageId ? "checkmark" : "send"}
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  )}
+                </TouchableOpacity>
+              </Animated.View>
+            ) : (
+              <TouchableOpacity
+                onPress={handleMicPress}
+                onLongPress={handleMicLongPress}
+                delayLongPress={300}
+                disabled={isSubmitting}
+                className={`w-11 h-11 rounded-full items-center justify-center ${
+                  inputMode === "video" ? "bg-primary" : "bg-surfaceLight"
+                }`}
+              >
+                <Ionicons
+                  name={inputMode === "video" ? "videocam" : "mic"}
+                  size={22}
+                  color={inputMode === "video" ? COLORS.white : COLORS.primary}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </KeyboardAvoidingView>
 
       <ImageViewerModal
         visible={!!fullscreenImage}
@@ -757,6 +790,6 @@ export default function ChatRoomScreen() {
         onClose={() => setIsVideoModalVisible(false)}
         onSendVideo={handleSendVideo}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }

@@ -1,19 +1,20 @@
+import { COLORS } from "@/constants/theme";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { Ionicons } from "@expo/vector-icons";
+import { useMutation, useQuery } from "convex/react";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Modal,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
-import { COLORS } from "@/constants/theme";
 
 type Props = {
   visible: boolean;
@@ -73,7 +74,11 @@ export function AddMembersModal({ visible, roomId, participantIds, onClose }: Pr
               disabled={!selected.length || submitting}
               className={`rounded-full px-3 py-1.5 ${selected.length ? "bg-primary" : "opacity-40"}`}
             >
-              {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text className="text-xs font-bold text-white">Додати ({selected.length})</Text>}
+              {submitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text className="text-xs font-bold text-white">Додати ({selected.length})</Text>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -90,21 +95,51 @@ export function AddMembersModal({ visible, roomId, participantIds, onClose }: Pr
           </View>
 
           {users === undefined ? (
-            <View className="flex-1 items-center justify-center"><ActivityIndicator color={COLORS.primary} /></View>
+            <View className="flex-1 items-center justify-center">
+              <ActivityIndicator color={COLORS.primary} />
+            </View>
           ) : (
             <FlatList
               data={available}
               keyExtractor={(item) => item._id}
-              ListEmptyComponent={<Text className="mt-10 text-center text-sm text-textMuted">Немає доступних користувачів</Text>}
+              ListEmptyComponent={
+                <Text className="mt-10 text-center text-sm text-textMuted">
+                  Немає доступних користувачів
+                </Text>
+              }
               renderItem={({ item }) => {
                 const checked = selected.includes(item._id);
                 return (
-                  <TouchableOpacity onPress={() => toggle(item._id)} className="flex-row items-center border-b border-surfaceLight/50 px-2 py-3">
-                    <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-surfaceLight">
-                      <Text className="font-bold text-primary">{item.name.slice(0, 1).toUpperCase()}</Text>
+                  <TouchableOpacity
+                    onPress={() => toggle(item._id)}
+                    className="flex-row items-center border-b border-surfaceLight/50 px-2 py-3"
+                  >
+                    {item.image ? (
+                      <Image
+                        source={{ uri: item.image }}
+                        className="mr-3 h-10 w-10 rounded-full bg-surfaceLight"
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-surfaceLight">
+                        <Text className="font-bold text-primary">
+                          {item.name.slice(0, 1).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View className="flex-1">
+                      <Text className="font-semibold text-white">{item.name}</Text>
+                      <Text className="text-xs text-textMuted">
+                        {item.username ? `@${item.username}` : ""}
+                      </Text>
                     </View>
-                    <View className="flex-1"><Text className="font-semibold text-white">{item.name}</Text><Text className="text-xs text-textMuted">{item.username ? `@${item.username}` : ""}</Text></View>
-                    <View className={`h-6 w-6 items-center justify-center rounded-full border ${checked ? "border-primary bg-primary" : "border-textMuted"}`}>
+
+                    <View
+                      className={`h-6 w-6 items-center justify-center rounded-full border ${
+                        checked ? "border-primary bg-primary" : "border-textMuted"
+                      }`}
+                    >
                       {checked && <Ionicons name="checkmark" size={16} color="#fff" />}
                     </View>
                   </TouchableOpacity>

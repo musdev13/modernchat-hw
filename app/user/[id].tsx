@@ -1,21 +1,21 @@
-import React, { useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "convex/react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  SafeAreaView,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "convex/react";
-import { router, useLocalSearchParams } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ImageViewerModal } from "@/components/ImageViewerModal";
+import { COLORS } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { COLORS } from "@/constants/theme";
-import { ImageViewerModal } from "@/components/ImageViewerModal";
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{
@@ -37,7 +37,10 @@ export default function UserProfileScreen() {
 
   if (currentUser === undefined || userProfile === undefined) {
     return (
-      <SafeAreaView className="flex-1 bg-background items-center justify-center">
+      <SafeAreaView
+        className="flex-1 items-center justify-center"
+        style={{ backgroundColor: COLORS.background }}
+      >
         <ActivityIndicator size="large" color={COLORS.primary} />
       </SafeAreaView>
     );
@@ -45,7 +48,10 @@ export default function UserProfileScreen() {
 
   if (!userProfile) {
     return (
-      <SafeAreaView className="flex-1 bg-background items-center justify-center px-6">
+      <SafeAreaView
+        className="flex-1 items-center justify-center px-6"
+        style={{ backgroundColor: COLORS.background }}
+      >
         <Text className="text-white text-lg text-center">
           Пользователь не найден
         </Text>
@@ -63,26 +69,18 @@ export default function UserProfileScreen() {
   const isOwnProfile = currentUser?._id === userProfile._id;
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <SafeAreaView
+      className="flex-1"
+      edges={["bottom"]}
+      style={{ backgroundColor: COLORS.background }}
+    >
       <ScrollView
+        style={{ backgroundColor: COLORS.background }}
         contentContainerStyle={{
           padding: 20,
           paddingBottom: 40,
         }}
       >
-        <View className="flex-row items-center justify-between mb-8">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="w-10 h-10 rounded-full bg-surface items-center justify-center"
-          >
-            <Ionicons name="arrow-back" size={22} color={COLORS.white} />
-          </TouchableOpacity>
-
-          <Text className="text-white text-xl font-bold">Профіль учасника</Text>
-
-          <View className="w-10" />
-        </View>
-
         <View className="items-center">
           {userProfile.image ? (
             <TouchableOpacity
@@ -130,7 +128,6 @@ export default function UserProfileScreen() {
             <Text className="text-white text-2xl font-bold">
               {userProfile.stats.messagesCount}
             </Text>
-
             <Text className="text-textMuted text-sm mt-1">Повідомлень</Text>
           </View>
 
@@ -138,14 +135,12 @@ export default function UserProfileScreen() {
             <Text className="text-white text-2xl font-bold">
               {userProfile.stats.roomsCreatedCount}
             </Text>
-
             <Text className="text-textMuted text-sm mt-1">Кімнат створено</Text>
           </View>
         </View>
 
         <View className="bg-surface rounded-2xl p-4 mt-4">
           <Text className="text-textMuted text-sm">Дата регистрации</Text>
-
           <Text className="text-white text-base mt-1">
             {new Date(userProfile._creationTime).toLocaleDateString("uk-UA")}
           </Text>

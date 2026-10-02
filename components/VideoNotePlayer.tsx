@@ -1,6 +1,7 @@
 // components/VideoNotePlayer.tsx
 import { COLORS } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
+import { useEventListener } from "expo";
 import * as Haptics from "expo-haptics";
 import { useVideoPlayer, VideoView } from "expo-video";
 import React, { useEffect, useState } from "react";
@@ -9,9 +10,7 @@ import Svg, { Circle } from "react-native-svg";
 
 interface VideoNotePlayerProps {
   videoUrl: string;
-  /** Тривалість з БД (fallback, поки player не завантажив метадані) */
   duration?: number;
-  /** true — власне повідомлення (візуальні акценти) */
   isMine?: boolean;
 }
 
@@ -21,7 +20,96 @@ const STROKE_WIDTH = 3.5;
 const RADIUS = (CIRCLE_SIZE - STROKE_WIDTH) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-export const VideoNotePlayer: React.FC<VideoNotePlayerProps> = ({
+function formatDuration(sec: number): string {
+  const safe = Math.max(0, Math.round(sec));
+  const m = Math.floor(safe / 60);
+  const s = safe % 60;
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+
+export const VideoNotePlayer: React.FC<VideoNotePlayerProps> = (props) => {
+  const [hasStarted, setHasStarted] = useState(false);
+
+  // Показываем placeholder, пока пользователь не тапнет
+  if (!hasStarted) {
+    return (
+      <VideoNotePlaceholder
+        duration={props.duration}
+        isMine={props.isMine}
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setHasStarted(true);
+        }}
+      />
+    );
+  }
+
+  return <VideoNoteActive {...props} />;
+};
+
+// ─────────────────────────────────────────────────────────
+// Placeholder
+// ─────────────────────────────────────────────────────────
+const VideoNotePlaceholder: React.FC<{
+  duration?: number;
+  isMine?: boolean;
+  onPress: () => void;
+}> = ({ duration = 0, isMine = false, onPress }) => {
+  const bgColor = isMine
+    ? "rgba(255,255,255,0.15)"
+    : "rgba(255,255,255,0.08)";
+  const borderColor = isMine
+    ? "rgba(255,255,255,0.3)"
+    : "rgba(255,255,255,0.18)";
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      className="relative items-center justify-center"
+      style={{
+        width: CIRCLE_SIZE,
+        height: CIRCLE_SIZE,
+        borderRadius: CIRCLE_SIZE / 2,
+        backgroundColor: bgColor,
+        borderWidth: 1,
+        borderColor,
+      }}
+    >
+      <View
+        className="items-center justify-center rounded-full"
+        style={{
+          width: 64,
+          height: 64,
+          backgroundColor: "rgba(0,0,0,0.4)",
+        }}
+      >
+        <Ionicons
+          name="play"
+          size={32}
+          color={COLORS.white}
+          style={{ marginLeft: 4 }}
+        />
+      </View>
+
+      {duration > 0 && (
+        <View
+          className="absolute bottom-6 px-3 py-1 rounded-full"
+          style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+        >
+          <Text className="text-white text-xs font-bold">
+            {formatDuration(duration)}
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+};
+
+// ─────────────────────────────────────────────────────────
+// Активный плеер
+// ─────────────────────────────────────────────────────────
+const VideoNoteActive: React.FC<VideoNotePlayerProps> = ({
   videoUrl,
   duration = 0,
   isMine = false,
@@ -30,14 +118,29 @@ export const VideoNotePlayer: React.FC<VideoNotePlayerProps> = ({
   const [speedIndex, setSpeedIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isReady, setIsReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [hasEnded, setHasEnded] = useState(false);
 
   const player = useVideoPlayer(videoUrl, (p) => {
-    p.loop = true;
+    p.loop = false;
     p.muted = false;
     p.play();
   });
 
-  // Полінг прогресу — у expo-video немає реактивного status-хука
+  // Следим за окончанием видео
+  useEventListener(player, "playToEnd", () => {
+    setHasEnded(true);
+    setIsPlaying(false);
+    setProgress(1);
+  });
+
+  // Следим за изменением состояния воспроизведения
+  useEventListener(player, "playingChange", ({ isPlaying: playing }) => {
+    setIsPlaying(playing);
+    if (playing) setHasEnded(false);
+  });
+
+  // Обновление прогресса и первого кадра
   useEffect(() => {
     const interval = setInterval(() => {
       if (!player) return;
@@ -55,32 +158,56 @@ export const VideoNotePlayer: React.FC<VideoNotePlayerProps> = ({
     return () => clearInterval(interval);
   }, [player, duration, isReady]);
 
-  const toggleAudio = () => {
+  const handleTap = async () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Если видео закончилось — перезагружаем источник
+    if (hasEnded) {
+      try {
+        // replaceAsync полностью сбрасывает состояние плеера
+        await player.replaceAsync(videoUrl);
+        setHasEnded(false);
+        setProgress(0);
+        setIsReady(false);
+        // play() запустится автоматически из setup-колбэка нового плеера
+      } catch (error) {
+        console.error("Replay error:", error);
+      }
+      return;
+    }
+
+    // Иначе — обычная пауза/воспроизведение
+    if (player.playing) {
+      player.pause();
+    } else {
+      player.play();
+    }
+  };
+
+  const handleCycleSpeed = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const nextIndex = (speedIndex + 1) % SPEED_OPTIONS.length;
+    const nextSpeed = SPEED_OPTIONS[nextIndex];
+    setSpeedIndex(nextIndex);
+    player.playbackRate = nextSpeed;
+  };
+
+  const handleToggleMute = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
     player.muted = nextMuted;
   };
 
-  const handleCycleSpeed = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    const nextIndex = (speedIndex + 1) % SPEED_OPTIONS.length;
-    const nextSpeed = SPEED_OPTIONS[nextIndex];
-
-    setSpeedIndex(nextIndex);
-    player.playbackRate = nextSpeed;
-  };
-
   const strokeDashoffset = CIRCUMFERENCE - progress * CIRCUMFERENCE;
   const currentSpeed = SPEED_OPTIONS[speedIndex];
+  const showPlayOverlay = isReady && !isPlaying;
 
   return (
     <View
-      className="relative items-center justify-center my-1"
+      className="relative items-center justify-center"
       style={{ width: CIRCLE_SIZE, height: CIRCLE_SIZE }}
     >
-      {/* SVG — круговий прогрес навколо відео */}
       <Svg
         width={CIRCLE_SIZE}
         height={CIRCLE_SIZE}
@@ -91,17 +218,16 @@ export const VideoNotePlayer: React.FC<VideoNotePlayerProps> = ({
         }}
         pointerEvents="none"
       >
-        {/* Трек */}
         <Circle
           cx={CIRCLE_SIZE / 2}
           cy={CIRCLE_SIZE / 2}
           r={RADIUS}
-          stroke={isMine ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.15)"}
+          stroke={
+            isMine ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.15)"
+          }
           strokeWidth={STROKE_WIDTH}
           fill="none"
         />
-
-        {/* Прогрес */}
         <Circle
           cx={CIRCLE_SIZE / 2}
           cy={CIRCLE_SIZE / 2}
@@ -115,53 +241,76 @@ export const VideoNotePlayer: React.FC<VideoNotePlayerProps> = ({
         />
       </Svg>
 
-      {/* Кругле відео */}
       <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={toggleAudio}
+        activeOpacity={0.95}
+        onPress={handleTap}
         style={{
           width: CIRCLE_SIZE - 8,
           height: CIRCLE_SIZE - 8,
           borderRadius: (CIRCLE_SIZE - 8) / 2,
           overflow: "hidden",
-          backgroundColor: COLORS.background,
+          backgroundColor: "rgba(255,255,255,0.08)",
         }}
       >
-        <VideoView
-          player={player}
-          style={{ width: "100%", height: "100%" }}
-          contentFit="cover"
-          nativeControls={false}
-        />
-
-        {/* Спінер, поки метадані не завантажились */}
-        {!isReady && (
-          <View
-            className="absolute inset-0 items-center justify-center"
-            pointerEvents="none"
-          >
+        {isReady ? (
+          <VideoView
+            player={player}
+            style={{ width: "100%", height: "100%" }}
+            contentFit="cover"
+            nativeControls={false}
+          />
+        ) : (
+          <View className="flex-1 items-center justify-center">
             <ActivityIndicator size="large" color={COLORS.primary} />
           </View>
         )}
 
-        {/* Індикатор Mute */}
-        {isMuted && (
+        {showPlayOverlay && (
           <View
             className="absolute inset-0 items-center justify-center"
-            style={{ backgroundColor: "rgba(0,0,0,0.35)" }}
+            style={{ backgroundColor: "rgba(0,0,0,0.3)" }}
             pointerEvents="none"
           >
             <View
-              className="p-2.5 rounded-full"
-              style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+              className="rounded-full items-center justify-center"
+              style={{
+                width: 64,
+                height: 64,
+                backgroundColor: "rgba(0,0,0,0.6)",
+              }}
             >
-              <Ionicons name="volume-mute" size={24} color={COLORS.white} />
+              <Ionicons
+                name="play"
+                size={30}
+                color={COLORS.white}
+                style={{ marginLeft: 3 }}
+              />
             </View>
           </View>
         )}
       </TouchableOpacity>
 
-      {/* Бейдж швидкості (1x / 1.5x / 2x) */}
+      {isReady && isPlaying && (
+        <TouchableOpacity
+          onPress={handleToggleMute}
+          activeOpacity={0.8}
+          className="absolute z-20 rounded-full items-center justify-center"
+          style={{
+            top: 6,
+            left: 6,
+            width: 32,
+            height: 32,
+            backgroundColor: "rgba(0,0,0,0.55)",
+          }}
+        >
+          <Ionicons
+            name={isMuted ? "volume-mute" : "volume-high"}
+            size={16}
+            color={COLORS.white}
+          />
+        </TouchableOpacity>
+      )}
+
       <TouchableOpacity
         onPress={handleCycleSpeed}
         activeOpacity={0.8}
@@ -170,7 +319,7 @@ export const VideoNotePlayer: React.FC<VideoNotePlayerProps> = ({
             ? "bg-primary border-primary"
             : "bg-black/60 border-white/20"
         }`}
-        style={{ top: 4, right: 4 }}
+        style={{ top: 6, right: 6 }}
       >
         <Text className="text-[10px] font-bold text-white">
           {currentSpeed}x

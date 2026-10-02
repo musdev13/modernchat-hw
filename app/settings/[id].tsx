@@ -1,20 +1,21 @@
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-} from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery, useMutation } from "convex/react";
+import { AddMembersModal } from "@/components/AddMembersModal";
+import { COLORS } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/theme";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useMutation, useQuery } from "convex/react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { AddMembersModal } from "@/components/AddMembersModal";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function RoomSettingsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -63,9 +64,15 @@ export default function RoomSettingsScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await removeParticipant({ roomId: id as Id<"chatRooms">, targetUserId });
+            await removeParticipant({
+              roomId: id as Id<"chatRooms">,
+              targetUserId,
+            });
           } catch (error: any) {
-            Alert.alert("Помилка", error?.message ?? "Не вдалося вилучити учасника");
+            Alert.alert(
+              "Помилка",
+              error?.message ?? "Не вдалося вилучити учасника",
+            );
           }
         },
       },
@@ -81,11 +88,17 @@ export default function RoomSettingsScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await removeParticipant({ roomId: id as Id<"chatRooms">, targetUserId: currentUser._id });
+            await removeParticipant({
+              roomId: id as Id<"chatRooms">,
+              targetUserId: currentUser._id,
+            });
             router.dismissAll();
             router.replace("/(app)");
           } catch (error: any) {
-            Alert.alert("Помилка", error?.message ?? "Не вдалося покинути кімнату");
+            Alert.alert(
+              "Помилка",
+              error?.message ?? "Не вдалося покинути кімнату",
+            );
           }
         },
       },
@@ -257,29 +270,101 @@ export default function RoomSettingsScreen() {
         <View className="mt-8 rounded-2xl border border-surfaceLight bg-secondary p-4">
           <View className="mb-3 flex-row items-center justify-between">
             <View>
-              <Text className="text-base font-bold text-white">Учасники ({room.participants.length})</Text>
-              <Text className="mt-0.5 text-xs text-textMuted">👑 Творець · 🛡️ Адміністратор</Text>
+              <Text className="text-base font-bold text-white">
+                Учасники ({room.participants.length})
+              </Text>
+              <Text className="mt-0.5 text-xs text-textMuted">
+                👑 Творець · 🛡️ Адміністратор
+              </Text>
             </View>
             {canManageMembers && (
-              <TouchableOpacity onPress={() => setIsAddMembersVisible(true)} className="rounded-xl bg-primary px-3 py-2">
+              <TouchableOpacity
+                onPress={() => setIsAddMembersVisible(true)}
+                className="rounded-xl bg-primary px-3 py-2"
+              >
                 <Text className="text-xs font-bold text-white">+ Додати</Text>
               </TouchableOpacity>
             )}
           </View>
+
           {room.participants.map((participant) => {
             const canKick =
               participant.role !== "creator" &&
-              (isCreator || (room.currentUserRole === "admin" && participant.role === "member"));
+              (isCreator ||
+                (room.currentUserRole === "admin" &&
+                  participant.role === "member"));
+
             return (
-              <View key={participant._id} className="flex-row items-center border-t border-surfaceLight/60 py-3">
-                <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-surfaceLight"><Text className="font-bold text-primary">{participant.name.slice(0, 1).toUpperCase()}</Text></View>
-                <View className="flex-1"><Text className="font-semibold text-white">{participant.name}</Text><Text className="text-xs text-textMuted">{participant.role === "creator" ? "👑 Творець" : participant.role === "admin" ? "🛡️ Адміністратор" : "Учасник"}</Text></View>
+              <View
+                key={participant._id}
+                className="flex-row items-center border-t border-surfaceLight/60 py-3"
+              >
+                {participant.image ? (
+                  <Image
+                    source={{ uri: participant.image }}
+                    className="mr-3 h-10 w-10 rounded-full bg-surfaceLight"
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-surfaceLight">
+                    <Text className="font-bold text-primary">
+                      {participant.name.slice(0, 1).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+
+                <View className="flex-1">
+                  <Text className="font-semibold text-white">
+                    {participant.name}
+                  </Text>
+                  <Text className="text-xs text-textMuted">
+                    {participant.role === "creator"
+                      ? "👑 Творець"
+                      : participant.role === "admin"
+                        ? "🛡️ Адміністратор"
+                        : "Учасник"}
+                  </Text>
+                </View>
+
                 {isCreator && participant.role !== "creator" && (
-                  <TouchableOpacity onPress={() => handleRole(participant._id as Id<"users">, participant.role === "admin" ? "member" : "admin")} className="mr-2 rounded-lg bg-surfaceLight p-2">
-                    <Ionicons name={participant.role === "admin" ? "shield" : "shield-outline"} size={17} color={COLORS.primary} />
+                  <TouchableOpacity
+                    onPress={() =>
+                      handleRole(
+                        participant._id as Id<"users">,
+                        participant.role === "admin" ? "member" : "admin",
+                      )
+                    }
+                    className="mr-2 rounded-lg bg-surfaceLight p-2"
+                  >
+                    <Ionicons
+                      name={
+                        participant.role === "admin"
+                          ? "shield"
+                          : "shield-outline"
+                      }
+                      size={17}
+                      color={COLORS.primary}
+                    />
                   </TouchableOpacity>
                 )}
-                {canKick && <TouchableOpacity onPress={() => handleRemove(participant._id as Id<"users">, participant.name)} className="rounded-lg bg-danger/10 p-2"><Ionicons name="person-remove-outline" size={17} color={COLORS.danger} /></TouchableOpacity>}
+
+                {canKick && (
+                  <TouchableOpacity
+                    onPress={() =>
+                      handleRemove(
+                        participant._id as Id<"users">,
+                        participant.name,
+                      )
+                    }
+                    className="rounded-lg bg-danger/10 p-2"
+                  >
+                    <Ionicons
+                      name="person-remove-outline"
+                      size={17}
+                      color={COLORS.danger}
+                    />
+                  </TouchableOpacity>
+                )}
               </View>
             );
           })}
@@ -348,7 +433,10 @@ export default function RoomSettingsScreen() {
         )}
 
         {!isCreator && (
-          <TouchableOpacity onPress={handleLeave} className="mt-4 h-13 items-center justify-center rounded-xl border border-danger/40 bg-danger/10">
+          <TouchableOpacity
+            onPress={handleLeave}
+            className="mt-4 h-13 items-center justify-center rounded-xl border border-danger/40 bg-danger/10"
+          >
             <Text className="font-bold text-danger">Покинути кімнату</Text>
           </TouchableOpacity>
         )}

@@ -7,27 +7,41 @@ import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// На вебе expo-notifications не поддерживается — регистрируем хендлер только на нативе
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 
+/**
+ * На вебе push не работает. Возвращаем no-op хук, чтобы не вызывать
+ * нативные API expo-notifications (getLastNotificationResponse и т.д.).
+ */
 export function usePushNotifications() {
+  if (Platform.OS === "web") {
+    return;
+  }
+  usePushNotificationsNative();
+}
+
+function usePushNotificationsNative() {
   const { isSignedIn, isLoaded } = useAuth();
   const savePushToken = useMutation(api.users.savePushToken);
 
-  // ⚠️ Чекаємо, поки Convex реально отримає юзера через Clerk JWT
-  const user = useQuery(
-    api.users.currentUser,
-    isSignedIn ? {} : "skip",
-  );
+  const user = useQuery(api.users.currentUser, isSignedIn ? {} : "skip");
 
   const router = useRouter();
+
+  // ⚠️ Запоминаем, для какого пользователя токен уже сохранён в этой сессии.
+  // Защищает от повторного сохранения после logout → removePushToken.
+  const savedForUserRef = useRef<string | null>(null);
 
   const lastNotificationResponse = Notifications.useLastNotificationResponse();
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
@@ -55,16 +69,23 @@ export function usePushNotifications() {
   }, [lastNotificationResponse]);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    // ⚠️ Не запускаем, пока user не подтянулся в Convex — иначе savePushToken упадёт с Unauthorized
+    if (!isLoaded || !isSignedIn) {
+      savedForUserRef.current = null;
+      return;
+    }
+
     if (user === undefined || user === null) return;
+    if (savedForUserRef.current === user._id) return;
 
     registerForPushNotificationsAsync().then((token) => {
-      if (token) {
-        savePushToken({ pushToken: token }).catch((err) => {
-          console.error("Failed to save push token:", err);
-        });
-      }
+      if (!token) return;
+      if (savedForUserRef.current === user._id) return;
+
+      savedForUserRef.current = user._id;
+      savePushToken({ pushToken: token }).catch((err) => {
+        console.error("Failed to save push token:", err);
+        savedForUserRef.current = null;
+      });
     });
 
     notificationListener.current =

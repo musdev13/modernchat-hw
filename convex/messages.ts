@@ -5,6 +5,9 @@ import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { getAuthUser } from "./users";
 
+// TTL presence — если heartbeat старше, считаем что юзер ушёл из чата
+const PRESENCE_TTL_MS = 30_000;
+
 async function assertRoomMember(
   ctx: any,
   roomId: Id<"chatRooms">,
@@ -16,6 +19,22 @@ async function assertRoomMember(
     throw new Error("Access denied: Ви не є учасником цієї кімнати");
   }
   return room;
+}
+
+// Возвращает true, если пользователь сейчас находится в этой комнате
+async function isUserInRoom(
+  ctx: any,
+  userId: Id<"users">,
+  roomId: Id<"chatRooms">,
+): Promise<boolean> {
+  const presence = await ctx.db
+    .query("chatPresence")
+    .withIndex("by_user", (q: any) => q.eq("userId", userId))
+    .first();
+
+  if (!presence) return false;
+  if (presence.chatRoomId !== roomId) return false;
+  return presence.lastSeenAt > Date.now() - PRESENCE_TTL_MS;
 }
 
 async function schedulePushForNewMessage(
@@ -45,11 +64,20 @@ async function schedulePushForNewMessage(
     recipientIds.map((id: Id<"users">) => ctx.db.get(id)),
   );
 
+  // ⚠️ Отфильтровываем получателей, которые сейчас сидят в этом же чате
+  const filtered = await Promise.all(
+    recipients.map(async (user: any) => {
+      if (!user) return null;
+      const inThisChat = await isUserInRoom(ctx, user._id, roomId);
+      return inThisChat ? null : user;
+    }),
+  );
+
   const isGroupChat = participantIds.length > 2;
   const notificationTitle =
     isGroupChat && roomTitle ? `${roomTitle} • ${senderName}` : senderName;
 
-  const notifications = recipients
+  const notifications = filtered
     .filter((user: any) => user && user.pushToken)
     .map((user: any) => ({
       pushToken: user.pushToken as string,

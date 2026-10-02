@@ -2,22 +2,19 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  // Користувачі Clerk, синхронізовані в базі даних Convex
   users: defineTable({
-  // Clerk-синхронізація
-  tokenIdentifier: v.optional(v.string()), // буде заповнено при першому вході через Clerk
-  name: v.optional(v.string()),
-  email: v.optional(v.string()),
-  image: v.optional(v.string()),
+    tokenIdentifier: v.optional(v.string()),
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    image: v.optional(v.string()),
 
-  // Додаткові поля профілю Modern Chat
-  username: v.optional(v.string()),
-  bio: v.optional(v.string()),
-  avatarStorageId: v.optional(v.id("_storage")),
-  pushToken: v.optional(v.string()),
-})
-  .index("by_token", ["tokenIdentifier"])
-  .index("by_email", ["email"]),
+    username: v.optional(v.string()),
+    bio: v.optional(v.string()),
+    avatarStorageId: v.optional(v.id("_storage")),
+    pushToken: v.optional(v.string()),
+  })
+    .index("by_token", ["tokenIdentifier"])
+    .index("by_email", ["email"]),
 
   chatRooms: defineTable({
     title: v.string(),
@@ -73,4 +70,13 @@ export default defineSchema({
   })
     .index("by_room", ["chatRoomId"])
     .index("by_user_and_room", ["userId", "chatRoomId"]),
+
+  // 🔔 Кто сейчас находится в каком чате (для отключения push в активном чате)
+  chatPresence: defineTable({
+    userId: v.id("users"),
+    chatRoomId: v.id("chatRooms"),
+    lastSeenAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_chat_room", ["chatRoomId"]),
 });

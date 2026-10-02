@@ -40,7 +40,6 @@ export const VideoNoteRecorderModal: React.FC<VideoNoteRecorderModalProps> = ({
   const [duration, setDuration] = useState(0);
   const [isSending, setIsSending] = useState(false);
 
-  // Запитуємо дозволи при відкритті
   useEffect(() => {
     if (!visible) return;
 
@@ -52,14 +51,12 @@ export const VideoNoteRecorderModal: React.FC<VideoNoteRecorderModalProps> = ({
     }
   }, [visible, cameraPermission?.granted, micPermission?.granted]);
 
-  // Очищення таймера
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 
-  // Скидання стану при відкритті
   useEffect(() => {
     if (visible) {
       isCancelledRef.current = false;
@@ -186,7 +183,6 @@ export const VideoNoteRecorderModal: React.FC<VideoNoteRecorderModalProps> = ({
       onRequestClose={handleCancel}
     >
       <View className="flex-1 bg-black/95 items-center justify-center px-4">
-        {/* Круглий видошукач */}
         <View
           className="relative items-center justify-center"
           style={{ width: CIRCLE_SIZE, height: CIRCLE_SIZE }}
@@ -201,7 +197,6 @@ export const VideoNoteRecorderModal: React.FC<VideoNoteRecorderModalProps> = ({
             }}
             pointerEvents="none"
           >
-            {/* Трек */}
             <Circle
               cx={CIRCLE_SIZE / 2}
               cy={CIRCLE_SIZE / 2}
@@ -211,7 +206,6 @@ export const VideoNoteRecorderModal: React.FC<VideoNoteRecorderModalProps> = ({
               fill="none"
             />
 
-            {/* Прогрес запису */}
             {isRecording && (
               <Circle
                 cx={CIRCLE_SIZE / 2}
@@ -241,6 +235,7 @@ export const VideoNoteRecorderModal: React.FC<VideoNoteRecorderModalProps> = ({
                 ref={cameraRef}
                 mode="video"
                 facing="front"
+                videoQuality="480p"
                 style={{ width: "100%", height: "100%" }}
               />
             ) : (
@@ -253,7 +248,6 @@ export const VideoNoteRecorderModal: React.FC<VideoNoteRecorderModalProps> = ({
           </View>
         </View>
 
-        {/* Таймер */}
         <Text className="text-white font-bold text-lg mt-6">
           {formatDuration(duration)} / {formatDuration(MAX_DURATION)}
         </Text>
@@ -262,7 +256,6 @@ export const VideoNoteRecorderModal: React.FC<VideoNoteRecorderModalProps> = ({
           {isRecording ? "Запис..." : "Натисніть кнопку для запису"}
         </Text>
 
-        {/* Кнопки керування */}
         <View className="flex-row items-center justify-around w-full mt-10 px-8">
           <TouchableOpacity
             onPress={handleCancel}
@@ -291,7 +284,6 @@ export const VideoNoteRecorderModal: React.FC<VideoNoteRecorderModalProps> = ({
             />
           </TouchableOpacity>
 
-          {/* Заглушка для симетрії */}
           <View style={{ width: 56 }} />
         </View>
 
