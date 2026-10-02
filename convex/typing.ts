@@ -1,6 +1,6 @@
-import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { mutation, query } from "./_generated/server";
+import { getAuthUser } from "./users";
 
 const TYPING_TIMEOUT_MS = 3000;
 
@@ -8,19 +8,10 @@ export const setTyping = mutation({
   args: {
     chatRoomId: v.id("chatRooms"),
   },
-
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-
-    if (!userId) {
-      return;
-    }
-
-    const user = await ctx.db.get(userId);
-
-    if (!user) {
-      return;
-    }
+    const user = await getAuthUser(ctx);
+    if (!user) return;
+    const userId = user._id;
 
     const room = await ctx.db.get(args.chatRoomId);
     if (!room || !(room.participantIds ?? [room.creatorId]).includes(userId)) {
@@ -37,9 +28,7 @@ export const setTyping = mutation({
     const now = Date.now();
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        lastTypedAt: now,
-      });
+      await ctx.db.patch(existing._id, { lastTypedAt: now });
     } else {
       await ctx.db.insert("typingIndicators", {
         chatRoomId: args.chatRoomId,
@@ -55,10 +44,11 @@ export const getTypingUsers = query({
   args: {
     chatRoomId: v.id("chatRooms"),
   },
-
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) return [];
+    const me = await getAuthUser(ctx);
+    if (!me) return [];
+    const userId = me._id;
+
     const room = await ctx.db.get(args.chatRoomId);
     if (!room || !(room.participantIds ?? [room.creatorId]).includes(userId)) {
       return [];

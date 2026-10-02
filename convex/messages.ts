@@ -1,9 +1,9 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { getAuthUser } from "./users";
 
 async function assertRoomMember(
   ctx: any,
@@ -85,11 +85,10 @@ export const getPaginatedMessages = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized");
+    const userId = me._id;
 
-    if (!userId) {
-      throw new Error("Unauthorized");
-    }
     await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const paginated = await ctx.db
@@ -140,15 +139,12 @@ export const toggleReaction = mutation({
     emoji: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Unauthorized: Потрібна авторизація");
-    }
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = me._id;
 
     const message = await ctx.db.get(args.messageId);
-    if (!message) {
-      throw new Error("Message not found: Повідомлення не знайдено");
-    }
+    if (!message) throw new Error("Message not found: Повідомлення не знайдено");
     await assertRoomMember(ctx, message.chatRoomId, userId);
 
     const existing = await ctx.db
@@ -180,9 +176,10 @@ export const toggleReaction = mutation({
 export const listMessages = query({
   args: { chatRoomId: v.id("chatRooms") },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Unauthorized");
-    await assertRoomMember(ctx, args.chatRoomId, userId);
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized");
+    await assertRoomMember(ctx, args.chatRoomId, me._id);
+
     return await ctx.db
       .query("messages")
       .withIndex("by_chat_room", (q) => q.eq("chatRoomId", args.chatRoomId))
@@ -199,26 +196,15 @@ export const sendMessage = mutation({
     replyToSender: v.optional(v.string()),
     replyToText: v.optional(v.string()),
   },
-
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const user = await getAuthUser(ctx);
+    if (!user) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = user._id;
 
-    if (!userId) {
-      throw new Error("Unauthorized: Потрібна авторизація");
-    }
-
-    const user = await ctx.db.get(userId);
-
-    if (!user) {
-      throw new Error("User not found: Користувача не знайдено");
-    }
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const trimmedContent = args.content.trim();
-
-    if (!trimmedContent) {
-      throw new Error("Message content cannot be empty");
-    }
+    if (!trimmedContent) throw new Error("Message content cannot be empty");
 
     const messageId = await ctx.db.insert("messages", {
       chatRoomId: args.chatRoomId,
@@ -226,7 +212,6 @@ export const sendMessage = mutation({
       senderName: user.name ?? user.email ?? "Користувач",
       senderPhoto: user.image,
       content: trimmedContent,
-
       replyToId: args.replyToId,
       replyToSender: args.replyToSender,
       replyToText: args.replyToText,
@@ -244,9 +229,7 @@ export const sendMessage = mutation({
       senderName,
       previewText: trimmedContent,
       roomTitle: room.title,
-      participantIds: (room.participantIds ?? [
-        room.creatorId,
-      ]) as Id<"users">[],
+      participantIds: (room.participantIds ?? [room.creatorId]) as Id<"users">[],
     });
 
     return messageId;
@@ -259,30 +242,20 @@ export const editMessage = mutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-
-    if (!userId) {
-      throw new Error("Unauthorized: Потрібна авторизація");
-    }
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = me._id;
 
     const message = await ctx.db.get(args.messageId);
-
-    if (!message) {
-      throw new Error("Message not found: Повідомлення не знайдено");
-    }
+    if (!message) throw new Error("Message not found: Повідомлення не знайдено");
     await assertRoomMember(ctx, message.chatRoomId, userId);
 
     if (message.senderId !== userId) {
-      throw new Error(
-        "Forbidden: Ви можете редагувати лише власні повідомлення",
-      );
+      throw new Error("Forbidden: Ви можете редагувати лише власні повідомлення");
     }
 
     const trimmedContent = args.content.trim();
-
-    if (!trimmedContent) {
-      throw new Error("Повідомлення не може бути порожнім");
-    }
+    if (!trimmedContent) throw new Error("Повідомлення не може бути порожнім");
 
     await ctx.db.patch(args.messageId, {
       content: trimmedContent,
@@ -290,7 +263,6 @@ export const editMessage = mutation({
     });
 
     const room = await ctx.db.get(message.chatRoomId);
-
     if (room && room.lastMessageAt === message._creationTime) {
       await ctx.db.patch(message.chatRoomId, {
         lastMessage: `${message.senderName}: ${trimmedContent}`,
@@ -304,32 +276,21 @@ export const deleteMessage = mutation({
     messageId: v.id("messages"),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-
-    if (!userId) {
-      throw new Error("Unauthorized: Потрібна авторизація");
-    }
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = me._id;
 
     const message = await ctx.db.get(args.messageId);
-
-    if (!message) {
-      throw new Error("Message not found: Повідомлення не знайдено");
-    }
+    if (!message) throw new Error("Message not found: Повідомлення не знайдено");
     await assertRoomMember(ctx, message.chatRoomId, userId);
 
     if (message.senderId !== userId) {
       throw new Error("Forbidden: Ви можете видаляти лише власні повідомлення");
     }
 
-    if (message.storageId) {
-      await ctx.storage.delete(message.storageId);
-    }
-    if (message.audioStorageId) {
-      await ctx.storage.delete(message.audioStorageId);
-    }
-    if (message.videoStorageId) {
-      await ctx.storage.delete(message.videoStorageId);
-    }
+    if (message.storageId) await ctx.storage.delete(message.storageId);
+    if (message.audioStorageId) await ctx.storage.delete(message.audioStorageId);
+    if (message.videoStorageId) await ctx.storage.delete(message.videoStorageId);
 
     const reactions = await ctx.db
       .query("messageReactions")
@@ -355,11 +316,8 @@ export const deleteMessage = mutation({
 });
 
 export const generateUploadUrl = mutation(async (ctx) => {
-  const userId = await getAuthUserId(ctx);
-
-  if (!userId) {
-    throw new Error("Unauthorized: Потрібна авторизація");
-  }
+  const me = await getAuthUser(ctx);
+  if (!me) throw new Error("Unauthorized: Потрібна авторизація");
 
   return await ctx.storage.generateUploadUrl();
 });
@@ -373,26 +331,15 @@ export const sendMediaMessage = mutation({
     replyToSender: v.optional(v.string()),
     replyToText: v.optional(v.string()),
   },
-
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const user = await getAuthUser(ctx);
+    if (!user) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = user._id;
 
-    if (!userId) {
-      throw new Error("Unauthorized: Потрібна авторизація");
-    }
-
-    const user = await ctx.db.get(userId);
-
-    if (!user) {
-      throw new Error("Користувача не знайдено");
-    }
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const imageUrl = await ctx.storage.getUrl(args.storageId);
-
-    if (!imageUrl) {
-      throw new Error("Не вдалося отримати посилання на збережений файл");
-    }
+    if (!imageUrl) throw new Error("Не вдалося отримати посилання на збережений файл");
 
     const messageId = await ctx.db.insert("messages", {
       chatRoomId: args.chatRoomId,
@@ -402,7 +349,6 @@ export const sendMediaMessage = mutation({
       content: args.caption?.trim() || undefined,
       imageUrl,
       storageId: args.storageId,
-
       replyToId: args.replyToId,
       replyToSender: args.replyToSender,
       replyToText: args.replyToText,
@@ -420,9 +366,7 @@ export const sendMediaMessage = mutation({
       senderName,
       previewText: args.caption?.trim() || "📷 Фотографія",
       roomTitle: room.title,
-      participantIds: (room.participantIds ?? [
-        room.creatorId,
-      ]) as Id<"users">[],
+      participantIds: (room.participantIds ?? [room.creatorId]) as Id<"users">[],
     });
 
     return messageId;
@@ -439,26 +383,15 @@ export const sendVoiceMessage = mutation({
     replyToSender: v.optional(v.string()),
     replyToText: v.optional(v.string()),
   },
-
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const user = await getAuthUser(ctx);
+    if (!user) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = user._id;
 
-    if (!userId) {
-      throw new Error("Unauthorized: Потрібна авторизація");
-    }
-
-    const user = await ctx.db.get(userId);
-
-    if (!user) {
-      throw new Error("Користувача не знайдено");
-    }
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const audioUrl = await ctx.storage.getUrl(args.audioStorageId);
-
-    if (!audioUrl) {
-      throw new Error("Не вдалося отримати посилання на аудіофайл");
-    }
+    if (!audioUrl) throw new Error("Не вдалося отримати посилання на аудіофайл");
 
     const safeWaveform = args.waveform
       ? args.waveform
@@ -476,7 +409,6 @@ export const sendVoiceMessage = mutation({
       audioStorageId: args.audioStorageId,
       audioDuration: args.audioDuration,
       waveform: safeWaveform,
-
       replyToId: args.replyToId,
       replyToSender: args.replyToSender,
       replyToText: args.replyToText,
@@ -497,9 +429,7 @@ export const sendVoiceMessage = mutation({
       senderName,
       previewText,
       roomTitle: room.title,
-      participantIds: (room.participantIds ?? [
-        room.creatorId,
-      ]) as Id<"users">[],
+      participantIds: (room.participantIds ?? [room.creatorId]) as Id<"users">[],
     });
 
     return messageId;
@@ -515,26 +445,15 @@ export const sendVideoNote = mutation({
     replyToSender: v.optional(v.string()),
     replyToText: v.optional(v.string()),
   },
-
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const user = await getAuthUser(ctx);
+    if (!user) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = user._id;
 
-    if (!userId) {
-      throw new Error("Unauthorized: Потрібна авторизація");
-    }
-
-    const user = await ctx.db.get(userId);
-
-    if (!user) {
-      throw new Error("Користувача не знайдено");
-    }
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
 
     const videoUrl = await ctx.storage.getUrl(args.videoStorageId);
-
-    if (!videoUrl) {
-      throw new Error("Не вдалося отримати посилання на відеофайл");
-    }
+    if (!videoUrl) throw new Error("Не вдалося отримати посилання на відеофайл");
 
     const messageId = await ctx.db.insert("messages", {
       chatRoomId: args.chatRoomId,
@@ -546,7 +465,6 @@ export const sendVideoNote = mutation({
       videoStorageId: args.videoStorageId,
       videoDuration: args.videoDuration,
       isVideoNote: true,
-
       replyToId: args.replyToId,
       replyToSender: args.replyToSender,
       replyToText: args.replyToText,
@@ -567,9 +485,7 @@ export const sendVideoNote = mutation({
       senderName,
       previewText,
       roomTitle: room.title,
-      participantIds: (room.participantIds ?? [
-        room.creatorId,
-      ]) as Id<"users">[],
+      participantIds: (room.participantIds ?? [room.creatorId]) as Id<"users">[],
     });
 
     return messageId;
@@ -582,17 +498,9 @@ export const seedTestMessages = mutation({
     count: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-
-    if (!userId) {
-      throw new Error("Unauthorized");
-    }
-
-    const user = await ctx.db.get(userId);
-
-    if (!user) {
-      throw new Error("User not found");
-    }
+    const user = await getAuthUser(ctx);
+    if (!user) throw new Error("Unauthorized");
+    const userId = user._id;
 
     const total = args.count ?? 40;
 

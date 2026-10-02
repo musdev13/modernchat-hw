@@ -1,30 +1,80 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 
+// Допоміжна функція для отримання поточного авторизованого користувача (Clerk)
+export async function getAuthUser(ctx: QueryCtx | MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    return null;
+  }
+
+  return await ctx.db
+    .query("users")
+    .withIndex("by_token", (q) =>
+      q.eq("tokenIdentifier", identity.tokenIdentifier),
+    )
+    .unique();
+}
+
+// Запит поточного користувача для клієнта
 export const currentUser = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+    return await getAuthUser(ctx);
+  },
+});
 
-    if (!userId) {
-      return null;
+// Мутація синхронізації: створює або оновлює запис користувача в базі після входу через Clerk
+export const store = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Виклик store без авторизації!");
     }
 
-    return await ctx.db.get(userId);
+    // Шукаємо, чи існує вже цей користувач у таблиці users
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_token", (q) =>
+        q.eq("tokenIdentifier", identity.tokenIdentifier),
+      )
+      .unique();
+
+    if (user !== null) {
+      // Оновлюємо ім'я або фото, якщо вони змінилися в акаунті Clerk
+      const newName = identity.name ?? user.name;
+      const newImage = identity.pictureUrl ?? user.image;
+
+      if (user.name !== newName || user.image !== newImage) {
+        await ctx.db.patch(user._id, {
+          name: newName,
+          image: newImage,
+        });
+      }
+      return user._id;
+    }
+
+    // Створюємо нового користувача
+    return await ctx.db.insert("users", {
+      name: identity.name ?? identity.nickname ?? "Користувач",
+      email: identity.email,
+      image: identity.pictureUrl,
+      tokenIdentifier: identity.tokenIdentifier,
+    });
   },
 });
 
 export const searchUsers = query({
   args: { query: v.string() },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) return [];
+    const me = await getAuthUser(ctx);
+    if (!me) return [];
 
     const term = args.query.trim().toLowerCase();
     const users = await ctx.db.query("users").collect();
     return users
-      .filter((user) => user._id !== userId)
+      .filter((user) => user._id !== me._id)
       .filter((user) => {
         const value = `${user.name ?? ""} ${user.username ?? ""} ${user.email ?? ""}`.toLowerCase();
         return !term || value.includes(term);
@@ -40,9 +90,9 @@ export const searchUsers = query({
 });
 
 export const generateAvatarUploadUrl = mutation(async (ctx) => {
-  const userId = await getAuthUserId(ctx);
+  const me = await getAuthUser(ctx);
 
-  if (!userId) {
+  if (!me) {
     throw new Error("Unauthorized: Потрібна авторизація");
   }
 
@@ -58,9 +108,9 @@ export const updateUserProfile = mutation({
   },
 
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
+    const me = await getAuthUser(ctx);
 
-    if (!userId) {
+    if (!me) {
       throw new Error("Unauthorized: Потрібна авторизація");
     }
 
@@ -85,7 +135,7 @@ export const updateUserProfile = mutation({
       }
     }
 
-    await ctx.db.patch(userId, patchData);
+    await ctx.db.patch(me._id, patchData);
 
     return { success: true };
   },
@@ -135,8 +185,8 @@ export const savePushToken = mutation({
     pushToken: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
+    const me = await getAuthUser(ctx);
+    if (!me) {
       throw new Error("Unauthorized: Потрібна авторизація");
     }
 
@@ -145,7 +195,7 @@ export const savePushToken = mutation({
       throw new Error("Некоректний формат ExponentPushToken");
     }
 
-    await ctx.db.patch(userId, {
+    await ctx.db.patch(me._id, {
       pushToken: trimmed,
     });
 
@@ -156,12 +206,12 @@ export const savePushToken = mutation({
 export const removePushToken = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
+    const me = await getAuthUser(ctx);
+    if (!me) {
       return { success: false, reason: "Not authenticated" };
     }
 
-    await ctx.db.patch(userId, {
+    await ctx.db.patch(me._id, {
       pushToken: undefined,
     });
 

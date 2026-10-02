@@ -1,7 +1,7 @@
 import { COLORS } from "@/constants/theme";
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useSSO, useSignIn, useSignUp } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
+import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import {
@@ -19,7 +19,9 @@ import {
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
-  const { signIn } = useAuthActions();
+  const { signIn, setActive: setSignInActive, isLoaded: isSignInLoaded } = useSignIn();
+  const { signUp, setActive: setSignUpActive, isLoaded: isSignUpLoaded } = useSignUp();
+  const { startSSOFlow } = useSSO();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,69 +45,80 @@ export default function LoginScreen() {
 
     try {
       if (isSignUp) {
-        await signIn("password", {
-          email: email.trim(),
-          password: password.trim(),
-          name: name.trim(),
-          flow: "signUp",
+        if (!isSignUpLoaded) return;
+
+        const result = await signUp.create({
+          emailAddress: email.trim().toLowerCase(),
+          password,
+          firstName: name.trim(),
         });
 
-        Alert.alert("Успіх", "Акаунт створено!");
+        if (result.status === "complete" && result.createdSessionId) {
+          await setSignUpActive({ session: result.createdSessionId });
+        } else {
+          Alert.alert(
+            "Потрібне підтвердження",
+            "Перевірте пошту або вимкніть верифікацію email у Clerk Dashboard.",
+          );
+        }
       } else {
-        await signIn("password", {
-          email: email.trim(),
-          password: password.trim(),
-          flow: "signIn",
-        });
-      }
-    } catch (err) {
-      console.error("Auth Error", err);
+        if (!isSignInLoaded) return;
 
-      Alert.alert(
-        "Помилка",
-        isSignUp
+        const result = await signIn.create({
+          identifier: email.trim().toLowerCase(),
+          password,
+        });
+
+        if (result.status === "complete" && result.createdSessionId) {
+          await setSignInActive({ session: result.createdSessionId });
+        } else {
+          Alert.alert("Помилка", "Необхідне додаткове підтвердження акаунта");
+        }
+      }
+    } catch (err: any) {
+      console.error("Auth Error", err);
+      const message =
+        err?.errors?.[0]?.longMessage ||
+        err?.errors?.[0]?.message ||
+        (isSignUp
           ? "Не вдалося зареєструватися. Можливо, пошта вже зайнята."
-          : "Неправильний email або пароль.",
-      );
+          : "Неправильний email або пароль.");
+      Alert.alert("Помилка", message);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    if (isGoogleLoading || isLoading) return;
+    if (isGoogleLoading) return;
 
     try {
       setIsGoogleLoading(true);
 
-      const redirectTo = Linking.createURL("");
-      const { redirect } = await signIn("google", { redirectTo });
+      // ✅ Генерируем redirect URL с нашей собственной схемой из app.config.ts
+      const redirectUrl = AuthSession.makeRedirectUri({
+        scheme: "modernchat-dev",
+        path: "oauth-native-callback",
+      });
 
-      if (!redirect) {
-        return;
+      console.log("[Google OAuth] redirectUrl:", redirectUrl);
+
+      const { createdSessionId, setActive } = await startSSOFlow({
+        strategy: "oauth_google",
+        redirectUrl,
+      });
+
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+      } else {
+        console.log("[Google OAuth] No session created");
       }
-
-      const result = await WebBrowser.openAuthSessionAsync(
-        redirect.toString(),
-        redirectTo,
-      );
-
-      if (result.type === "success" && result.url) {
-        const code = new URL(result.url).searchParams.get("code");
-
-        if (code) {
-          await signIn("google", { code });
-        } else {
-          Alert.alert("Помилка", "Google не повернув код авторизації.");
-        }
-      } else if (result.type === "cancel") {
-        // пользователь закрыл браузер — молча выходим
-      }
-    } catch (err) {
-      console.error("Google Auth Error", err);
+    } catch (err: any) {
+      console.error("OAuth error:", err);
       Alert.alert(
-        "Помилка входу",
-        "Не вдалося авторизуватися через Google. Спробуйте ще раз.",
+        "Помилка Google",
+        err?.errors?.[0]?.longMessage ||
+          "Не вдалося виконати вхід через Google. Спробуйте ще раз.",
       );
     } finally {
       setIsGoogleLoading(false);

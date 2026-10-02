@@ -1,6 +1,6 @@
 import { api } from "@/convex/_generated/api";
-import { useConvexAuth } from "@convex-dev/auth/react";
-import { useMutation } from "convex/react";
+import { useAuth } from "@clerk/clerk-expo";
+import { useMutation, useQuery } from "convex/react";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
@@ -18,19 +18,23 @@ Notifications.setNotificationHandler({
 });
 
 export function usePushNotifications() {
-  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { isSignedIn, isLoaded } = useAuth();
   const savePushToken = useMutation(api.users.savePushToken);
+
+  // ⚠️ Чекаємо, поки Convex реально отримає юзера через Clerk JWT
+  const user = useQuery(
+    api.users.currentUser,
+    isSignedIn ? {} : "skip",
+  );
+
   const router = useRouter();
 
   const lastNotificationResponse = Notifications.useLastNotificationResponse();
-  const notificationListener = useRef<Notifications.EventSubscription | null>(
-    null,
-  );
+  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
   const handleNotificationNavigation = (data: any) => {
     if (!data) return;
-
     const roomId = data.chatRoomId || data.conversationId;
     if (roomId) {
       router.push(`/chat/${roomId}`);
@@ -51,7 +55,9 @@ export function usePushNotifications() {
   }, [lastNotificationResponse]);
 
   useEffect(() => {
-    if (isLoading || !isAuthenticated) return;
+    if (!isLoaded || !isSignedIn) return;
+    // ⚠️ Не запускаем, пока user не подтянулся в Convex — иначе savePushToken упадёт с Unauthorized
+    if (user === undefined || user === null) return;
 
     registerForPushNotificationsAsync().then((token) => {
       if (token) {
@@ -74,7 +80,7 @@ export function usePushNotifications() {
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
-  }, [isAuthenticated, isLoading]);
+  }, [isSignedIn, isLoaded, user]);
 }
 
 async function registerForPushNotificationsAsync(): Promise<string | null> {

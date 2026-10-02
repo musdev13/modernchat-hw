@@ -1,5 +1,7 @@
+import { api } from "@/convex/_generated/api";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
-import { useConvexAuth } from "@convex-dev/auth/react";
+import { useAuth } from "@clerk/clerk-expo";
+import { useQuery } from "convex/react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
@@ -7,16 +9,25 @@ import { useEffect } from "react";
 export default function InitialLayout() {
   usePushNotifications();
 
-  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { isSignedIn, isLoaded } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
+  // Чекаємо, поки Clerk-сесія синхронізується в Convex
+  const user = useQuery(
+    api.users.currentUser,
+    isSignedIn ? {} : "skip",
+  );
+
+  // Редирект робимо лише коли Clerk завантажився І (якщо залогінений) user підтягнувся
+  const isBooting = !isLoaded || (isSignedIn && user === undefined);
+
   useEffect(() => {
-    if (isLoading) return;
+    if (isBooting) return;
 
     const inAuthScreen = segments[0] === "(auth)";
 
-    if (isAuthenticated) {
+    if (isSignedIn && user) {
       if (inAuthScreen) {
         router.replace("/(app)");
       }
@@ -27,9 +38,9 @@ export default function InitialLayout() {
     }
 
     SplashScreen.hideAsync();
-  }, [isAuthenticated, isLoading, segments, router]);
+  }, [isBooting, isSignedIn, user, segments, router]);
 
-  if (isLoading) {
+  if (isBooting) {
     return null;
   }
 

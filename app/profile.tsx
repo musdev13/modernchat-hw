@@ -1,3 +1,7 @@
+import { useClerk } from "@clerk/clerk-expo";
+import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "convex/react";
+import { router } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -9,17 +13,13 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "convex/react";
-import { useAuthActions } from "@convex-dev/auth/react";
-import { router } from "expo-router";
 
-import { api } from "@/convex/_generated/api";
 import { EditProfileModal } from "@/components/EditProfileModal";
 import { COLORS } from "@/constants/theme";
+import { api } from "@/convex/_generated/api";
 
 export default function ProfileScreen() {
-  const { signOut } = useAuthActions();
+  const { signOut } = useClerk();
 
   const currentUser = useQuery(api.users.currentUser);
 
@@ -34,9 +34,7 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView
         className="flex-1 items-center justify-center"
-        style={{
-          backgroundColor: COLORS.background,
-        }}
+        style={{ backgroundColor: COLORS.background }}
       >
         <ActivityIndicator size="large" color={COLORS.primary} />
       </SafeAreaView>
@@ -47,9 +45,7 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView
         className="flex-1 items-center justify-center px-6"
-        style={{
-          backgroundColor: COLORS.background,
-        }}
+        style={{ backgroundColor: COLORS.background }}
       >
         <Text className="text-white text-lg text-center">
           Не вдалося завантажити профіль
@@ -60,16 +56,14 @@ export default function ProfileScreen() {
 
   const handleSignOut = () => {
     Alert.alert("Вихід", "Ти впевнений, що хочеш вийти?", [
-      {
-        text: "Скасувати",
-        style: "cancel",
-      },
+      { text: "Скасувати", style: "cancel" },
       {
         text: "Вийти",
         style: "destructive",
         onPress: async () => {
           try {
             await signOut();
+            router.replace("/(auth)/login");
           } catch (error) {
             console.error(error);
           }
@@ -81,19 +75,12 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView
       className="flex-1"
-      style={{
-        backgroundColor: COLORS.background,
-      }}
+      style={{ backgroundColor: COLORS.background }}
     >
       <ScrollView
         className="flex-1"
-        style={{
-          backgroundColor: COLORS.background,
-        }}
-        contentContainerStyle={{
-          padding: 20,
-          paddingBottom: 40,
-        }}
+        style={{ backgroundColor: COLORS.background }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
       >
         <View className="flex-row items-center justify-between mb-8">
           <TouchableOpacity
@@ -116,9 +103,7 @@ export default function ProfileScreen() {
         <View className="items-center">
           {profileDetails.image ? (
             <Image
-              source={{
-                uri: profileDetails.image,
-              }}
+              source={{ uri: profileDetails.image }}
               className="w-28 h-28 rounded-full mb-4"
             />
           ) : (
@@ -155,7 +140,6 @@ export default function ProfileScreen() {
             <Text className="text-white text-2xl font-bold">
               {profileDetails.stats.messagesCount}
             </Text>
-
             <Text className="text-textMuted text-sm mt-1">Повідомлень</Text>
           </View>
 
@@ -163,7 +147,6 @@ export default function ProfileScreen() {
             <Text className="text-white text-2xl font-bold">
               {profileDetails.stats.roomsCreatedCount}
             </Text>
-
             <Text className="text-textMuted text-sm mt-1">Кімнат створено</Text>
           </View>
         </View>

@@ -1,20 +1,23 @@
-import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  ...authTables,
-
+  // Користувачі Clerk, синхронізовані в базі даних Convex
   users: defineTable({
-    name: v.optional(v.string()),
-    image: v.optional(v.string()),
-    email: v.optional(v.string()),
+  // Clerk-синхронізація
+  tokenIdentifier: v.optional(v.string()), // буде заповнено при першому вході через Clerk
+  name: v.optional(v.string()),
+  email: v.optional(v.string()),
+  image: v.optional(v.string()),
 
-    username: v.optional(v.string()),
-    bio: v.optional(v.string()),
-    avatarStorageId: v.optional(v.id("_storage")),
-    pushToken: v.optional(v.string()),
-  }).index("by_email", ["email"]),
+  // Додаткові поля профілю Modern Chat
+  username: v.optional(v.string()),
+  bio: v.optional(v.string()),
+  avatarStorageId: v.optional(v.id("_storage")),
+  pushToken: v.optional(v.string()),
+})
+  .index("by_token", ["tokenIdentifier"])
+  .index("by_email", ["email"]),
 
   chatRooms: defineTable({
     title: v.string(),
