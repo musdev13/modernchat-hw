@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EditProfileModal } from "@/components/EditProfileModal";
-import { COLORS, THEMES, THEME_ORDER } from "@/constants/theme";
+import { THEMES, THEME_ORDER, avatarColor, initialsOf } from "@/constants/theme";
 import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
 
@@ -32,15 +32,14 @@ export default function ProfileScreen() {
   );
 
   const [editVisible, setEditVisible] = useState(false);
-  const { themeId, setThemeId } = useTheme();
+  const { themeId, setThemeId, colors: c } = useTheme();
 
   if (currentUser === undefined || profileDetails === undefined) {
     return (
       <SafeAreaView
-        className="flex-1 items-center justify-center"
-        style={{ backgroundColor: COLORS.background }}
+        style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.divider }}
       >
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={c.accent} />
       </SafeAreaView>
     );
   }
@@ -48,10 +47,9 @@ export default function ProfileScreen() {
   if (!currentUser || !profileDetails) {
     return (
       <SafeAreaView
-        className="flex-1 items-center justify-center px-6"
-        style={{ backgroundColor: COLORS.background }}
+        style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24, backgroundColor: c.divider }}
       >
-        <Text className="text-white text-lg text-center">
+        <Text style={{ color: c.text, fontSize: 18, textAlign: "center" }}>
           Не вдалося завантажити профіль
         </Text>
       </SafeAreaView>
@@ -90,94 +88,121 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const card = {
+    backgroundColor: c.header,
+    borderRadius: 16,
+    padding: 16,
+  } as const;
+
   return (
-    <SafeAreaView
-      className="flex-1"
-      style={{ backgroundColor: COLORS.background }}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.divider }}>
       <ScrollView
-        className="flex-1"
-        style={{ backgroundColor: COLORS.background }}
-        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+        style={{ flex: 1, backgroundColor: c.divider }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
       >
-        <View className="flex-row items-center justify-between mb-8">
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 20,
+          }}
+        >
           <TouchableOpacity
             onPress={() => router.back()}
-            className="w-10 h-10 rounded-full bg-surface items-center justify-center"
+            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+            accessibilityRole="button"
+            accessibilityLabel="Назад"
           >
-            <Ionicons name="arrow-back" size={22} color={COLORS.white} />
+            <Ionicons name="arrow-back" size={24} color={c.text} />
           </TouchableOpacity>
 
-          <Text className="text-white text-xl font-bold">Профіль</Text>
+          <Text style={{ color: c.text, fontSize: 18, fontWeight: "700" }}>Профіль</Text>
 
           <TouchableOpacity
             onPress={() => setEditVisible(true)}
-            className="w-10 h-10 rounded-full bg-surface items-center justify-center"
+            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+            accessibilityRole="button"
+            accessibilityLabel="Редагувати профіль"
           >
-            <Ionicons name="pencil" size={20} color={COLORS.primary} />
+            <Ionicons name="pencil" size={21} color={c.accent} />
           </TouchableOpacity>
         </View>
 
-        <View className="items-center">
+        <View style={{ alignItems: "center" }}>
           {profileDetails.image ? (
             <Image
               source={{ uri: profileDetails.image }}
-              className="w-28 h-28 rounded-full mb-4"
+              style={{ width: 112, height: 112, borderRadius: 56, marginBottom: 14 }}
             />
           ) : (
-            <View className="w-28 h-28 rounded-full bg-secondary items-center justify-center mb-4">
-              <Ionicons name="person" size={52} color={COLORS.textMuted} />
+            <View
+              style={{
+                width: 112,
+                height: 112,
+                borderRadius: 56,
+                backgroundColor: avatarColor(profileDetails.name ?? "?"),
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 14,
+              }}
+            >
+              <Text style={{ color: "#FFFFFF", fontSize: 40, fontWeight: "700" }}>
+                {initialsOf(profileDetails.name)}
+              </Text>
             </View>
           )}
 
-          <Text className="text-white text-2xl font-bold">
+          <Text style={{ color: c.text, fontSize: 24, fontWeight: "700" }}>
             {profileDetails.name}
           </Text>
 
           {profileDetails.username && (
-            <Text className="text-primary text-base mt-1">
+            <Text style={{ color: c.accent, fontSize: 16, marginTop: 4 }}>
               @{profileDetails.username}
             </Text>
           )}
 
           {profileDetails.email && (
-            <Text className="text-textMuted text-sm mt-1">
+            <Text style={{ color: c.muted, fontSize: 14, marginTop: 4 }}>
               {profileDetails.email}
             </Text>
           )}
 
           {profileDetails.bio && (
-            <Text className="text-white/80 text-center mt-4 max-w-[320px]">
+            <Text
+              style={{ color: c.text, opacity: 0.85, textAlign: "center", marginTop: 14, maxWidth: 320, fontSize: 15 }}
+            >
               {profileDetails.bio}
             </Text>
           )}
         </View>
 
-        <View className="flex-row gap-3 mt-8">
-          <View className="flex-1 bg-surface rounded-2xl p-4 items-center">
-            <Text className="text-white text-2xl font-bold">
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 24 }}>
+          <View style={[card, { flex: 1, alignItems: "center" }]}>
+            <Text style={{ color: c.text, fontSize: 24, fontWeight: "700" }}>
               {profileDetails.stats.messagesCount}
             </Text>
-            <Text className="text-textMuted text-sm mt-1">Повідомлень</Text>
+            <Text style={{ color: c.muted, fontSize: 13, marginTop: 4 }}>Повідомлень</Text>
           </View>
 
-          <View className="flex-1 bg-surface rounded-2xl p-4 items-center">
-            <Text className="text-white text-2xl font-bold">
+          <View style={[card, { flex: 1, alignItems: "center" }]}>
+            <Text style={{ color: c.text, fontSize: 24, fontWeight: "700" }}>
               {profileDetails.stats.roomsCreatedCount}
             </Text>
-            <Text className="text-textMuted text-sm mt-1">Кімнат створено</Text>
+            <Text style={{ color: c.muted, fontSize: 13, marginTop: 4 }}>Кімнат створено</Text>
           </View>
         </View>
 
-        <View className="bg-surface rounded-2xl p-4 mt-6">
-          <View className="flex-row items-center mb-3">
-            <Ionicons name="color-palette" size={20} color={COLORS.primary} />
-            <Text className="text-white text-base font-bold ml-2">
+        <View style={[card, { marginTop: 16 }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+            <Ionicons name="color-palette" size={20} color={c.accent} />
+            <Text style={{ color: c.text, fontSize: 16, fontWeight: "700", marginLeft: 8 }}>
               Тема оформлення
             </Text>
           </View>
 
-          <View className="flex-row flex-wrap justify-between">
+          <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
             {THEME_ORDER.map((id) => {
               const t = THEMES[id];
               const selected = id === themeId;
@@ -194,7 +219,7 @@ export default function ProfileScreen() {
                     padding: 10,
                     flexDirection: "row",
                     alignItems: "center",
-                    backgroundColor: COLORS.secondary,
+                    backgroundColor: c.search,
                     borderWidth: 2,
                     borderColor: selected ? t.colors.accent : "transparent",
                   }}
@@ -206,7 +231,7 @@ export default function ProfileScreen() {
                       borderRadius: 17,
                       overflow: "hidden",
                       borderWidth: 1,
-                      borderColor: "#64748B",
+                      borderColor: c.muted,
                       marginRight: 10,
                     }}
                   >
@@ -217,7 +242,7 @@ export default function ProfileScreen() {
                     numberOfLines={2}
                     style={{
                       flex: 1,
-                      color: "#FFFFFF",
+                      color: c.text,
                       fontSize: 13,
                       fontWeight: selected ? "700" : "500",
                     }}
@@ -225,11 +250,7 @@ export default function ProfileScreen() {
                     {t.name}
                   </Text>
                   {selected && (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={18}
-                      color={t.colors.accent}
-                    />
+                    <Ionicons name="checkmark-circle" size={18} color={t.colors.accent} />
                   )}
                 </TouchableOpacity>
               );
@@ -239,18 +260,31 @@ export default function ProfileScreen() {
 
         <TouchableOpacity
           onPress={() => setEditVisible(true)}
-          className="bg-primary rounded-xl py-3.5 items-center mt-6"
+          style={{
+            backgroundColor: c.accent,
+            borderRadius: 14,
+            paddingVertical: 14,
+            alignItems: "center",
+            marginTop: 20,
+          }}
         >
-          <Text className="text-white font-bold text-base">
+          <Text style={{ color: c.onAccent, fontWeight: "700", fontSize: 16 }}>
             Редагувати профіль
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleSignOut}
-          className="border border-danger rounded-xl py-3.5 items-center mt-3"
+          style={{
+            borderWidth: 1,
+            borderColor: c.danger,
+            borderRadius: 14,
+            paddingVertical: 14,
+            alignItems: "center",
+            marginTop: 10,
+          }}
         >
-          <Text className="text-danger font-bold text-base">
+          <Text style={{ color: c.danger, fontWeight: "700", fontSize: 16 }}>
             Вийти з акаунта
           </Text>
         </TouchableOpacity>

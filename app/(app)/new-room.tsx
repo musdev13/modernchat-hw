@@ -1,24 +1,26 @@
+import { avatarColor, initialsOf } from "@/constants/theme";
+import { useTheme } from "@/context/ThemeContext";
+import { api } from "@/convex/_generated/api";
+import { Ionicons } from "@expo/vector-icons";
+import { useMutation } from "convex/react";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Alert,
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useState } from "react";
-import { useRouter } from "expo-router";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { COLORS } from "@/constants/theme";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 
 export default function NewRoomScreen() {
   const router = useRouter();
+  const { colors: c } = useTheme();
   const createRoom = useMutation(api.rooms.createRoom);
 
   const [title, setTitle] = useState("");
@@ -52,109 +54,166 @@ export default function NewRoomScreen() {
   };
 
   const canCreate = title.trim().length > 0 && !isLoading;
+  const previewName = title.trim();
 
   return (
-    <SafeAreaView className="flex-1 bg-surface" edges={["top", "bottom"]}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: c.divider }}
+      edges={["top", "bottom"]}
+    >
       <KeyboardAvoidingView
-        className="flex-1"
+        style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         {/* Header */}
-        <View className="flex-row items-center justify-between px-5 py-3 border-b border-surfaceLight">
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            height: 56,
+            paddingHorizontal: 6,
+            backgroundColor: c.header,
+            borderBottomWidth: 1,
+            borderBottomColor: c.divider,
+          }}
+        >
           <TouchableOpacity
             onPress={() => router.back()}
             disabled={isLoading}
-            className="w-10 h-10 items-center justify-center rounded-full bg-secondary"
             activeOpacity={0.7}
+            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+            accessibilityRole="button"
+            accessibilityLabel="Закрити"
           >
-            <Ionicons name="close" size={24} color={COLORS.white} />
+            <Ionicons name="close" size={26} color={c.text} />
           </TouchableOpacity>
 
-          <Text className="text-white text-lg font-bold">Нова кімната</Text>
-
-          <View className="w-10" />
+          <Text style={{ color: c.text, fontSize: 18, fontWeight: "700", marginLeft: 8 }}>
+            Нова кімната
+          </Text>
         </View>
 
         {/* Content */}
         <ScrollView
-          className="flex-1"
-          contentContainerClassName="px-5 pt-6 pb-8"
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="gap-6">
-            {/* Title */}
-            <View>
-              <Text className="text-white text-base font-semibold mb-2">
-                Назва кімнати
-              </Text>
-
-              <TextInput
-                className="bg-secondary border border-surfaceLight rounded-2xl px-4 py-4 text-white text-base"
-                placeholder="Наприклад: Обговорення React Native"
-                placeholderTextColor={COLORS.textMuted}
-                value={title}
-                onChangeText={setTitle}
-                maxLength={100}
-                autoFocus
-                editable={!isLoading}
-                returnKeyType="next"
-              />
-
-              <Text className="text-textMuted text-xs mt-2">
-                {title.length}/100
-              </Text>
-            </View>
-
-            {/* Description */}
-            <View>
-              <Text className="text-white text-base font-semibold mb-2">
-                Опис
-                <Text className="text-textMuted font-normal">
-                  {" "}
-                  (необов'язково)
+          <View style={{ alignItems: "center", paddingVertical: 24 }}>
+            <View
+              style={{
+                width: 96,
+                height: 96,
+                borderRadius: 48,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: previewName ? avatarColor(previewName) : c.accent,
+              }}
+            >
+              {previewName ? (
+                <Text style={{ color: "#FFFFFF", fontSize: 34, fontWeight: "700" }}>
+                  {initialsOf(previewName)}
                 </Text>
-              </Text>
-
-              <TextInput
-                className="bg-secondary border border-surfaceLight rounded-2xl px-4 py-4 text-white text-base min-h-[130px]"
-                placeholder="Короткий опис теми спілкування..."
-                placeholderTextColor={COLORS.textMuted}
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                maxLength={300}
-                editable={!isLoading}
-                textAlignVertical="top"
-              />
-
-              <Text className="text-textMuted text-xs mt-2">
-                {description.length}/300
-              </Text>
+              ) : (
+                <Ionicons name="people" size={44} color={c.onAccent} />
+              )}
             </View>
+            <Text style={{ color: c.muted, fontSize: 13, marginTop: 10 }}>
+              Аватар зʼявиться з ініціалів назви
+            </Text>
+          </View>
+
+          {/* Title */}
+          <View
+            style={{
+              backgroundColor: c.header,
+              paddingHorizontal: 16,
+              paddingTop: 12,
+              paddingBottom: 8,
+            }}
+          >
+            <Text style={{ color: c.accent, fontSize: 13, fontWeight: "600" }}>
+              Назва кімнати
+            </Text>
+            <TextInput
+              style={{ color: c.text, fontSize: 17, paddingVertical: 8 }}
+              placeholder="Наприклад: Обговорення React Native"
+              placeholderTextColor={c.muted}
+              selectionColor={c.accent}
+              value={title}
+              onChangeText={setTitle}
+              maxLength={100}
+              autoFocus
+              editable={!isLoading}
+              returnKeyType="next"
+            />
+            <Text style={{ color: c.muted, fontSize: 12, textAlign: "right" }}>
+              {title.length}/100
+            </Text>
+          </View>
+
+          {/* Description */}
+          <View
+            style={{
+              backgroundColor: c.header,
+              marginTop: 10,
+              paddingHorizontal: 16,
+              paddingTop: 12,
+              paddingBottom: 8,
+            }}
+          >
+            <Text style={{ color: c.accent, fontSize: 13, fontWeight: "600" }}>
+              Опис (необовʼязково)
+            </Text>
+            <TextInput
+              style={{ color: c.text, fontSize: 16, paddingVertical: 8, minHeight: 100 }}
+              placeholder="Короткий опис теми спілкування..."
+              placeholderTextColor={c.muted}
+              selectionColor={c.accent}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              maxLength={300}
+              editable={!isLoading}
+              textAlignVertical="top"
+            />
+            <Text style={{ color: c.muted, fontSize: 12, textAlign: "right" }}>
+              {description.length}/300
+            </Text>
           </View>
         </ScrollView>
 
         {/* Bottom button */}
-        <View className="px-5 pt-3 pb-2 border-t border-surfaceLight bg-surface">
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            backgroundColor: c.header,
+            borderTopWidth: 1,
+            borderTopColor: c.divider,
+          }}
+        >
           <TouchableOpacity
             onPress={handleCreate}
             disabled={!canCreate}
             activeOpacity={0.8}
-            className={`w-full h-14 rounded-2xl items-center justify-center flex-row ${
-              canCreate ? "bg-primary" : "bg-surfaceLight opacity-60"
-            }`}
+            style={{
+              height: 52,
+              borderRadius: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: c.accent,
+              opacity: canCreate ? 1 : 0.5,
+            }}
           >
             {isLoading ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
+              <ActivityIndicator size="small" color={c.onAccent} />
             ) : (
               <>
-                <Ionicons
-                  name="add-circle-outline"
-                  size={21}
-                  color={COLORS.white}
-                />
-                <Text className="text-white text-base font-bold ml-2">
+                <Ionicons name="checkmark-circle-outline" size={22} color={c.onAccent} />
+                <Text style={{ color: c.onAccent, fontSize: 16, fontWeight: "700", marginLeft: 8 }}>
                   Створити кімнату
                 </Text>
               </>
