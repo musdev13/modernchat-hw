@@ -1,5 +1,6 @@
 import { SwipeableRoomItem } from "@/components/SwipeableRoomItem";
-import { TG, avatarColor, initialsOf } from "@/constants/theme";
+import { avatarColor, initialsOf } from "@/constants/theme";
+import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors: c } = useTheme();
 
   const rooms = useQuery(api.rooms.listRooms);
   const currentUser = useQuery(api.users.currentUser);
@@ -117,13 +119,13 @@ export default function HomeScreen() {
   const profileName = currentUser?.name ?? currentUser?.username ?? "";
 
   return (
-    <View style={{ flex: 1, backgroundColor: TG.bg }}>
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* Шапка: профіль, заголовок, пошук */}
       <View
         style={{
-          backgroundColor: TG.header,
+          backgroundColor: c.header,
           paddingTop: insets.top + 8,
           paddingHorizontal: 14,
           paddingBottom: 10,
@@ -162,12 +164,12 @@ export default function HomeScreen() {
                   resizeMode="cover"
                 />
               ) : (
-                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>
+                <Text style={{ color: c.onAccent, fontSize: 16, fontWeight: "700" }}>
                   {initialsOf(profileName)}
                 </Text>
               )}
             </View>
-            <Text style={{ color: TG.text, fontSize: 22, fontWeight: "700" }}>
+            <Text style={{ color: c.text, fontSize: 22, fontWeight: "700" }}>
               Чати
             </Text>
           </TouchableOpacity>
@@ -180,12 +182,12 @@ export default function HomeScreen() {
               width: 40,
               height: 40,
               borderRadius: 20,
-              backgroundColor: TG.search,
+              backgroundColor: c.search,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Ionicons name="create-outline" size={22} color={TG.accent} />
+            <Ionicons name="create-outline" size={22} color={c.accent} />
           </TouchableOpacity>
         </View>
 
@@ -193,24 +195,24 @@ export default function HomeScreen() {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            backgroundColor: TG.search,
+            backgroundColor: c.search,
             borderRadius: 12,
             paddingHorizontal: 12,
             height: 40,
           }}
         >
-          <Ionicons name="search" size={18} color={TG.muted} />
+          <Ionicons name="search" size={18} color={c.muted} />
           <TextInput
             value={search}
             onChangeText={setSearch}
             placeholder="Пошук чатів"
-            placeholderTextColor={TG.muted}
+            placeholderTextColor={c.muted}
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"
             style={{
               flex: 1,
-              color: TG.text,
+              color: c.text,
               fontSize: 15,
               marginLeft: 8,
               paddingVertical: 0,
@@ -222,7 +224,7 @@ export default function HomeScreen() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               accessibilityLabel="Очистити пошук"
             >
-              <Ionicons name="close-circle" size={18} color={TG.muted} />
+              <Ionicons name="close-circle" size={18} color={c.muted} />
             </TouchableOpacity>
           )}
         </View>
@@ -230,9 +232,9 @@ export default function HomeScreen() {
 
       {filteredRooms === undefined ? (
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator size="large" color={TG.accent} />
+          <ActivityIndicator size="large" color={c.accent} />
 
-          <Text style={{ color: TG.muted, fontSize: 12, marginTop: 12 }}>
+          <Text style={{ color: c.muted, fontSize: 12, marginTop: 12 }}>
             Завантаження кімнат...
           </Text>
         </View>
@@ -250,18 +252,18 @@ export default function HomeScreen() {
               width: 72,
               height: 72,
               borderRadius: 36,
-              backgroundColor: TG.search,
+              backgroundColor: c.search,
               alignItems: "center",
               justifyContent: "center",
               marginBottom: 16,
             }}
           >
-            <Ionicons name="chatbubbles-outline" size={34} color={TG.muted} />
+            <Ionicons name="chatbubbles-outline" size={34} color={c.muted} />
           </View>
 
           <Text
             style={{
-              color: TG.text,
+              color: c.text,
               fontSize: 18,
               fontWeight: "700",
               textAlign: "center",
@@ -272,7 +274,7 @@ export default function HomeScreen() {
 
           <Text
             style={{
-              color: TG.muted,
+              color: c.muted,
               fontSize: 14,
               textAlign: "center",
               marginTop: 4,
@@ -291,13 +293,13 @@ export default function HomeScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={TG.accent}
+              tintColor={c.accent}
             />
           }
           ListEmptyComponent={
             <View style={{ alignItems: "center", paddingTop: 48 }}>
-              <Ionicons name="search-outline" size={40} color={TG.muted} />
-              <Text style={{ color: TG.muted, fontSize: 15, marginTop: 10 }}>
+              <Ionicons name="search-outline" size={40} color={c.muted} />
+              <Text style={{ color: c.muted, fontSize: 15, marginTop: 10 }}>
                 Нічого не знайдено
               </Text>
             </View>
@@ -306,7 +308,7 @@ export default function HomeScreen() {
             filteredRooms.length > 0 ? (
               <Text
                 style={{
-                  color: TG.muted,
+                  color: c.muted,
                   fontSize: 12,
                   textAlign: "center",
                   marginTop: 16,
@@ -341,7 +343,7 @@ export default function HomeScreen() {
           width: 58,
           height: 58,
           borderRadius: 29,
-          backgroundColor: TG.accent,
+          backgroundColor: c.accent,
           alignItems: "center",
           justifyContent: "center",
           elevation: 6,
@@ -351,7 +353,7 @@ export default function HomeScreen() {
           shadowOffset: { width: 0, height: 3 },
         }}
       >
-        <Ionicons name="pencil" size={24} color="#FFFFFF" />
+        <Ionicons name="pencil" size={24} color={c.onAccent} />
       </TouchableOpacity>
     </View>
   );

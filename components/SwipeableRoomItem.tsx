@@ -1,4 +1,5 @@
-import { TG, avatarColor, initialsOf } from "@/constants/theme";
+import { avatarColor, initialsOf } from "@/constants/theme";
+import { useTheme } from "@/context/ThemeContext";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
@@ -47,6 +48,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   onPress,
   onDelete,
 }) => {
+  const { colors: c } = useTheme();
   const translateX = useSharedValue(0);
 
   const resetPosition = () => {
@@ -101,7 +103,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   });
 
   return (
-    <View style={{ backgroundColor: TG.bg, overflow: "hidden" }}>
+    <View style={{ backgroundColor: c.bg, overflow: "hidden" }}>
       <View
         style={{
           position: "absolute",
@@ -109,7 +111,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
           bottom: 0,
           right: 0,
           left: 0,
-          backgroundColor: TG.danger,
+          backgroundColor: c.danger,
           flexDirection: "row",
           justifyContent: "flex-end",
           alignItems: "center",
@@ -129,11 +131,11 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
             <Ionicons
               name={isCreator ? "trash-outline" : "exit-outline"}
               size={24}
-              color="#FFFFFF"
+              color={c.onAccent}
             />
             <Text
               style={{
-                color: "#FFFFFF",
+                color: c.onAccent,
                 fontSize: 12,
                 fontWeight: "700",
                 marginTop: 2,
@@ -146,7 +148,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
       </View>
 
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[{ backgroundColor: TG.bg }, animatedCardStyle]}>
+        <Animated.View style={[{ backgroundColor: c.bg }, animatedCardStyle]}>
           <TouchableOpacity
             onPress={() => {
               if (translateX.value !== 0) {
@@ -176,7 +178,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                 marginRight: 12,
               }}
             >
-              <Text style={{ color: "#FFFFFF", fontSize: 20, fontWeight: "700" }}>
+              <Text style={{ color: c.onAccent, fontSize: 20, fontWeight: "700" }}>
                 {initialsOf(room.title)}
               </Text>
             </View>
@@ -200,7 +202,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                   <Text
                     numberOfLines={1}
                     style={{
-                      color: TG.text,
+                      color: c.text,
                       fontSize: 16,
                       fontWeight: "700",
                       flexShrink: 1,
@@ -212,14 +214,14 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                     <Ionicons
                       name="ribbon-outline"
                       size={14}
-                      color={TG.accent}
+                      color={c.accent}
                       style={{ marginLeft: 6 }}
                     />
                   )}
                 </View>
 
                 {room.lastMessageAt ? (
-                  <Text style={{ color: TG.muted, fontSize: 12 }}>
+                  <Text style={{ color: c.muted, fontSize: 12 }}>
                     {formatTime(room.lastMessageAt)}
                   </Text>
                 ) : null}
@@ -228,7 +230,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
               <Text
                 numberOfLines={1}
                 style={{
-                  color: TG.muted,
+                  color: c.muted,
                   fontSize: 14,
                   marginTop: 3,
                   fontStyle: room.lastMessage ? "normal" : "italic",
@@ -242,7 +244,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
           <View
             style={{
               height: StyleSheet.hairlineWidth,
-              backgroundColor: TG.divider,
+              backgroundColor: c.divider,
               marginLeft: 80,
             }}
           />

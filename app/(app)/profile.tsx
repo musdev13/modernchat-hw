@@ -16,7 +16,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EditProfileModal } from "@/components/EditProfileModal";
-import { COLORS } from "@/constants/theme";
+import { COLORS, THEMES, THEME_ORDER } from "@/constants/theme";
+import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
 
 export default function ProfileScreen() {
@@ -31,6 +32,7 @@ export default function ProfileScreen() {
   );
 
   const [editVisible, setEditVisible] = useState(false);
+  const { themeId, setThemeId } = useTheme();
 
   if (currentUser === undefined || profileDetails === undefined) {
     return (
@@ -164,6 +166,74 @@ export default function ProfileScreen() {
               {profileDetails.stats.roomsCreatedCount}
             </Text>
             <Text className="text-textMuted text-sm mt-1">Кімнат створено</Text>
+          </View>
+        </View>
+
+        <View className="bg-surface rounded-2xl p-4 mt-6">
+          <View className="flex-row items-center mb-3">
+            <Ionicons name="color-palette" size={20} color={COLORS.primary} />
+            <Text className="text-white text-base font-bold ml-2">
+              Тема оформлення
+            </Text>
+          </View>
+
+          <View className="flex-row flex-wrap justify-between">
+            {THEME_ORDER.map((id) => {
+              const t = THEMES[id];
+              const selected = id === themeId;
+              return (
+                <TouchableOpacity
+                  key={id}
+                  onPress={() => setThemeId(id)}
+                  activeOpacity={0.8}
+                  accessibilityLabel={`Тема: ${t.name}`}
+                  style={{
+                    width: "48%",
+                    marginBottom: 10,
+                    borderRadius: 14,
+                    padding: 10,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: COLORS.secondary,
+                    borderWidth: 2,
+                    borderColor: selected ? t.colors.accent : "transparent",
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      overflow: "hidden",
+                      borderWidth: 1,
+                      borderColor: "#64748B",
+                      marginRight: 10,
+                    }}
+                  >
+                    <View style={{ flex: 1, backgroundColor: t.colors.bg }} />
+                    <View style={{ flex: 1, backgroundColor: t.colors.accent }} />
+                  </View>
+                  <Text
+                    numberOfLines={2}
+                    style={{
+                      flex: 1,
+                      color: "#FFFFFF",
+                      fontSize: 13,
+                      fontWeight: selected ? "700" : "500",
+                    }}
+                  >
+                    {t.name}
+                  </Text>
+                  {selected && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={18}
+                      color={t.colors.accent}
+                    />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 

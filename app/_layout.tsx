@@ -3,6 +3,7 @@ import "../global.css";
 
 import InitialLayout from "@/components/InitialLayout";
 import { COLORS } from "@/constants/theme";
+import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import {
@@ -100,10 +101,15 @@ function UserSync() {
   return null;
 }
 
+function ThemedStatusBar() {
+  const { theme } = useTheme();
+  return <StatusBar style={theme.isDark ? "light" : "dark"} />;
+}
+
 function AppContent() {
   return (
     <>
-      <StatusBar style="light" />
+      <ThemedStatusBar />
       <AuthDebugger />
       <UserSync />
       <InitialLayout />
@@ -117,7 +123,9 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
           <ConvexProviderWithClerk client={convex} useAuth={useConvexClerkAuth}>
-            <AppContent />
+            <ThemeProvider>
+              <AppContent />
+            </ThemeProvider>
           </ConvexProviderWithClerk>
         </ClerkProvider>
       </SafeAreaProvider>

@@ -10,17 +10,101 @@ export const COLORS = {
   danger: "#EF4444",
 } as const;
 
-/** Telegram-подібна темна палітра (використовується на списку чатів). */
-export const TG = {
-  bg: "#17212B",
-  header: "#17212B",
-  divider: "#0E1621",
-  search: "#242F3D",
-  accent: "#2AABEE",
-  text: "#FFFFFF",
-  muted: "#708499",
-  danger: "#E53935",
-} as const;
+export interface ThemeColors {
+  bg: string;
+  header: string;
+  divider: string;
+  search: string;
+  accent: string;
+  text: string;
+  muted: string;
+  danger: string;
+  /** Колір тексту/іконок на акцентному фоні (кнопки, аватарки). */
+  onAccent: string;
+}
+
+export type ThemeId = "telegram" | "oled" | "light" | "purple";
+
+export interface AppTheme {
+  id: ThemeId;
+  name: string;
+  isDark: boolean;
+  colors: ThemeColors;
+}
+
+/** Доступні теми оформлення. */
+export const THEMES: Record<ThemeId, AppTheme> = {
+  telegram: {
+    id: "telegram",
+    name: "Telegram (темна)",
+    isDark: true,
+    colors: {
+      bg: "#17212B",
+      header: "#17212B",
+      divider: "#0E1621",
+      search: "#242F3D",
+      accent: "#2AABEE",
+      text: "#FFFFFF",
+      muted: "#708499",
+      danger: "#E53935",
+      onAccent: "#FFFFFF",
+    },
+  },
+  oled: {
+    id: "oled",
+    name: "Чорна (OLED)",
+    isDark: true,
+    colors: {
+      bg: "#000000",
+      header: "#000000",
+      divider: "#1C1C1E",
+      search: "#1C1C1E",
+      accent: "#3AA0FF",
+      text: "#FFFFFF",
+      muted: "#7F8691",
+      danger: "#FF453A",
+      onAccent: "#FFFFFF",
+    },
+  },
+  light: {
+    id: "light",
+    name: "Світла",
+    isDark: false,
+    colors: {
+      bg: "#FFFFFF",
+      header: "#FFFFFF",
+      divider: "#E6EAEE",
+      search: "#F0F2F5",
+      accent: "#2481CC",
+      text: "#0F1419",
+      muted: "#7D8B99",
+      danger: "#E53935",
+      onAccent: "#FFFFFF",
+    },
+  },
+  purple: {
+    id: "purple",
+    name: "Фіолетова",
+    isDark: true,
+    colors: {
+      bg: "#1E1633",
+      header: "#1E1633",
+      divider: "#140E24",
+      search: "#2D2347",
+      accent: "#A855F7",
+      text: "#FFFFFF",
+      muted: "#8E82AD",
+      danger: "#F0506E",
+      onAccent: "#FFFFFF",
+    },
+  },
+};
+
+export const THEME_ORDER: ThemeId[] = ["telegram", "oled", "light", "purple"];
+export const DEFAULT_THEME_ID: ThemeId = "telegram";
+
+/** Telegram-палітра за замовчуванням (для екранів, які ще не перейшли на теми). */
+export const TG: ThemeColors = THEMES.telegram.colors;
 
 const AVATAR_COLORS = [
   "#E17076",
