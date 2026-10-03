@@ -49,6 +49,7 @@ import {
 import Animated, {
   FadeIn,
   FadeOut,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -62,6 +63,13 @@ const LIVE_MIN_BAR_HEIGHT = 4;
 const PRESENCE_HEARTBEAT_MS = 15_000;
 const LOCAL_TYPING_TIMEOUT_MS = 3_000;
 const DEFAULT_PANEL_HEIGHT = 300;
+// Floating "Dynamic Island" header
+const ISLAND_HEIGHT = 56;
+const ISLAND_COMPACT_HEIGHT = 44;
+const ISLAND_TOP_GAP = 6;
+const ISLAND_SIDE_MARGIN = 12;
+const ISLAND_SPRING = { damping: 14, stiffness: 190, mass: 0.8 } as const;
+const COMPACT_SCROLL_OFFSET = 60;
 
 interface MessageRow {
   item: MessageItemData;
@@ -113,6 +121,9 @@ export default function ChatRoomScreen() {
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [islandScrolled, setIslandScrolled] = useState(false);
+  // 0 = full, 1 = compact (scrolled), 2 = expanded (typing)
+  const islandState = useSharedValue(0);
   const [actionMessage, setActionMessage] = useState<MessageItemData | null>(
     null,
   );
@@ -712,7 +723,9 @@ export default function ChatRoomScreen() {
   }, [loadMore, status]);
 
   const handleScroll = useCallback((event: any) => {
-    setShowScrollToBottom(event.nativeEvent.contentOffset.y > 250);
+    const offsetY = event.nativeEvent.contentOffset.y;
+    setShowScrollToBottom(offsetY > 250);
+    setIslandScrolled(offsetY > COMPACT_SCROLL_OFFSET);
   }, []);
 
   const scrollToBottom = useCallback(() => {
@@ -848,76 +861,132 @@ export default function ChatRoomScreen() {
     justifyContent: "center" as const,
   };
 
+  const isTyping = !!typingText;
+  useEffect(() => {
+    islandState.value = withSpring(
+      isTyping ? 2 : islandScrolled ? 1 : 0,
+      ISLAND_SPRING,
+    );
+  }, [isTyping, islandScrolled, islandState]);
+
+  const islandStyle = useAnimatedStyle(() => ({
+    height: interpolate(
+      islandState.value,
+      [0, 1, 2],
+      [ISLAND_HEIGHT, ISLAND_COMPACT_HEIGHT, ISLAND_HEIGHT + 6],
+    ),
+    transform: [
+      {
+        scale: interpolate(islandState.value, [0, 1, 2], [1, 0.94, 1.02]),
+      },
+    ],
+  }));
+
+  const islandSubtitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(islandState.value, [0, 1, 2], [1, 0, 1]),
+    height: interpolate(islandState.value, [0, 1, 2], [16, 0, 16]),
+  }));
+
+  // Верхній відступ списку під «острівом»
+  const islandBlock = insets.top + ISLAND_TOP_GAP + ISLAND_HEIGHT + 6;
+
   return (
     <View style={{ flex: 1, backgroundColor: c.wallpaper }}>
-      {/* HEADER — вне KeyboardAvoidingView, чтобы не сжимался при клавиатуре */}
+      {/* HEADER — плаваюча капсула «Dynamic Island», поверх списку */}
       <View
+        pointerEvents="box-none"
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          backgroundColor: c.header,
-          borderBottomWidth: 1,
-          borderBottomColor: c.divider,
-          paddingHorizontal: 4,
-          height: insets.top + 58,
-          paddingTop: insets.top,
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 30,
         }}
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
-          accessibilityRole="button"
-          accessibilityLabel="Назад"
-        >
-          <Ionicons name="arrow-back" size={24} color={c.text} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => router.push(`/settings/${chatRoomId}`)}
-          style={{ flex: 1, flexDirection: "row", alignItems: "center", height: 48 }}
-          accessibilityRole="button"
-          accessibilityLabel="Інформація про кімнату"
-        >
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: avatarColor(roomTitle),
+        <Animated.View
+          style={[
+            {
+              marginTop: insets.top + ISLAND_TOP_GAP,
+              marginHorizontal: ISLAND_SIDE_MARGIN,
+              borderRadius: 999,
+              backgroundColor: withAlpha(c.header, 0.96),
+              borderWidth: 1,
+              borderColor: withAlpha(c.muted, 0.18),
+              flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 15 }}>
-              {initialsOf(roomTitle)}
-            </Text>
-          </View>
-
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text
-              numberOfLines={1}
-              style={{ color: c.text, fontSize: 17, fontWeight: "700" }}
-            >
-              {roomTitle}
-            </Text>
-            <Text
-              numberOfLines={1}
-              style={{ color: typingText ? c.accent : c.muted, fontSize: 13 }}
-            >
-              {typingText ?? (room ? membersLabel(memberCount) : " ")}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push(`/settings/${chatRoomId}`)}
-          style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
-          accessibilityRole="button"
-          accessibilityLabel="Налаштування кімнати"
+              paddingHorizontal: 4,
+              overflow: "hidden",
+              elevation: 8,
+              shadowColor: "#000",
+              shadowOpacity: 0.3,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 4 },
+            },
+            islandStyle,
+          ]}
         >
-          <Ionicons name="ellipsis-vertical" size={22} color={c.muted} />
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
+            accessibilityRole="button"
+            accessibilityLabel="Назад"
+          >
+            <Ionicons name="arrow-back" size={22} color={c.text} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => router.push(`/settings/${chatRoomId}`)}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", height: 48 }}
+            accessibilityRole="button"
+            accessibilityLabel="Інформація про кімнату"
+          >
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                backgroundColor: avatarColor(roomTitle),
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 13 }}>
+                {initialsOf(roomTitle)}
+              </Text>
+            </View>
+
+            <View style={{ flex: 1, marginLeft: 10, justifyContent: "center" }}>
+              <Text
+                numberOfLines={1}
+                style={{ color: c.text, fontSize: 16, fontWeight: "700" }}
+              >
+                {roomTitle}
+              </Text>
+              <Animated.View style={[{ overflow: "hidden" }, islandSubtitleStyle]}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: typingText ? c.accent : c.muted,
+                    fontSize: 12,
+                    lineHeight: 16,
+                  }}
+                >
+                  {typingText ?? (room ? membersLabel(memberCount) : " ")}
+                </Text>
+              </Animated.View>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push(`/settings/${chatRoomId}`)}
+            style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
+            accessibilityRole="button"
+            accessibilityLabel="Налаштування кімнати"
+          >
+            <Ionicons name="ellipsis-vertical" size={20} color={c.muted} />
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
       {/* CONTENT + INPUT — внутри KeyboardAvoidingView */}
@@ -932,7 +1001,7 @@ export default function ChatRoomScreen() {
             data={rows}
             keyExtractor={(row) => row.item._id}
             inverted={true}
-            contentContainerStyle={{ paddingVertical: 8 }}
+            contentContainerStyle={{ paddingTop: 8, paddingBottom: islandBlock }}
             renderItem={renderMessageItem}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.5}
@@ -968,7 +1037,7 @@ export default function ChatRoomScreen() {
               pointerEvents="none"
               style={{
                 position: "absolute",
-                top: 10,
+                top: islandBlock + 4,
                 alignSelf: "center",
                 backgroundColor: withAlpha("#000000", 0.7),
                 borderRadius: 16,
@@ -1094,10 +1163,8 @@ export default function ChatRoomScreen() {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              backgroundColor: c.header,
-              borderTopWidth: 1,
-              borderTopColor: c.divider,
-              paddingHorizontal: 8,
+              backgroundColor: "transparent",
+              paddingHorizontal: 10,
               paddingTop: 6,
               paddingBottom: bottomInset,
             }}
@@ -1116,7 +1183,14 @@ export default function ChatRoomScreen() {
                 flex: 1,
                 flexDirection: "row",
                 alignItems: "center",
-                backgroundColor: c.field,
+                backgroundColor: withAlpha(c.header, 0.96),
+                borderWidth: 1,
+                borderColor: withAlpha(c.muted, 0.18),
+                elevation: 4,
+                shadowColor: "#000",
+                shadowOpacity: 0.18,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 2 },
                 borderRadius: 22,
                 paddingHorizontal: 14,
                 height: 44,
@@ -1205,10 +1279,8 @@ export default function ChatRoomScreen() {
             style={{
               flexDirection: "row",
               alignItems: "flex-end",
-              backgroundColor: c.header,
-              borderTopWidth: 1,
-              borderTopColor: c.divider,
-              paddingHorizontal: 8,
+              backgroundColor: "transparent",
+              paddingHorizontal: 10,
               paddingTop: 6,
               paddingBottom: panelOpen ? 6 : bottomInset,
             }}
@@ -1218,7 +1290,14 @@ export default function ChatRoomScreen() {
                 flex: 1,
                 flexDirection: "row",
                 alignItems: "flex-end",
-                backgroundColor: c.field,
+                backgroundColor: withAlpha(c.header, 0.96),
+                borderWidth: 1,
+                borderColor: withAlpha(c.muted, 0.18),
+                elevation: 4,
+                shadowColor: "#000",
+                shadowOpacity: 0.18,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 2 },
                 borderRadius: 22,
                 minHeight: 44,
               }}
