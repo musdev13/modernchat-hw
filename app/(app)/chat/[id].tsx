@@ -59,6 +59,7 @@ import Animated, {
   ZoomIn,
   ZoomOut,
 } from "react-native-reanimated";
+import * as SystemUI from "expo-system-ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const WAVEFORM_LIVE_HEIGHT = 26;
@@ -159,6 +160,11 @@ export default function ChatRoomScreen() {
 
   const sendButtonScale = useSharedValue(1);
   const insets = useSafeAreaInsets();
+
+  // Фон вікна під системною навігацією = фон чату (без чорної смуги).
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(c.wallpaper).catch(() => {});
+  }, [c.wallpaper]);
 
   const flatListRef = useRef<FlatList<MessageRow>>(null);
   const inputRef = useRef<TextInput>(null);
@@ -756,6 +762,7 @@ export default function ChatRoomScreen() {
         isOwn={row.item.senderId === currentUser?._id}
         isFirstInSeries={row.isFirstInSeries}
         isLastInSeries={row.isLastInSeries}
+        isSelected={actionMessage?._id === row.item._id}
         dateLabel={row.dateLabel}
         onLongPress={handleOpenActions}
         onDoubleTap={(message) => handleToggleReaction(message._id, "❤️")}
@@ -766,6 +773,7 @@ export default function ChatRoomScreen() {
       />
     ),
     [
+      actionMessage?._id,
       currentUser?._id,
       handleOpenActions,
       handleStartReply,
@@ -839,8 +847,9 @@ export default function ChatRoomScreen() {
   const sendDisabled =
     (!inputText.trim() && !selectedImageUri) || isSubmitting;
 
-  // Нижний отступ для панелей — не меньше 8px для визуального комфорта
-  const bottomInset = Math.max(insets.bottom, 8);
+  // Нижній відступ — лише safe-area inset (без додаткових), щоб поле вводу
+  // сиділо одразу над системною навігацією.
+  const bottomInset = Math.max(insets.bottom, 4);
   // Поле вводу притиснуте до клавіатури/панелі — нижній safe area тримає лише
   // сама клавіатура/панель, тож зайвого проміжку між ними немає.
   const composerBottomPadding =
@@ -1078,6 +1087,7 @@ export default function ChatRoomScreen() {
           <FlatList
             ref={flatListRef}
             data={rows}
+            extraData={actionMessage?._id}
             keyExtractor={(row) => row.item._id}
             inverted={true}
             contentContainerStyle={{ paddingTop: 8, paddingBottom: islandBlock }}

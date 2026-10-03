@@ -5,7 +5,7 @@ import { emojiOnlyCount, formatTime, isStickerContent } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
-import React, { memo, useState } from "react";
+import React, { memo, useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -16,6 +16,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { MessageReactions, ReactionItem } from "./MessageReactions";
 import { VideoNotePlayer } from "./VideoNotePlayer";
@@ -55,6 +56,8 @@ interface SwipeableMessageItemProps {
   isFirstInSeries: boolean;
   /** Останнє повідомлення серії (маленький «хвостик» бульбашки). */
   isLastInSeries: boolean;
+  /** Для цього повідомлення відкрите меню дій — підсвічуємо рядок. */
+  isSelected?: boolean;
   /** Мітка дати над повідомленням (Сьогодні/Вчора/дата). */
   dateLabel?: string;
   onLongPress: (message: MessageItemData) => void;
@@ -155,6 +158,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   isOwn,
   isFirstInSeries,
   isLastInSeries,
+  isSelected = false,
   dateLabel,
   onLongPress,
   onDoubleTap,
@@ -165,6 +169,13 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 }) => {
   const c = useChatPalette();
   const translateX = useSharedValue(0);
+  // Підсвітка рядка: під час довгого натискання та поки відкрите меню дій.
+  const pressed = useSharedValue(0);
+  const selected = useSharedValue(0);
+
+  useEffect(() => {
+    selected.value = withTiming(isSelected ? 1 : 0, { duration: 180 });
+  }, [isSelected, selected]);
 
   const triggerReply = () => {
     onReply(item);
@@ -209,8 +220,12 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   const longPressGesture = Gesture.LongPress()
     .minDuration(320)
     .onStart(() => {
+      pressed.value = withTiming(1, { duration: 140 });
       runOnJS(triggerHaptic)(Haptics.ImpactFeedbackStyle.Medium);
       runOnJS(openActions)();
+    })
+    .onFinalize(() => {
+      pressed.value = withTiming(0, { duration: 220 });
     });
 
   const composedGesture = Gesture.Simultaneous(
@@ -220,6 +235,10 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 
   const animatedBubbleStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
+  }));
+
+  const highlightStyle = useAnimatedStyle(() => ({
+    opacity: Math.max(pressed.value, selected.value),
   }));
 
   const animatedIconStyle = useAnimatedStyle(() => {
@@ -323,6 +342,22 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 
       <View style={{ justifyContent: "center" }}>
         <Animated.View
+          pointerEvents="none"
+          style={[
+            highlightStyle,
+            {
+              position: "absolute",
+              top: -2,
+              bottom: -2,
+              left: 3,
+              right: 3,
+              borderRadius: 16,
+              backgroundColor: withAlpha(c.accent, 0.24),
+            },
+          ]}
+        />
+
+        <Animated.View
           style={[
             animatedIconStyle,
             {
@@ -418,7 +453,8 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   </View>
                 ) : null}
 
-                <View>
+                {/* Час — під наліпкою в куті, щоб не перекривати малюнок. */}
+                <View style={{ paddingBottom: 15, paddingHorizontal: 4 }}>
                   <TouchableOpacity
                     activeOpacity={0.9}
                     onPress={() => onImagePress?.(item.imageUrl!)}
@@ -429,8 +465,8 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     pointerEvents="none"
                     style={{
                       position: "absolute",
-                      right: 2,
-                      bottom: 2,
+                      right: 4,
+                      bottom: 0,
                       backgroundColor: "rgba(0,0,0,0.45)",
                       borderRadius: 10,
                       paddingHorizontal: 6,
@@ -458,10 +494,27 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     {item.senderName}
                   </Text>
                 )}
-                <Text style={{ fontSize: emojiCount === 1 ? 64 : emojiCount === 2 ? 52 : 42 }}>
+                <Text
+                  style={{
+                    fontSize: emojiCount === 1 ? 64 : emojiCount === 2 ? 52 : 42,
+                    lineHeight: (emojiCount === 1 ? 64 : emojiCount === 2 ? 52 : 42) * 1.25,
+                    paddingHorizontal: 4,
+                  }}
+                >
                   {content}
                 </Text>
-                <Text style={{ color: c.muted, fontSize: 11 }}>{time}</Text>
+                <View
+                  style={{
+                    marginTop: 2,
+                    marginHorizontal: 4,
+                    backgroundColor: withAlpha(c.muted, 0.25),
+                    borderRadius: 10,
+                    paddingHorizontal: 6,
+                    paddingVertical: 1,
+                  }}
+                >
+                  <Text style={{ color: c.text, opacity: 0.85, fontSize: 11 }}>{time}</Text>
+                </View>
               </View>
             ) : (
               <View style={bubbleStyle}>
@@ -526,8 +579,8 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       <View
                         style={{
                           position: "absolute",
-                          right: 8,
-                          bottom: 8,
+                          right: 10,
+                          bottom: 10,
                           backgroundColor: "rgba(0,0,0,0.5)",
                           borderRadius: 10,
                           paddingHorizontal: 6,
@@ -562,9 +615,10 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     <View>
                       <Text style={{ color: textColor, fontSize: 16, lineHeight: 22 }}>
                         {content}
-                        <Text style={{ color: "transparent", fontSize: 11 }}>
-                          {"\u00A0".repeat(item.isEdited ? 18 : 10)}
-                        </Text>
+                        {/* Місце під час у правому нижньому куті: переноситься разом
+                            з останнім словом, а якщо рядок повний — на новий рядок. */}
+                        {"\u00A0"}
+                        <View style={{ width: item.isEdited ? 66 : 42, height: 1 }} />
                       </Text>
                       <View style={{ position: "absolute", right: 0, bottom: 0 }}>
                         {meta}
@@ -618,6 +672,7 @@ export const SwipeableMessageItem = memo(
     prev.isOwn === next.isOwn &&
     prev.isFirstInSeries === next.isFirstInSeries &&
     prev.isLastInSeries === next.isLastInSeries &&
+    prev.isSelected === next.isSelected &&
     prev.dateLabel === next.dateLabel &&
     prev.item._id === next.item._id &&
     prev.item.content === next.item.content &&
