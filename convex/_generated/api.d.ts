@@ -14,6 +14,8 @@ import type * as messages from "../messages.js";
 import type * as presence from "../presence.js";
 import type * as pushNotifications from "../pushNotifications.js";
 import type * as reads from "../reads.js";
+import type * as roomMedia from "../roomMedia.js";
+import type * as roomSettings from "../roomSettings.js";
 import type * as rooms from "../rooms.js";
 import type * as typing from "../typing.js";
 import type * as users from "../users.js";
@@ -31,6 +33,8 @@ declare const fullApi: ApiFromModules<{
   presence: typeof presence;
   pushNotifications: typeof pushNotifications;
   reads: typeof reads;
+  roomMedia: typeof roomMedia;
+  roomSettings: typeof roomSettings;
   rooms: typeof rooms;
   typing: typeof typing;
   users: typeof users;

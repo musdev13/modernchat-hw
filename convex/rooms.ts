@@ -210,6 +210,91 @@ export const updateParticipantRole = mutation({
   },
 });
 
+export const generateRoomAvatarUploadUrl = mutation(async (ctx) => {
+  const me = await getAuthUser(ctx);
+  if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+  return await ctx.storage.generateUploadUrl();
+});
+
+// Зміна назви, опису та фото кімнати (творець або адміністратор).
+export const updateRoom = mutation({
+  args: {
+    roomId: v.id("chatRooms"),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    avatarStorageId: v.optional(v.id("_storage")),
+    removeAvatar: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = me._id;
+
+    const room = await requireMember(ctx, args.roomId, userId);
+    if (room.creatorId !== userId && !adminIdsOf(room).includes(userId)) {
+      throw new Error("Лише адміністратор може змінювати кімнату");
+    }
+
+    const patch: Record<string, unknown> = {};
+    const notes: string[] = [];
+    const actorName = nameOf(me);
+
+    if (args.title !== undefined) {
+      const title = args.title.trim();
+      if (!title) throw new Error("Назва кімнати не може бути порожньою");
+      if (title.length > 64) throw new Error("Назва задовга (максимум 64 символи)");
+      if (title !== room.title) {
+        patch.title = title;
+        notes.push(`✏️ ${actorName} змінив(ла) назву кімнати на «${title}»`);
+      }
+    }
+
+    if (args.description !== undefined) {
+      const description = args.description.trim();
+      if (description.length > 500) throw new Error("Опис задовгий (максимум 500 символів)");
+      if ((description || undefined) !== room.description) {
+        patch.description = description || undefined;
+      }
+    }
+
+    if (args.avatarStorageId) {
+      const url = await ctx.storage.getUrl(args.avatarStorageId);
+      if (!url) throw new Error("Не вдалося отримати посилання на фото");
+      if (room.avatarStorageId && room.avatarStorageId !== args.avatarStorageId) {
+        await ctx.storage.delete(room.avatarStorageId);
+      }
+      patch.avatarStorageId = args.avatarStorageId;
+      patch.avatarUrl = url;
+      notes.push(`🖼️ ${actorName} змінив(ла) фото кімнати`);
+    } else if (args.removeAvatar && room.avatarStorageId) {
+      await ctx.storage.delete(room.avatarStorageId);
+      patch.avatarStorageId = undefined;
+      patch.avatarUrl = undefined;
+      notes.push(`🖼️ ${actorName} видалив(ла) фото кімнати`);
+    } else if (args.removeAvatar && room.avatarUrl) {
+      patch.avatarUrl = undefined;
+    }
+
+    if (Object.keys(patch).length === 0) return { changed: false };
+
+    if (notes.length > 0) {
+      patch.lastMessage = notes[notes.length - 1];
+      patch.lastMessageAt = Date.now();
+    }
+    await ctx.db.patch(args.roomId, patch);
+    for (const content of notes) {
+      await ctx.db.insert("messages", {
+        chatRoomId: args.roomId,
+        senderId: userId,
+        senderName: "Система",
+        content,
+        isSystem: true,
+      });
+    }
+    return { changed: true };
+  },
+});
+
 export const removeParticipant = mutation({
   args: { roomId: v.id("chatRooms"), targetUserId: v.id("users") },
   handler: async (ctx, args) => {
@@ -262,6 +347,13 @@ export const removeParticipant = mutation({
       )
       .collect();
     for (const read of removedReads) await ctx.db.delete(read._id);
+    const removedSettings = await ctx.db
+      .query("roomSettings")
+      .withIndex("by_user_and_room", (q) =>
+        q.eq("userId", args.targetUserId).eq("chatRoomId", args.roomId),
+      )
+      .collect();
+    for (const setting of removedSettings) await ctx.db.delete(setting._id);
     return { success: true };
   },
 });
@@ -302,6 +394,12 @@ export const deleteRoom = mutation({
       .withIndex("by_room", (q) => q.eq("chatRoomId", args.roomId))
       .collect();
     for (const read of reads) await ctx.db.delete(read._id);
+    const roomSettings = await ctx.db
+      .query("roomSettings")
+      .withIndex("by_room", (q) => q.eq("chatRoomId", args.roomId))
+      .collect();
+    for (const setting of roomSettings) await ctx.db.delete(setting._id);
+    if (room.avatarStorageId) await ctx.storage.delete(room.avatarStorageId);
     await ctx.db.delete(args.roomId);
     return { success: true };
   },

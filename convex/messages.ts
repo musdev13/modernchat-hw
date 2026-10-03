@@ -65,11 +65,19 @@ async function schedulePushForNewMessage(
   );
 
   // ⚠️ Отфильтровываем получателей, которые сейчас сидят в этом же чате
+  // Також пропускаємо тих, хто вимкнув сповіщення цієї кімнати.
   const filtered = await Promise.all(
     recipients.map(async (user: any) => {
       if (!user) return null;
       const inThisChat = await isUserInRoom(ctx, user._id, roomId);
-      return inThisChat ? null : user;
+      if (inThisChat) return null;
+      const setting = await ctx.db
+        .query("roomSettings")
+        .withIndex("by_user_and_room", (q: any) =>
+          q.eq("userId", user._id).eq("chatRoomId", roomId),
+        )
+        .first();
+      return setting?.muted ? null : user;
     }),
   );
 

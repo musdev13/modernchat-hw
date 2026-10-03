@@ -22,6 +22,9 @@ export default defineSchema({
     creatorId: v.id("users"),
     participantIds: v.optional(v.array(v.id("users"))),
     adminIds: v.optional(v.array(v.id("users"))),
+    // Фото кімнати (файл у storage + готове посилання).
+    avatarStorageId: v.optional(v.id("_storage")),
+    avatarUrl: v.optional(v.string()),
     lastMessage: v.optional(v.string()),
     lastMessageAt: v.optional(v.number()),
     // Закріплені повідомлення (порядок закріплення: останнє — найновіше).
@@ -71,6 +74,16 @@ export default defineSchema({
     lastReadAt: v.number(),
   })
     .index("by_user_and_room", ["userId", "chatRoomId"])
+    .index("by_room", ["chatRoomId"]),
+
+  // Налаштування кімнати для конкретного користувача (вимкнені сповіщення).
+  roomSettings: defineTable({
+    userId: v.id("users"),
+    chatRoomId: v.id("chatRooms"),
+    muted: v.boolean(),
+  })
+    .index("by_user_and_room", ["userId", "chatRoomId"])
+    .index("by_user", ["userId"])
     .index("by_room", ["chatRoomId"]),
 
   typingIndicators: defineTable({
