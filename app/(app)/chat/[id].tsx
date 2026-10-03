@@ -1,4 +1,5 @@
 import { EmojiPanel } from "@/components/EmojiPanel";
+import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import type { GifItem } from "@/components/GifPicker";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import {
@@ -145,6 +146,8 @@ export default function ChatRoomScreen() {
   // Фокус у полі пошуку всередині панелі емодзі/GIF/наліпок.
   const [panelSearching, setPanelSearching] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Висота нижнього блоку (поле вводу + панелі відповіді/редагування): повідомлення прокручуються під ним.
+  const [composerHeight, setComposerHeight] = useState(64);
 
   const [inputMode, setInputMode] = useState<"audio" | "video">("audio");
   const [isVideoModalVisible, setIsVideoModalVisible] = useState(false);
@@ -976,8 +979,484 @@ export default function ChatRoomScreen() {
   const islandBlock = insets.top + ISLAND_TOP_GAP + ISLAND_HEIGHT + 6;
 
   return (
+    <GlassProvider>
     <View style={{ flex: 1, backgroundColor: c.wallpaper }}>
-      {/* HEADER — плаваюча капсула «Dynamic Island», поверх списку */}
+      {/* CONTENT + INPUT — внутри KeyboardAvoidingView */}
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior="padding"
+        keyboardVerticalOffset={0}
+        // Коли відкрита панель (клавіатури немає), відступ від клавіатури не потрібен —
+        // інакше між полем вводу і панеллю лишається порожнє місце.
+        enabled={!panelOpen || panelSearching}
+      >
+        <View className="flex-1">
+          <GlassTarget
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: c.wallpaper,
+            }}
+          >
+          <FlatList
+            ref={flatListRef}
+            data={rows}
+            extraData={actionMessage?._id}
+            keyExtractor={(row) => row.item._id}
+            inverted={true}
+            // paddingTop інвертованого списку = низ екрана: повідомлення їдуть під поле вводу
+            contentContainerStyle={{ paddingTop: composerHeight + 8, paddingBottom: islandBlock }}
+            renderItem={renderMessageItem}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.5}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+            onScrollBeginDrag={() => {
+              if (panelOpen) setPanelOpen(false);
+            }}
+            ListHeaderComponent={
+              typingUsers && typingUsers.length > 0 ? (
+                <TypingDots typingUsers={typingUsers} />
+              ) : null
+            }
+            ListFooterComponent={
+              status === "LoadingMore" ? (
+                <View className="py-3">
+                  <ActivityIndicator size="small" color={c.accent} />
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={renderListEmpty}
+            initialNumToRender={15}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            removeClippedSubviews={Platform.OS === "android"}
+          />
+          </GlassTarget>
+
+          {toast && (
+            <Animated.View
+              entering={FadeIn.duration(150)}
+              exiting={FadeOut.duration(150)}
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                top: islandBlock + 4,
+                alignSelf: "center",
+                backgroundColor: withAlpha("#000000", 0.7),
+                borderRadius: 16,
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+              }}
+            >
+              <Text style={{ color: "#FFFFFF", fontSize: 13 }}>{toast}</Text>
+            </Animated.View>
+          )}
+
+          {showScrollToBottom && (
+            <Animated.View
+              entering={ZoomIn.springify()}
+              exiting={ZoomOut.duration(150)}
+              style={{ position: "absolute", right: 12, bottom: composerHeight + 12 }}
+            >
+              <TouchableOpacity
+                onPress={scrollToBottom}
+                accessibilityRole="button"
+                accessibilityLabel="Прокрутити донизу"
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  backgroundColor: c.header,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: c.divider,
+                  elevation: 4,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.25,
+                  shadowRadius: 4,
+                  shadowOffset: { width: 0, height: 2 },
+                }}
+              >
+                <Ionicons name="chevron-down" size={22} color={c.accent} />
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          {/* Нижній блок поверх списку: повідомлення прокручуються під скляним полем вводу */}
+          <View
+            style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}
+            onLayout={(e) => {
+              const h = Math.round(e.nativeEvent.layout.height);
+              setComposerHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
+            }}
+          >
+            {replyTarget && (
+              <ReplyPreviewBar
+                replyTarget={replyTarget}
+                onCancel={() => setReplyTarget(null)}
+              />
+            )}
+
+            {editingMessage && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: c.header,
+                  borderTopWidth: 1,
+                  borderTopColor: c.divider,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Ionicons name="create-outline" size={22} color={c.accent} />
+                <View
+                  style={{
+                    flex: 1,
+                    marginLeft: 12,
+                    paddingLeft: 8,
+                    borderLeftWidth: 2,
+                    borderLeftColor: c.accent,
+                  }}
+                >
+                  <Text style={{ color: c.accent, fontWeight: "700", fontSize: 13 }}>
+                    Редагування
+                  </Text>
+                  <Text numberOfLines={1} style={{ color: c.muted, fontSize: 13 }}>
+                    {editingMessage.content}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={cancelEdit}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Скасувати редагування"
+                >
+                  <Ionicons name="close" size={22} color={c.muted} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {selectedImageUri && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: c.header,
+                  borderTopWidth: 1,
+                  borderTopColor: c.divider,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Image
+                  source={{ uri: selectedImageUri }}
+                  style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12 }}
+                />
+                <Text style={{ color: c.text, fontSize: 14, flex: 1 }}>
+                  Фото прикріплено
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setSelectedImageUri(null)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Прибрати фото"
+                >
+                  <Ionicons name="close" size={22} color={c.muted} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {isRecording ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "transparent",
+                  paddingHorizontal: 10,
+                  paddingTop: 6,
+                  paddingBottom: composerBottomPadding,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={handleCancelVoice}
+                  style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Скасувати запис"
+                >
+                  <Ionicons name="trash-outline" size={24} color={c.danger} />
+                </TouchableOpacity>
+
+                <GlassSurface
+                  radius={22}
+                  intensity={70}
+                  style={{ flex: 1, height: 44, marginHorizontal: 6 }}
+                  contentStyle={{ flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 14 }}
+                >
+                  <View
+                    style={{
+                      width: 9,
+                      height: 9,
+                      borderRadius: 5,
+                      backgroundColor: c.danger,
+                      marginRight: 8,
+                    }}
+                  />
+
+                  <Text
+                    style={{
+                      color: c.text,
+                      fontSize: 14,
+                      fontWeight: "700",
+                      marginRight: 12,
+                      minWidth: 38,
+                    }}
+                  >
+                    {formatRecordingTime(durationMillis)}
+                  </Text>
+
+                  <View
+                    className="flex-1 flex-row items-center justify-between"
+                    style={{ height: WAVEFORM_LIVE_HEIGHT }}
+                  >
+                    {liveAmplitudes.length === 0
+                      ? Array.from({ length: 20 }, (_, i) => (
+                          <View
+                            key={`empty-${i}`}
+                            style={{
+                              width: 2.5,
+                              height: LIVE_MIN_BAR_HEIGHT,
+                              borderRadius: 2,
+                              backgroundColor: withAlpha(c.muted, 0.5),
+                            }}
+                          />
+                        ))
+                      : liveAmplitudes.map((amp, idx) => (
+                          <View
+                            key={idx}
+                            style={{
+                              width: 2.5,
+                              height: Math.max(
+                                LIVE_MIN_BAR_HEIGHT,
+                                amp * WAVEFORM_LIVE_HEIGHT,
+                              ),
+                              borderRadius: 2,
+                              backgroundColor: c.accent,
+                            }}
+                          />
+                        ))}
+                  </View>
+                </GlassSurface>
+
+                <TouchableOpacity
+                  onPress={handleSendVoice}
+                  disabled={isSubmitting}
+                  accessibilityRole="button"
+                  accessibilityLabel="Надіслати голосове"
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: c.accent,
+                    opacity: isSubmitting ? 0.5 : 1,
+                  }}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator size="small" color={c.onAccent} />
+                  ) : (
+                    <Ionicons name="send" size={20} color={c.onAccent} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-end",
+                  backgroundColor: "transparent",
+                  paddingHorizontal: 10,
+                  paddingTop: 6,
+                  paddingBottom: composerBottomPadding,
+                }}
+              >
+                <GlassSurface
+                  radius={22}
+                  intensity={70}
+                  style={{ flex: 1, minHeight: 44 }}
+                  contentStyle={{ flexDirection: "row", alignItems: "flex-end", minHeight: 44 }}
+                >
+                  <TouchableOpacity
+                    onPress={togglePanel}
+                    style={iconButtonStyle}
+                    accessibilityRole="button"
+                    accessibilityLabel={panelOpen ? "Показати клавіатуру" : "Емодзі, GIF та наліпки"}
+                  >
+                    <Ionicons
+                      name={panelOpen ? "keypad-outline" : "happy-outline"}
+                      size={26}
+                      color={panelOpen ? c.accent : c.muted}
+                    />
+                  </TouchableOpacity>
+
+                  <TextInput
+                    ref={inputRef}
+                    style={{
+                      flex: 1,
+                      color: c.text,
+                      fontSize: 16,
+                      maxHeight: 120,
+                      paddingVertical: 10,
+                      paddingHorizontal: 2,
+                    }}
+                    placeholder={
+                      editingMessageId
+                        ? "Змініть текст..."
+                        : replyTarget
+                          ? `Відповідь для ${replyTarget.senderName}...`
+                          : selectedImageUri
+                            ? "Додайте підпис до фото..."
+                            : "Повідомлення"
+                    }
+                    placeholderTextColor={c.muted}
+                    value={inputText}
+                    onChangeText={handleTextChange}
+                    selection={selection}
+                    onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
+                    onFocus={() => {
+                      // Клавіатура вже відкрита (напр. пошук у панелі) — одразу повертаємось до неї.
+                      if (keyboardVisibleRef.current) setPanelOpen(false);
+                    }}
+                    selectionColor={c.accent}
+                    multiline
+                  />
+
+                  <TouchableOpacity
+                    onPress={pickImage}
+                    disabled={isSubmitting}
+                    style={iconButtonStyle}
+                    accessibilityRole="button"
+                    accessibilityLabel="Прикріпити фото"
+                  >
+                    <Ionicons name="attach" size={26} color={c.muted} />
+                  </TouchableOpacity>
+                </GlassSurface>
+
+                <View style={{ marginLeft: 8 }}>
+                  {showSendButton ? (
+                    <Animated.View style={sendButtonAnimatedStyle}>
+                      <TouchableOpacity
+                        onPress={handleSend}
+                        onPressIn={() => {
+                          sendButtonScale.value = withSpring(0.86);
+                        }}
+                        onPressOut={() => {
+                          sendButtonScale.value = withSpring(1);
+                        }}
+                        disabled={sendDisabled}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          editingMessageId ? "Зберегти зміни" : "Надіслати"
+                        }
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 22,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: c.accent,
+                          opacity: sendDisabled ? 0.5 : 1,
+                        }}
+                      >
+                        {isSubmitting ? (
+                          <ActivityIndicator size="small" color={c.onAccent} />
+                        ) : (
+                          <Ionicons
+                            name={editingMessageId ? "checkmark" : "send"}
+                            size={20}
+                            color={c.onAccent}
+                            style={editingMessageId ? undefined : { marginLeft: 2 }}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    </Animated.View>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={handleMicPress}
+                      onLongPress={handleMicLongPress}
+                      delayLongPress={300}
+                      disabled={isSubmitting}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        inputMode === "video"
+                          ? "Записати відеокружечок"
+                          : "Записати голосове"
+                      }
+                      accessibilityHint="Довге натискання перемикає голосове та відеокружечок"
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: c.accent,
+                      }}
+                    >
+                      <Ionicons
+                        name={inputMode === "video" ? "videocam" : "mic"}
+                        size={22}
+                        color={c.onAccent}
+                      />
+                      {/* Невеликий значок підказує, що режим можна перемкнути довгим натисканням */}
+                      <View
+                        style={{
+                          position: "absolute",
+                          right: -2,
+                          top: -2,
+                          width: 16,
+                          height: 16,
+                          borderRadius: 8,
+                          backgroundColor: c.header,
+                          borderWidth: 1,
+                          borderColor: c.divider,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Ionicons
+                          name="swap-horizontal"
+                          size={10}
+                          color={c.accent}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {panelOpen && !isRecording && (
+          <EmojiPanel
+            height={panelHeight}
+            bottomInset={panelSearching ? 0 : insets.bottom}
+            onSelectEmoji={handleInsertEmoji}
+            onBackspace={handleEmojiBackspace}
+            onSelectGif={handleSendGif}
+            onSearchFocusChange={handlePanelSearchFocus}
+          />
+        )}
+      </KeyboardAvoidingView>
+
+      {/* HEADER — плаваюча скляна капсула «Dynamic Island» (розмиття), поверх списку */}
       <View
         pointerEvents="box-none"
         style={{
@@ -988,27 +1467,22 @@ export default function ChatRoomScreen() {
           zIndex: 30,
         }}
       >
-        <Animated.View
+        <GlassSurface
+          radius={999}
+          intensity={75}
           style={[
             {
               marginTop: insets.top + ISLAND_TOP_GAP,
               marginHorizontal: ISLAND_SIDE_MARGIN,
-              borderRadius: 999,
-              backgroundColor: withAlpha(c.header, 0.96),
-              borderWidth: 1,
-              borderColor: withAlpha(c.muted, 0.18),
-              flexDirection: "row",
-              alignItems: "center",
-              paddingHorizontal: 4,
-              overflow: "hidden",
-              elevation: 8,
-              shadowColor: "#000",
-              shadowOpacity: 0.3,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 4 },
             },
             islandStyle,
           ]}
+          contentStyle={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 4,
+          }}
         >
           <TouchableOpacity
             onPress={() => router.back()}
@@ -1071,486 +1545,8 @@ export default function ChatRoomScreen() {
           >
             <Ionicons name="ellipsis-vertical" size={20} color={c.muted} />
           </TouchableOpacity>
-        </Animated.View>
+        </GlassSurface>
       </View>
-
-      {/* CONTENT + INPUT — внутри KeyboardAvoidingView */}
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior="padding"
-        keyboardVerticalOffset={0}
-        // Коли відкрита панель (клавіатури немає), відступ від клавіатури не потрібен —
-        // інакше між полем вводу і панеллю лишається порожнє місце.
-        enabled={!panelOpen || panelSearching}
-      >
-        <View className="flex-1">
-          <FlatList
-            ref={flatListRef}
-            data={rows}
-            extraData={actionMessage?._id}
-            keyExtractor={(row) => row.item._id}
-            inverted={true}
-            contentContainerStyle={{ paddingTop: 8, paddingBottom: islandBlock }}
-            renderItem={renderMessageItem}
-            onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.5}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            keyboardShouldPersistTaps="handled"
-            onScrollBeginDrag={() => {
-              if (panelOpen) setPanelOpen(false);
-            }}
-            ListHeaderComponent={
-              typingUsers && typingUsers.length > 0 ? (
-                <TypingDots typingUsers={typingUsers} />
-              ) : null
-            }
-            ListFooterComponent={
-              status === "LoadingMore" ? (
-                <View className="py-3">
-                  <ActivityIndicator size="small" color={c.accent} />
-                </View>
-              ) : null
-            }
-            ListEmptyComponent={renderListEmpty}
-            initialNumToRender={15}
-            maxToRenderPerBatch={10}
-            windowSize={10}
-            removeClippedSubviews={Platform.OS === "android"}
-          />
-
-          {toast && (
-            <Animated.View
-              entering={FadeIn.duration(150)}
-              exiting={FadeOut.duration(150)}
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: islandBlock + 4,
-                alignSelf: "center",
-                backgroundColor: withAlpha("#000000", 0.7),
-                borderRadius: 16,
-                paddingHorizontal: 14,
-                paddingVertical: 7,
-              }}
-            >
-              <Text style={{ color: "#FFFFFF", fontSize: 13 }}>{toast}</Text>
-            </Animated.View>
-          )}
-
-          {showScrollToBottom && (
-            <Animated.View
-              entering={ZoomIn.springify()}
-              exiting={ZoomOut.duration(150)}
-              style={{ position: "absolute", right: 12, bottom: 12 }}
-            >
-              <TouchableOpacity
-                onPress={scrollToBottom}
-                accessibilityRole="button"
-                accessibilityLabel="Прокрутити донизу"
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 21,
-                  backgroundColor: c.header,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: c.divider,
-                  elevation: 4,
-                  shadowColor: "#000",
-                  shadowOpacity: 0.25,
-                  shadowRadius: 4,
-                  shadowOffset: { width: 0, height: 2 },
-                }}
-              >
-                <Ionicons name="chevron-down" size={22} color={c.accent} />
-              </TouchableOpacity>
-            </Animated.View>
-          )}
-        </View>
-
-        {replyTarget && (
-          <ReplyPreviewBar
-            replyTarget={replyTarget}
-            onCancel={() => setReplyTarget(null)}
-          />
-        )}
-
-        {editingMessage && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: c.header,
-              borderTopWidth: 1,
-              borderTopColor: c.divider,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-            }}
-          >
-            <Ionicons name="create-outline" size={22} color={c.accent} />
-            <View
-              style={{
-                flex: 1,
-                marginLeft: 12,
-                paddingLeft: 8,
-                borderLeftWidth: 2,
-                borderLeftColor: c.accent,
-              }}
-            >
-              <Text style={{ color: c.accent, fontWeight: "700", fontSize: 13 }}>
-                Редагування
-              </Text>
-              <Text numberOfLines={1} style={{ color: c.muted, fontSize: 13 }}>
-                {editingMessage.content}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={cancelEdit}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Скасувати редагування"
-            >
-              <Ionicons name="close" size={22} color={c.muted} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {selectedImageUri && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: c.header,
-              borderTopWidth: 1,
-              borderTopColor: c.divider,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-            }}
-          >
-            <Image
-              source={{ uri: selectedImageUri }}
-              style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12 }}
-            />
-            <Text style={{ color: c.text, fontSize: 14, flex: 1 }}>
-              Фото прикріплено
-            </Text>
-            <TouchableOpacity
-              onPress={() => setSelectedImageUri(null)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Прибрати фото"
-            >
-              <Ionicons name="close" size={22} color={c.muted} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {isRecording ? (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: "transparent",
-              paddingHorizontal: 10,
-              paddingTop: 6,
-              paddingBottom: composerBottomPadding,
-            }}
-          >
-            <TouchableOpacity
-              onPress={handleCancelVoice}
-              style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
-              accessibilityRole="button"
-              accessibilityLabel="Скасувати запис"
-            >
-              <Ionicons name="trash-outline" size={24} color={c.danger} />
-            </TouchableOpacity>
-
-            <View
-              style={{
-                flex: 1,
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: withAlpha(c.header, 0.96),
-                borderWidth: 1,
-                borderColor: withAlpha(c.muted, 0.18),
-                elevation: 4,
-                shadowColor: "#000",
-                shadowOpacity: 0.18,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 2 },
-                borderRadius: 22,
-                paddingHorizontal: 14,
-                height: 44,
-                marginHorizontal: 6,
-              }}
-            >
-              <View
-                style={{
-                  width: 9,
-                  height: 9,
-                  borderRadius: 5,
-                  backgroundColor: c.danger,
-                  marginRight: 8,
-                }}
-              />
-
-              <Text
-                style={{
-                  color: c.text,
-                  fontSize: 14,
-                  fontWeight: "700",
-                  marginRight: 12,
-                  minWidth: 38,
-                }}
-              >
-                {formatRecordingTime(durationMillis)}
-              </Text>
-
-              <View
-                className="flex-1 flex-row items-center justify-between"
-                style={{ height: WAVEFORM_LIVE_HEIGHT }}
-              >
-                {liveAmplitudes.length === 0
-                  ? Array.from({ length: 20 }, (_, i) => (
-                      <View
-                        key={`empty-${i}`}
-                        style={{
-                          width: 2.5,
-                          height: LIVE_MIN_BAR_HEIGHT,
-                          borderRadius: 2,
-                          backgroundColor: withAlpha(c.muted, 0.5),
-                        }}
-                      />
-                    ))
-                  : liveAmplitudes.map((amp, idx) => (
-                      <View
-                        key={idx}
-                        style={{
-                          width: 2.5,
-                          height: Math.max(
-                            LIVE_MIN_BAR_HEIGHT,
-                            amp * WAVEFORM_LIVE_HEIGHT,
-                          ),
-                          borderRadius: 2,
-                          backgroundColor: c.accent,
-                        }}
-                      />
-                    ))}
-              </View>
-            </View>
-
-            <TouchableOpacity
-              onPress={handleSendVoice}
-              disabled={isSubmitting}
-              accessibilityRole="button"
-              accessibilityLabel="Надіслати голосове"
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: c.accent,
-                opacity: isSubmitting ? 0.5 : 1,
-              }}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator size="small" color={c.onAccent} />
-              ) : (
-                <Ionicons name="send" size={20} color={c.onAccent} />
-              )}
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "flex-end",
-              backgroundColor: "transparent",
-              paddingHorizontal: 10,
-              paddingTop: 6,
-              paddingBottom: composerBottomPadding,
-            }}
-          >
-            <View
-              style={{
-                flex: 1,
-                flexDirection: "row",
-                alignItems: "flex-end",
-                backgroundColor: withAlpha(c.header, 0.96),
-                borderWidth: 1,
-                borderColor: withAlpha(c.muted, 0.18),
-                elevation: 4,
-                shadowColor: "#000",
-                shadowOpacity: 0.18,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 2 },
-                borderRadius: 22,
-                minHeight: 44,
-              }}
-            >
-              <TouchableOpacity
-                onPress={togglePanel}
-                style={iconButtonStyle}
-                accessibilityRole="button"
-                accessibilityLabel={panelOpen ? "Показати клавіатуру" : "Емодзі, GIF та наліпки"}
-              >
-                <Ionicons
-                  name={panelOpen ? "keypad-outline" : "happy-outline"}
-                  size={26}
-                  color={panelOpen ? c.accent : c.muted}
-                />
-              </TouchableOpacity>
-
-              <TextInput
-                ref={inputRef}
-                style={{
-                  flex: 1,
-                  color: c.text,
-                  fontSize: 16,
-                  maxHeight: 120,
-                  paddingVertical: 10,
-                  paddingHorizontal: 2,
-                }}
-                placeholder={
-                  editingMessageId
-                    ? "Змініть текст..."
-                    : replyTarget
-                      ? `Відповідь для ${replyTarget.senderName}...`
-                      : selectedImageUri
-                        ? "Додайте підпис до фото..."
-                        : "Повідомлення"
-                }
-                placeholderTextColor={c.muted}
-                value={inputText}
-                onChangeText={handleTextChange}
-                selection={selection}
-                onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
-                onFocus={() => {
-                  // Клавіатура вже відкрита (напр. пошук у панелі) — одразу повертаємось до неї.
-                  if (keyboardVisibleRef.current) setPanelOpen(false);
-                }}
-                selectionColor={c.accent}
-                multiline
-              />
-
-              <TouchableOpacity
-                onPress={pickImage}
-                disabled={isSubmitting}
-                style={iconButtonStyle}
-                accessibilityRole="button"
-                accessibilityLabel="Прикріпити фото"
-              >
-                <Ionicons name="attach" size={26} color={c.muted} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ marginLeft: 8 }}>
-              {showSendButton ? (
-                <Animated.View style={sendButtonAnimatedStyle}>
-                  <TouchableOpacity
-                    onPress={handleSend}
-                    onPressIn={() => {
-                      sendButtonScale.value = withSpring(0.86);
-                    }}
-                    onPressOut={() => {
-                      sendButtonScale.value = withSpring(1);
-                    }}
-                    disabled={sendDisabled}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      editingMessageId ? "Зберегти зміни" : "Надіслати"
-                    }
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 22,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: c.accent,
-                      opacity: sendDisabled ? 0.5 : 1,
-                    }}
-                  >
-                    {isSubmitting ? (
-                      <ActivityIndicator size="small" color={c.onAccent} />
-                    ) : (
-                      <Ionicons
-                        name={editingMessageId ? "checkmark" : "send"}
-                        size={20}
-                        color={c.onAccent}
-                        style={editingMessageId ? undefined : { marginLeft: 2 }}
-                      />
-                    )}
-                  </TouchableOpacity>
-                </Animated.View>
-              ) : (
-                <TouchableOpacity
-                  onPress={handleMicPress}
-                  onLongPress={handleMicLongPress}
-                  delayLongPress={300}
-                  disabled={isSubmitting}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    inputMode === "video"
-                      ? "Записати відеокружечок"
-                      : "Записати голосове"
-                  }
-                  accessibilityHint="Довге натискання перемикає голосове та відеокружечок"
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: c.accent,
-                  }}
-                >
-                  <Ionicons
-                    name={inputMode === "video" ? "videocam" : "mic"}
-                    size={22}
-                    color={c.onAccent}
-                  />
-                  {/* Невеликий значок підказує, що режим можна перемкнути довгим натисканням */}
-                  <View
-                    style={{
-                      position: "absolute",
-                      right: -2,
-                      top: -2,
-                      width: 16,
-                      height: 16,
-                      borderRadius: 8,
-                      backgroundColor: c.header,
-                      borderWidth: 1,
-                      borderColor: c.divider,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons
-                      name="swap-horizontal"
-                      size={10}
-                      color={c.accent}
-                    />
-                  </View>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        )}
-
-        {panelOpen && !isRecording && (
-          <EmojiPanel
-            height={panelHeight}
-            bottomInset={panelSearching ? 0 : insets.bottom}
-            onSelectEmoji={handleInsertEmoji}
-            onBackspace={handleEmojiBackspace}
-            onSelectGif={handleSendGif}
-            onSearchFocusChange={handlePanelSearchFocus}
-          />
-        )}
-      </KeyboardAvoidingView>
 
       <ImageViewerModal
         visible={!!fullscreenImage}
@@ -1595,5 +1591,6 @@ export default function ChatRoomScreen() {
         onSendVideo={handleSendVideo}
       />
     </View>
+    </GlassProvider>
   );
 }

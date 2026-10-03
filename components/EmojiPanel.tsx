@@ -1,6 +1,7 @@
 import { EMOJI_CATEGORIES, type EmojiCategoryId } from "@/constants/emoji";
 import { searchEmojis } from "@/constants/emojiKeywords";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
+import { GlassProvider, GlassSurface, GlassTarget } from "./Glass";
 import { useRecentEmojis } from "@/hooks/useRecentEmojis";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -180,6 +181,7 @@ export function EmojiPanel({
   );
 
   return (
+    <GlassProvider>
     <View
       style={{
         height,
@@ -287,8 +289,8 @@ export function EmojiPanel({
         </ScrollView>
       </View>
 
-      {/* Контент */}
-      <View style={{ flex: 1 }}>
+      {/* Контент (його розмиває скляний перемикач) */}
+      <GlassTarget style={{ flex: 1, backgroundColor: c.sheet }}>
         {mode === "emoji" ? (
           emojiData.length === 0 ? (
             trimmedQuery ? (
@@ -323,7 +325,7 @@ export function EmojiPanel({
             onSelect={(gif) => onSelectGif?.(gif)}
           />
         )}
-      </View>
+      </GlassTarget>
 
       {/* Плаваючий перемикач і ⌫ — приховуємо, поки відкрита клавіатура пошуку */}
       {!searchFocused && (
@@ -339,21 +341,11 @@ export function EmojiPanel({
                 alignItems: "center",
               }}
             >
-              <View
-                style={{
-                  flexDirection: "row",
-                  height: SWITCH_HEIGHT,
-                  borderRadius: SWITCH_HEIGHT / 2,
-                  padding: 3,
-                  backgroundColor: withAlpha(c.field, 0.97),
-                  borderWidth: 1,
-                  borderColor: withAlpha(c.muted, 0.2),
-                  elevation: 4,
-                  shadowColor: "#000",
-                  shadowOpacity: 0.2,
-                  shadowRadius: 6,
-                  shadowOffset: { width: 0, height: 2 },
-                }}
+              <GlassSurface
+                radius={SWITCH_HEIGHT / 2}
+                intensity={60}
+                style={{ height: SWITCH_HEIGHT }}
+                contentStyle={{ flexDirection: "row", height: SWITCH_HEIGHT, padding: 3 }}
               >
                 {MODES.map((m) => {
                   const active = m.id === mode;
@@ -384,36 +376,40 @@ export function EmojiPanel({
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </GlassSurface>
             </View>
           )}
 
           {onBackspace && mode === "emoji" && (
-            <TouchableOpacity
-              onPress={onBackspace}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel="Видалити символ"
-              style={{
-                position: "absolute",
-                right: 12,
-                bottom: floatingBottom,
-                width: SWITCH_HEIGHT,
-                height: SWITCH_HEIGHT,
-                borderRadius: SWITCH_HEIGHT / 2,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: withAlpha(c.field, 0.97),
-                borderWidth: 1,
-                borderColor: withAlpha(c.muted, 0.2),
-                elevation: 4,
-              }}
+            <View
+              pointerEvents="box-none"
+              style={{ position: "absolute", right: 12, bottom: floatingBottom }}
             >
-              <Ionicons name="backspace-outline" size={20} color={c.muted} />
-            </TouchableOpacity>
+              <GlassSurface
+                radius={SWITCH_HEIGHT / 2}
+                intensity={60}
+                style={{ width: SWITCH_HEIGHT, height: SWITCH_HEIGHT }}
+                contentStyle={{ flex: 1 }}
+              >
+                <TouchableOpacity
+                  onPress={onBackspace}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Видалити символ"
+                  style={{
+                    flex: 1,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="backspace-outline" size={20} color={c.muted} />
+                </TouchableOpacity>
+              </GlassSurface>
+            </View>
           )}
         </>
       )}
     </View>
+    </GlassProvider>
   );
 }
