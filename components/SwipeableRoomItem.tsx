@@ -1,14 +1,14 @@
+import { TG, avatarColor, initialsOf } from "@/constants/theme";
+import { Id } from "@/convex/_generated/dataModel";
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { View, Text, TouchableOpacity } from "react-native";
-import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  useSharedValue,
   useAnimatedStyle,
+  useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/theme";
-import { Id } from "@/convex/_generated/dataModel";
 
 interface RoomData {
   _id: Id<"chatRooms">;
@@ -26,7 +26,20 @@ interface SwipeableRoomItemProps {
   onDelete: (roomId: Id<"chatRooms">) => void;
 }
 
-const ACTION_WIDTH = 80;
+const ACTION_WIDTH = 88;
+
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  const diffDays = (now.getTime() - ts) / 86400000;
+  if (diffDays < 7) {
+    return d.toLocaleDateString("uk-UA", { weekday: "short" });
+  }
+  return d.toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" });
+}
 
 export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   room,
@@ -52,12 +65,10 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-10, 10])
+    .failOffsetY([-10, 10])
     .onUpdate((event) => {
       if (event.translationX <= 0) {
-        translateX.value = Math.max(
-          event.translationX,
-          -ACTION_WIDTH - 20
-        );
+        translateX.value = Math.max(event.translationX, -ACTION_WIDTH - 20);
       } else {
         translateX.value = event.translationX * 0.15;
       }
@@ -81,40 +92,53 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   }));
 
   const animatedIconStyle = useAnimatedStyle(() => {
-    const progress = Math.min(
-      Math.abs(translateX.value) / ACTION_WIDTH,
-      1
-    );
+    const progress = Math.min(Math.abs(translateX.value) / ACTION_WIDTH, 1);
 
     return {
       opacity: progress,
-      transform: [
-        {
-          scale: 0.6 + 0.4 * progress,
-        },
-      ],
+      transform: [{ scale: 0.6 + 0.4 * progress }],
     };
   });
 
   return (
-    <View className="relative overflow-hidden rounded-2xl mb-3">
-      <View className="absolute inset-0 bg-danger rounded-2xl flex-row justify-end items-center pr-5">
+    <View style={{ backgroundColor: TG.bg, overflow: "hidden" }}>
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          right: 0,
+          left: 0,
+          backgroundColor: TG.danger,
+          flexDirection: "row",
+          justifyContent: "flex-end",
+          alignItems: "center",
+        }}
+      >
         <TouchableOpacity
           onPress={handleDeletePress}
           activeOpacity={0.8}
-          className="items-center justify-center h-full px-2"
+          style={{
+            width: ACTION_WIDTH,
+            height: "100%",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
         >
-          <Animated.View
-            style={animatedIconStyle}
-            className="items-center"
-          >
+          <Animated.View style={[{ alignItems: "center" }, animatedIconStyle]}>
             <Ionicons
-              name="trash-outline"
+              name={isCreator ? "trash-outline" : "exit-outline"}
               size={24}
               color="#FFFFFF"
             />
-
-            <Text className="text-white text-[11px] font-bold mt-1">
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: 12,
+                fontWeight: "700",
+                marginTop: 2,
+              }}
+            >
               {isCreator ? "Видалити" : "Покинути"}
             </Text>
           </Animated.View>
@@ -122,7 +146,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
       </View>
 
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={animatedCardStyle}>
+        <Animated.View style={[{ backgroundColor: TG.bg }, animatedCardStyle]}>
           <TouchableOpacity
             onPress={() => {
               if (translateX.value !== 0) {
@@ -131,75 +155,100 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                 onPress();
               }
             }}
-            activeOpacity={0.9}
-            className="bg-secondary border border-surfaceLight rounded-2xl p-4 flex-row items-center justify-between"
+            onLongPress={() => onDelete(room._id)}
+            delayLongPress={450}
+            activeOpacity={0.7}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 14,
+              paddingVertical: 9,
+            }}
           >
-            <View className="flex-row items-center flex-1 mr-3">
-              <View className="w-12 h-12 rounded-xl bg-surfaceLight items-center justify-center mr-3.5">
-                <Ionicons
-                  name="chatbubbles"
-                  size={22}
-                  color={COLORS.primary}
-                />
-              </View>
+            <View
+              style={{
+                width: 54,
+                height: 54,
+                borderRadius: 27,
+                backgroundColor: avatarColor(room.title),
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
+              }}
+            >
+              <Text style={{ color: "#FFFFFF", fontSize: 20, fontWeight: "700" }}>
+                {initialsOf(room.title)}
+              </Text>
+            </View>
 
-              <View className="flex-1">
-                <View className="flex-row items-center gap-1.5">
+            <View style={{ flex: 1 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    flex: 1,
+                    marginRight: 8,
+                  }}
+                >
                   <Text
-                    className="text-white text-base font-bold flex-shrink"
                     numberOfLines={1}
+                    style={{
+                      color: TG.text,
+                      fontSize: 16,
+                      fontWeight: "700",
+                      flexShrink: 1,
+                    }}
                   >
                     {room.title}
                   </Text>
-
                   {isCreator && (
-                    <View className="bg-primary/20 px-1.5 py-0.5 rounded">
-                      <Text className="text-primary text-[10px] font-semibold">
-                        автор
-                      </Text>
-                    </View>
+                    <Ionicons
+                      name="ribbon-outline"
+                      size={14}
+                      color={TG.accent}
+                      style={{ marginLeft: 6 }}
+                    />
                   )}
                 </View>
 
-                {room.lastMessage ? (
-                  <Text
-                    className="text-textMuted text-xs mt-1"
-                    numberOfLines={1}
-                  >
-                    {room.lastMessage}
+                {room.lastMessageAt ? (
+                  <Text style={{ color: TG.muted, fontSize: 12 }}>
+                    {formatTime(room.lastMessageAt)}
                   </Text>
-                ) : (
-                  <Text
-                    className="text-textMuted/60 text-xs italic mt-1"
-                    numberOfLines={1}
-                  >
-                    {room.description || "Повідомлень ще немає"}
-                  </Text>
-                )}
+                ) : null}
               </View>
-            </View>
 
-            <View className="items-end">
-              {room.lastMessageAt ? (
-                <Text className="text-textMuted text-[10px] mb-1">
-                  {new Date(
-                    room.lastMessageAt
-                  ).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              ) : null}
-
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={COLORS.textMuted}
-              />
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: TG.muted,
+                  fontSize: 14,
+                  marginTop: 3,
+                  fontStyle: room.lastMessage ? "normal" : "italic",
+                }}
+              >
+                {room.lastMessage || room.description || "Повідомлень ще немає"}
+              </Text>
             </View>
           </TouchableOpacity>
+
+          <View
+            style={{
+              height: StyleSheet.hairlineWidth,
+              backgroundColor: TG.divider,
+              marginLeft: 80,
+            }}
+          />
         </Animated.View>
       </GestureDetector>
     </View>
   );
 };
+
