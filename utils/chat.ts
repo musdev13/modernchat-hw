@@ -140,3 +140,15 @@ export function deleteLastGrapheme(prefix: string): string {
   }
   return chars.join("");
 }
+
+/**
+ * Giphy-наліпки надсилаються як звичайні повідомлення-зображення; щоб відрізнити їх від GIF без змін на бекенді,
+ * підпис (caption) починається з невидимого маркера.
+ */
+export const STICKER_MARK = "\u2063\u2063";
+export const STICKER_LABEL = "Наліпка";
+export const STICKER_CAPTION = STICKER_MARK + STICKER_LABEL;
+
+export function isStickerContent(content?: string | null): boolean {
+  return !!content && content.startsWith(STICKER_MARK);
+}

@@ -1,7 +1,7 @@
 import { avatarColor, initialsOf } from "@/constants/theme";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
-import { emojiOnlyCount, formatTime } from "@/utils/chat";
+import { emojiOnlyCount, formatTime, isStickerContent } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
@@ -68,6 +68,7 @@ interface SwipeableMessageItemProps {
 const SWIPE_THRESHOLD = 50;
 const IMAGE_WIDTH = 240;
 const AVATAR_SIZE = 34;
+const STICKER_SIZE = 140;
 
 /** Зображення з пропорціями оригіналу (також анімовані GIF). */
 function ChatImage({ uri }: { uri: string }) {
@@ -88,6 +89,21 @@ function ChatImage({ uri }: { uri: string }) {
           setRatio(Math.min(1.8, Math.max(0.6, width / height)));
         }
       }}
+    />
+  );
+}
+
+/** Наліпка: маленька, без рамки та фону. */
+function StickerImage({ uri }: { uri: string }) {
+  return (
+    <Image
+      source={{ uri }}
+      style={{
+        width: STICKER_SIZE,
+        height: STICKER_SIZE,
+        backgroundColor: "transparent",
+      }}
+      contentFit="contain"
     />
   );
 }
@@ -237,7 +253,9 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   const hasVoice = !!item.audioUrl;
   const hasImage = !!item.imageUrl;
   const hasReactions = !!(item.reactions && item.reactions.length > 0);
-  const content = item.content?.trim() ? item.content : "";
+  const isSticker =
+    hasImage && !hasVideoNote && !hasVoice && isStickerContent(item.content);
+  const content = isSticker ? "" : item.content?.trim() ? item.content : "";
   const hasText = content.length > 0;
 
   // «Чистий» кружок — без бульбашки.
@@ -355,6 +373,84 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                 onToggleReaction={onToggleReaction}
                 timeLabel={time}
               />
+            ) : isSticker ? (
+              <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
+                {!isOwn && isFirstInSeries && (
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      color: avatarColor(item.senderName),
+                      fontWeight: "700",
+                      fontSize: 13,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {item.senderName}
+                  </Text>
+                )}
+
+                {item.replyToSender ? (
+                  <View
+                    style={{
+                      maxWidth: 220,
+                      marginBottom: 3,
+                      paddingLeft: 8,
+                      paddingRight: 8,
+                      paddingVertical: 3,
+                      borderLeftWidth: 2,
+                      borderLeftColor: c.accent,
+                      backgroundColor: isOwn ? c.outgoing : c.incoming,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: c.accent, fontWeight: "700", fontSize: 12 }}
+                    >
+                      {item.replyToSender}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: isOwn ? c.outgoingText : c.incomingText, opacity: 0.8, fontSize: 12 }}
+                    >
+                      {item.replyToText || "Наліпка"}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => onImagePress?.(item.imageUrl!)}
+                  >
+                    <StickerImage uri={item.imageUrl!} />
+                  </TouchableOpacity>
+                  <View
+                    pointerEvents="none"
+                    style={{
+                      position: "absolute",
+                      right: 2,
+                      bottom: 2,
+                      backgroundColor: "rgba(0,0,0,0.45)",
+                      borderRadius: 10,
+                      paddingHorizontal: 6,
+                      paddingVertical: 1,
+                    }}
+                  >
+                    <Text style={{ color: "#FFFFFF", fontSize: 11 }}>{time}</Text>
+                  </View>
+                </View>
+
+                {hasReactions && (
+                  <View style={{ marginTop: 2 }}>
+                    <MessageReactions
+                      reactions={item.reactions}
+                      isOwn={false}
+                      onToggleReaction={onToggleReaction}
+                    />
+                  </View>
+                )}
+              </View>
             ) : isBigEmoji ? (
               <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
                 {!isOwn && isFirstInSeries && (

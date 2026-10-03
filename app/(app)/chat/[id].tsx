@@ -24,6 +24,9 @@ import {
   dayLabel,
   deleteLastGrapheme,
   membersLabel,
+  STICKER_CAPTION,
+  STICKER_LABEL,
+  isStickerContent,
 } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
@@ -351,7 +354,9 @@ export default function ChatRoomScreen() {
   }, []);
 
   const handleStartReply = useCallback((message: MessageItemData) => {
-    let preview = message.content?.trim() ?? "";
+    let preview = isStickerContent(message.content)
+      ? STICKER_LABEL
+      : (message.content?.trim() ?? "");
     if (!preview) {
       if (message.isVideoNote && message.videoUrl) {
         preview = "📹 Відеоповідомлення";
@@ -404,6 +409,7 @@ export default function ChatRoomScreen() {
 
   const handleCopy = useCallback(
     async (message: MessageItemData) => {
+      if (isStickerContent(message.content)) return;
       const text = message.content?.trim();
       if (!text) return;
       try {
@@ -570,6 +576,7 @@ export default function ChatRoomScreen() {
         await sendMediaMessage({
           chatRoomId,
           storageId,
+          caption: gif.kind === "sticker" ? STICKER_CAPTION : undefined,
           replyToId: replyTarget
             ? (replyTarget.messageId as Id<"messages">)
             : undefined,
@@ -866,7 +873,7 @@ export default function ChatRoomScreen() {
     const m = actionMessage;
     if (!m) return [];
     const own = m.senderId === currentUser?._id;
-    const hasContent = !!m.content?.trim();
+    const hasContent = !!m.content?.trim() && !isStickerContent(m.content);
     const list: MessageAction[] = [
       {
         key: "reply",
@@ -911,7 +918,9 @@ export default function ChatRoomScreen() {
   ]);
 
   const actionPreview = actionMessage
-    ? actionMessage.content?.trim() ||
+    ? (isStickerContent(actionMessage.content)
+        ? STICKER_LABEL
+        : actionMessage.content?.trim()) ||
       (actionMessage.audioUrl
         ? "🎤 Голосове повідомлення"
         : actionMessage.isVideoNote
