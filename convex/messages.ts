@@ -294,6 +294,61 @@ export const getPinnedMessages = query({
   },
 });
 
+const SEARCH_SCAN_LIMIT = 2000;
+
+// Пошук підрядка (без урахування регістру) по повідомленнях кімнати, від нових до старих.
+export const searchMessages = query({
+  args: {
+    chatRoomId: v.id("chatRooms"),
+    query: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) return [];
+    await assertRoomMember(ctx, args.chatRoomId, me._id);
+
+    const needle = args.query.trim().toLowerCase();
+    if (!needle) return [];
+    const limit = Math.min(Math.max(Math.floor(args.limit ?? 30), 1), 50);
+
+    const recent = await ctx.db
+      .query("messages")
+      .withIndex("by_chat_room", (q) => q.eq("chatRoomId", args.chatRoomId))
+      .order("desc")
+      .take(SEARCH_SCAN_LIMIT);
+
+    const results: {
+      _id: Id<"messages">;
+      _creationTime: number;
+      senderName: string;
+      snippet: string;
+    }[] = [];
+
+    for (const message of recent) {
+      if (message.isSystem) continue;
+      const text = message.content ?? "";
+      if (text.startsWith(STICKER_MARK)) continue;
+      const index = text.toLowerCase().indexOf(needle);
+      if (index < 0) continue;
+
+      const start = Math.max(0, index - 30);
+      const end = Math.min(text.length, index + needle.length + 90);
+      results.push({
+        _id: message._id,
+        _creationTime: message._creationTime,
+        senderName: message.senderName,
+        snippet:
+          (start > 0 ? "…" : "") +
+          text.slice(start, end) +
+          (end < text.length ? "…" : ""),
+      });
+      if (results.length >= limit) break;
+    }
+    return results;
+  },
+});
+
 // Метадані повідомлення для переходу з цитати (null, якщо його видалено).
 export const getMessageMeta = query({
   args: { messageId: v.id("messages") },

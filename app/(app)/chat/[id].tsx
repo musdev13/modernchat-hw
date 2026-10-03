@@ -1,3 +1,4 @@
+import { ChatSearchPanel } from "@/components/ChatSearchPanel";
 import { EmojiPanel } from "@/components/EmojiPanel";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import type { GifItem } from "@/components/GifPicker";
@@ -52,6 +53,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import Animated, {
@@ -880,6 +882,53 @@ export default function ChatRoomScreen() {
     }
   }, [rows, status, loadMore, scrollToMessage, showToast]);
 
+  // ── Пошук по чату ──
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const { height: windowHeight } = useWindowDimensions();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchText.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  const searchResults = useQuery(
+    api.messages.searchMessages,
+    searchOpen && searchQuery
+      ? { chatRoomId, query: searchQuery, limit: 40 }
+      : "skip",
+  );
+
+  const openSearch = useCallback(() => {
+    setPanelOpen(false);
+    setSearchOpen(true);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    Keyboard.dismiss();
+    setSearchOpen(false);
+    setSearchText("");
+    setSearchQuery("");
+  }, []);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeSearch();
+      return true;
+    });
+    return () => sub.remove();
+  }, [closeSearch, searchOpen]);
+
+  const handleSelectSearchResult = useCallback(
+    (messageId: string) => {
+      closeSearch();
+      void jumpToMessage(messageId as Id<"messages">);
+    },
+    [closeSearch, jumpToMessage],
+  );
+
   // ── Закріплені повідомлення ──
   const pins = pinnedMessages ?? [];
   const pinCount = pins.length;
@@ -1671,6 +1720,46 @@ export default function ChatRoomScreen() {
             paddingHorizontal: 4,
           }}
         >
+          {searchOpen ? (
+            <>
+              <TouchableOpacity
+                onPress={closeSearch}
+                style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
+                accessibilityRole="button"
+                accessibilityLabel="Закрити пошук"
+              >
+                <Ionicons name="arrow-back" size={22} color={c.text} />
+              </TouchableOpacity>
+              <TextInput
+                autoFocus
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Пошук по чату"
+                placeholderTextColor={c.muted}
+                returnKeyType="search"
+                autoCorrect={false}
+                selectionColor={c.accent}
+                style={{
+                  flex: 1,
+                  color: c.text,
+                  fontSize: 16,
+                  paddingVertical: 0,
+                  height: 44,
+                }}
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setSearchText("")}
+                  style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Очистити пошук"
+                >
+                  <Ionicons name="close-circle" size={20} color={c.muted} />
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+          <>
           <TouchableOpacity
             onPress={() => router.back()}
             style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
@@ -1725,6 +1814,15 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            onPress={openSearch}
+            style={{ width: 38, height: 40, alignItems: "center", justifyContent: "center" }}
+            accessibilityRole="button"
+            accessibilityLabel="Пошук по чату"
+          >
+            <Ionicons name="search" size={20} color={c.muted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
             onPress={() => router.push(`/settings/${chatRoomId}`)}
             style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
             accessibilityRole="button"
@@ -1732,10 +1830,23 @@ export default function ChatRoomScreen() {
           >
             <Ionicons name="ellipsis-vertical" size={20} color={c.muted} />
           </TouchableOpacity>
+          </>
+          )}
         </GlassSurface>
+
+        {searchOpen && (
+          <View style={{ marginHorizontal: ISLAND_SIDE_MARGIN, marginTop: 8 }}>
+            <ChatSearchPanel
+              query={searchQuery}
+              results={searchResults}
+              maxHeight={Math.round(windowHeight * 0.5)}
+              onSelect={handleSelectSearchResult}
+            />
+          </View>
+        )}
       </View>
 
-      {shownPin && (
+      {shownPin && !searchOpen && (
         <Animated.View
           pointerEvents="box-none"
           style={[{ position: "absolute", left: 0, right: 0, zIndex: 25 }, pinBarStyle]}
