@@ -6,6 +6,10 @@ import {
   MessageAction,
   MessageActionSheet,
 } from "@/components/MessageActionSheet";
+import {
+  PIN_BAR_HEIGHT,
+  PinnedMessageBar,
+} from "@/components/PinnedMessageBar";
 import { ReactionPickerModal } from "@/components/ReactionPickerModal";
 import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
 import {
@@ -112,6 +116,10 @@ export default function ChatRoomScreen() {
   const editMessage = useMutation(api.messages.editMessage);
   const deleteMessage = useMutation(api.messages.deleteMessage);
   const toggleReaction = useMutation(api.messages.toggleReaction);
+  const togglePin = useMutation(api.messages.togglePin);
+  const pinnedMessages = useQuery(api.messages.getPinnedMessages, {
+    chatRoomId,
+  });
   const setTyping = useMutation(api.typing.setTyping);
   const clearTyping = useMutation(api.typing.clearTyping);
 
@@ -872,6 +880,38 @@ export default function ChatRoomScreen() {
     }
   }, [rows, status, loadMore, scrollToMessage, showToast]);
 
+  // ── Закріплені повідомлення ──
+  const pins = pinnedMessages ?? [];
+  const pinCount = pins.length;
+  const [pinCursor, setPinCursor] = useState(0);
+  useEffect(() => {
+    setPinCursor(0);
+  }, [pinCount]);
+  // Показуємо найновіше закріплення; тап по смужці веде до нього й перемикає на попереднє.
+  const shownPinIndex =
+    pinCount > 0 ? pinCount - 1 - (pinCursor % pinCount) : -1;
+  const shownPin = shownPinIndex >= 0 ? pins[shownPinIndex] : null;
+  const pinnedIds = useMemo(() => pins.map((p) => p._id), [pins]);
+
+  const handleTogglePin = useCallback(
+    async (messageId: Id<"messages">, wasPinned: boolean) => {
+      try {
+        await togglePin({ messageId });
+        showToast(wasPinned ? "Відкріплено" : "Закріплено");
+      } catch (error) {
+        console.error("Не вдалося змінити закріплення:", error);
+        Alert.alert("Помилка", "Не вдалося змінити закріплення");
+      }
+    },
+    [showToast, togglePin],
+  );
+
+  const handlePinBarPress = useCallback(() => {
+    if (!shownPin) return;
+    void jumpToMessage(shownPin._id);
+    if (pinCount > 1) setPinCursor((prev) => prev + 1);
+  }, [jumpToMessage, pinCount, shownPin]);
+
   const handleOpenActions = useCallback((message: MessageItemData) => {
     Keyboard.dismiss();
     setActionMessage(message);
@@ -1009,12 +1049,19 @@ export default function ChatRoomScreen() {
     if (!m) return [];
     const own = m.senderId === currentUser?._id;
     const hasContent = !!m.content?.trim() && !isStickerContent(m.content);
+    const isPinned = pinnedIds.includes(m._id);
     const list: MessageAction[] = [
       {
         key: "reply",
         label: "Відповісти",
         icon: "arrow-undo-outline",
         onPress: () => handleStartReply(m),
+      },
+      {
+        key: "pin",
+        label: isPinned ? "Відкріпити" : "Закріпити",
+        icon: isPinned ? "pin" : "pin-outline",
+        onPress: () => void handleTogglePin(m._id, isPinned),
       },
     ];
     if (hasContent) {
@@ -1050,6 +1097,8 @@ export default function ChatRoomScreen() {
     handleDelete,
     handleStartEdit,
     handleStartReply,
+    handleTogglePin,
+    pinnedIds,
   ]);
 
   const actionPreview = actionMessage
@@ -1093,6 +1142,19 @@ export default function ChatRoomScreen() {
     ],
   }));
 
+  // Смужка закріпленого їде за висотою капсули (вона стискається під час прокрутки).
+  const pinBarStyle = useAnimatedStyle(() => ({
+    top:
+      insets.top +
+      ISLAND_TOP_GAP +
+      interpolate(
+        islandState.value,
+        [0, 1, 2],
+        [ISLAND_HEIGHT, ISLAND_COMPACT_HEIGHT, ISLAND_HEIGHT + 6],
+      ) +
+      6,
+  }));
+
   const islandSubtitleStyle = useAnimatedStyle(() => ({
     opacity: interpolate(islandState.value, [0, 1, 2], [1, 0, 1]),
     height: interpolate(islandState.value, [0, 1, 2], [16, 0, 16]),
@@ -1100,6 +1162,7 @@ export default function ChatRoomScreen() {
 
   // Верхній відступ списку під «острівом»
   const islandBlock = insets.top + ISLAND_TOP_GAP + ISLAND_HEIGHT + 6;
+  const pinBlock = shownPin ? PIN_BAR_HEIGHT + 6 : 0;
 
   return (
     <GlassProvider>
@@ -1132,7 +1195,7 @@ export default function ChatRoomScreen() {
             keyExtractor={(row) => row.item._id}
             inverted={true}
             // paddingTop інвертованого списку = низ екрана: повідомлення їдуть під поле вводу
-            contentContainerStyle={{ paddingTop: composerHeight + 8, paddingBottom: islandBlock }}
+            contentContainerStyle={{ paddingTop: composerHeight + 8, paddingBottom: islandBlock + pinBlock }}
             renderItem={renderMessageItem}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.5}
@@ -1169,7 +1232,7 @@ export default function ChatRoomScreen() {
               pointerEvents="none"
               style={{
                 position: "absolute",
-                top: islandBlock + 4,
+                top: islandBlock + pinBlock + 4,
                 alignSelf: "center",
                 backgroundColor: withAlpha("#000000", 0.7),
                 borderRadius: 16,
@@ -1671,6 +1734,22 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
         </GlassSurface>
       </View>
+
+      {shownPin && (
+        <Animated.View
+          pointerEvents="box-none"
+          style={[{ position: "absolute", left: 0, right: 0, zIndex: 25 }, pinBarStyle]}
+        >
+          <PinnedMessageBar
+            count={pinCount}
+            position={shownPinIndex + 1}
+            senderName={shownPin.senderName}
+            preview={shownPin.preview}
+            onPress={handlePinBarPress}
+            onUnpin={() => void handleTogglePin(shownPin._id, true)}
+          />
+        </Animated.View>
+      )}
 
       <ImageViewerModal
         visible={!!fullscreenImage}

@@ -216,6 +216,84 @@ export const listMessages = query({
   },
 });
 
+const STICKER_MARK = "\u2063\u2063";
+
+// Короткий текст для смужки закріпленого повідомлення.
+function previewOf(message: {
+  content?: string;
+  isVideoNote?: boolean;
+  videoUrl?: string;
+  audioUrl?: string;
+  imageUrl?: string;
+}): string {
+  const text = message.content?.trim() ?? "";
+  if (text.startsWith(STICKER_MARK)) return "Наліпка";
+  if (text) return text.length > 140 ? `${text.slice(0, 140)}…` : text;
+  if (message.isVideoNote && message.videoUrl) return "📹 Відеоповідомлення";
+  if (message.audioUrl) return "🎤 Голосове повідомлення";
+  if (message.imageUrl) return "📷 Фотографія";
+  return "Повідомлення";
+}
+
+const MAX_PINNED = 50;
+
+// Закріпити / відкріпити повідомлення (будь-який учасник кімнати).
+export const togglePin = mutation({
+  args: { messageId: v.id("messages") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+
+    const message = await ctx.db.get(args.messageId);
+    if (!message) throw new Error("Message not found: Повідомлення не знайдено");
+    const room = await assertRoomMember(ctx, message.chatRoomId, me._id);
+    if (message.isSystem) {
+      throw new Error("Системні повідомлення не можна закріпити");
+    }
+
+    const pinned: Id<"messages">[] = room.pinnedMessageIds ?? [];
+    if (pinned.includes(args.messageId)) {
+      await ctx.db.patch(message.chatRoomId, {
+        pinnedMessageIds: pinned.filter((id) => id !== args.messageId),
+      });
+      return { pinned: false };
+    }
+
+    await ctx.db.patch(message.chatRoomId, {
+      pinnedMessageIds: [...pinned, args.messageId].slice(-MAX_PINNED),
+    });
+    return { pinned: true };
+  },
+});
+
+// Закріплені повідомлення кімнати (від найстарішого закріплення до найновішого).
+export const getPinnedMessages = query({
+  args: { chatRoomId: v.id("chatRooms") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) return [];
+    const room = await ctx.db.get(args.chatRoomId);
+    if (!room) return [];
+    if (!(room.participantIds ?? [room.creatorId]).includes(me._id)) return [];
+
+    const result: {
+      _id: Id<"messages">;
+      senderName: string;
+      preview: string;
+    }[] = [];
+    for (const id of room.pinnedMessageIds ?? []) {
+      const message = await ctx.db.get(id);
+      if (!message || message.chatRoomId !== args.chatRoomId) continue;
+      result.push({
+        _id: message._id,
+        senderName: message.senderName,
+        preview: previewOf(message),
+      });
+    }
+    return result;
+  },
+});
+
 // Метадані повідомлення для переходу з цитати (null, якщо його видалено).
 export const getMessageMeta = query({
   args: { messageId: v.id("messages") },
@@ -340,6 +418,15 @@ export const deleteMessage = mutation({
     await Promise.all(reactions.map((reaction) => ctx.db.delete(reaction._id)));
 
     await ctx.db.delete(args.messageId);
+
+    const roomOfMessage = await ctx.db.get(message.chatRoomId);
+    if (roomOfMessage?.pinnedMessageIds?.includes(args.messageId)) {
+      await ctx.db.patch(message.chatRoomId, {
+        pinnedMessageIds: roomOfMessage.pinnedMessageIds.filter(
+          (id) => id !== args.messageId,
+        ),
+      });
+    }
 
     const lastRemainingMessage = await ctx.db
       .query("messages")

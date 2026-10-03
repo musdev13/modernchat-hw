@@ -24,6 +24,8 @@ export default defineSchema({
     adminIds: v.optional(v.array(v.id("users"))),
     lastMessage: v.optional(v.string()),
     lastMessageAt: v.optional(v.number()),
+    // Закріплені повідомлення (порядок закріплення: останнє — найновіше).
+    pinnedMessageIds: v.optional(v.array(v.id("messages"))),
   }).index("by_creator", ["creatorId"]),
 
   messages: defineTable({
