@@ -1,11 +1,11 @@
 import { ConfigContext, ExpoConfig } from "expo/config";
 
-const EAS_PROJECT_ID = "53ed0c51-a88c-4f35-89cc-a49c1f88bc88";
+const EAS_PROJECT_ID = "f82645fd-9092-483c-9b48-d445b0a4a071";
 
-const PROJECT_SLUG = "modernchat";
-const OWNER = "musdev13";
+const PROJECT_SLUG = "moderntalking-chat";
+const OWNER = "meduster";
 
-const APP_NAME = "Modern Chat";
+const APP_NAME = "Modern Talking Chat";
 const BUNDLE_IDENTIFIER = `com.${OWNER}.modernchat`;
 const PACKAGE_NAME = `com.${OWNER}.modernchat`;
 const SCHEME = "modernchat";

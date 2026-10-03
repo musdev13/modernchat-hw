@@ -6,20 +6,26 @@ import { ActivityIndicator, View } from "react-native";
 
 export default function OAuthNativeCallback() {
   const router = useRouter();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, isLoaded } = useAuth();
 
   useEffect(() => {
-    // Затримка, щоб Clerk встиг обробити токен з URL
+    if (!isLoaded) return;
+
+    if (isSignedIn) {
+      router.replace("/(app)");
+      return;
+    }
+
     const timer = setTimeout(() => {
       if (isSignedIn) {
         router.replace("/(app)");
       } else {
         router.replace("/(auth)/login");
       }
-    }, 300);
+    }, 1000);
 
     return () => clearTimeout(timer);
-  }, [isSignedIn]);
+  }, [isSignedIn, isLoaded, router]);
 
   return (
     <View

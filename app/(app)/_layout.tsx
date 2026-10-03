@@ -23,28 +23,27 @@ export default function AppLayout() {
         name="new-room"
         options={{
           presentation: "modal",
-          title: "Нова кімната",
+          headerShown: false,
         }}
       />
       <Stack.Screen
         name="profile"
         options={{
           presentation: "modal",
-          title: "Профіль",
+          headerShown: false,
         }}
       />
       <Stack.Screen
         name="chat/[id]"
         options={{
-          title: "Чат",
-          headerBackTitle: "Назад",
+          headerShown: false,
         }}
       />
       <Stack.Screen
         name="settings/[id]"
         options={{
           presentation: "modal",
-          title: "Інформація про кімнату",
+          headerShown: false,
         }}
       />
       <Stack.Screen

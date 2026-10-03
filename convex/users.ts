@@ -8,12 +8,24 @@ export async function getAuthUser(ctx: QueryCtx | MutationCtx) {
     return null;
   }
 
-  return await ctx.db
+  let user = await ctx.db
     .query("users")
     .withIndex("by_token", (q) =>
       q.eq("tokenIdentifier", identity.tokenIdentifier),
     )
     .unique();
+
+  if (!user && "insert" in ctx.db) {
+    const userId = await (ctx.db as MutationCtx["db"]).insert("users", {
+      name: identity.name ?? identity.nickname ?? "Користувач",
+      email: identity.email,
+      image: identity.pictureUrl,
+      tokenIdentifier: identity.tokenIdentifier,
+    });
+    user = await ctx.db.get(userId);
+  }
+
+  return user;
 }
 
 // Запит поточного користувача для клієнта

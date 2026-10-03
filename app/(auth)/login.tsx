@@ -1,9 +1,10 @@
 import { COLORS } from "@/constants/theme";
-import { useSSO, useSignIn, useSignUp } from "@clerk/clerk-expo";
+import { useAuth, useSSO, useSignIn, useSignUp } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import * as AuthSession from "expo-auth-session";
+import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +20,8 @@ import {
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
+  const router = useRouter();
+  const { isSignedIn, signOut } = useAuth();
   const { signIn, setActive: setSignInActive, isLoaded: isSignInLoaded } = useSignIn();
   const { signUp, setActive: setSignUpActive, isLoaded: isSignUpLoaded } = useSignUp();
   const { startSSOFlow } = useSSO();
@@ -30,7 +33,18 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
+  useEffect(() => {
+    if (isSignedIn) {
+      router.replace("/(app)");
+    }
+  }, [isSignedIn, router]);
+
   const handleAuth = async () => {
+    if (isSignedIn) {
+      router.replace("/(app)");
+      return;
+    }
+
     if (!email.trim() || !password.trim()) {
       Alert.alert("Помилка", "Будь ласка, заповніть усі поля.");
       return;
@@ -55,6 +69,7 @@ export default function LoginScreen() {
 
         if (result.status === "complete" && result.createdSessionId) {
           await setSignUpActive({ session: result.createdSessionId });
+          router.replace("/(app)");
         } else {
           Alert.alert(
             "Потрібне підтвердження",
@@ -71,12 +86,23 @@ export default function LoginScreen() {
 
         if (result.status === "complete" && result.createdSessionId) {
           await setSignInActive({ session: result.createdSessionId });
+          router.replace("/(app)");
         } else {
           Alert.alert("Помилка", "Необхідне додаткове підтвердження акаунта");
         }
       }
     } catch (err: any) {
       console.error("Auth Error", err);
+      const isAlreadySignedIn =
+        err?.message?.includes("already signed in") ||
+        err?.errors?.[0]?.message?.includes("already signed in") ||
+        err?.errors?.[0]?.code === "session_exists";
+
+      if (isAlreadySignedIn) {
+        router.replace("/(app)");
+        return;
+      }
+
       const message =
         err?.errors?.[0]?.longMessage ||
         err?.errors?.[0]?.message ||
@@ -92,10 +118,15 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     if (isGoogleLoading) return;
 
+    if (isSignedIn) {
+      router.replace("/(app)");
+      return;
+    }
+
     try {
       setIsGoogleLoading(true);
 
-      // ✅ Генерируем redirect URL с нашей собственной схемой из app.config.ts
+      // ✅ Генеруємо redirect URL з нашою схемою з app.config.ts
       const redirectUrl = AuthSession.makeRedirectUri({
         scheme: "modernchat-dev",
         path: "oauth-native-callback",
@@ -110,14 +141,26 @@ export default function LoginScreen() {
 
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
+        router.replace("/(app)");
       } else {
         console.log("[Google OAuth] No session created");
       }
     } catch (err: any) {
-      console.error("OAuth error:", err);
+      if (!String(err?.message ?? "").includes("already signed in")) console.error("OAuth error:", err);
+      const isAlreadySignedIn =
+        err?.message?.includes("already signed in") ||
+        err?.errors?.[0]?.message?.includes("already signed in") ||
+        err?.errors?.[0]?.code === "session_exists";
+
+      if (isAlreadySignedIn) {
+        router.replace("/(app)");
+        return;
+      }
+
       Alert.alert(
         "Помилка Google",
         err?.errors?.[0]?.longMessage ||
+          err?.errors?.[0]?.message ||
           "Не вдалося виконати вхід через Google. Спробуйте ще раз.",
       );
     } finally {
@@ -267,6 +310,23 @@ export default function LoginScreen() {
                 : "Немає акаунту? Створити новий"}
             </Text>
           </TouchableOpacity>
+
+          {isSignedIn && (
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await signOut();
+                } catch (e) {
+                  console.error("SignOut error:", e);
+                }
+              }}
+              className="mt-4 py-2"
+            >
+              <Text className="text-textMuted text-xs text-center underline">
+                Вийти з поточного акаунта
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
