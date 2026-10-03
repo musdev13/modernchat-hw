@@ -923,7 +923,7 @@ export default function ChatRoomScreen() {
       {/* CONTENT + INPUT — внутри KeyboardAvoidingView */}
       <KeyboardAvoidingView
         className="flex-1"
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
         keyboardVerticalOffset={0}
       >
         <View className="flex-1">
