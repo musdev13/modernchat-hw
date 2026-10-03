@@ -30,7 +30,7 @@ import {
   isStickerContent,
 } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { File, Paths } from "expo-file-system";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -753,6 +753,125 @@ export default function ChatRoomScreen() {
     });
   }, [messages, status]);
 
+  // ── Перехід до повідомлення (цитата, закріплене, пошук) ──
+  const convex = useConvex();
+  const rowsRef = useRef<MessageRow[]>([]);
+  rowsRef.current = rows;
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  const pendingJumpRef = useRef<{ id: Id<"messages">; loads: number } | null>(
+    null,
+  );
+  const jumpAttemptsRef = useRef(0);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [flash, setFlash] = useState<{
+    id: Id<"messages">;
+    token: number;
+  } | null>(null);
+
+  useEffect(
+    () => () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    },
+    [],
+  );
+
+  const flashMessage = useCallback((id: Id<"messages">) => {
+    setFlash({ id, token: Date.now() });
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFlash(null), 2600);
+  }, []);
+
+  // true, якщо повідомлення вже завантажене й прокрутку запущено.
+  const scrollToMessage = useCallback(
+    (id: Id<"messages">): boolean => {
+      const index = rowsRef.current.findIndex((r) => r.item._id === id);
+      if (index < 0) return false;
+      jumpAttemptsRef.current = 0;
+      flatListRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.5,
+      });
+      setTimeout(() => flashMessage(id), 380);
+      return true;
+    },
+    [flashMessage],
+  );
+
+  // Елементи списку мають різну висоту: якщо FlatList ще не виміряв їх, їдемо за середньою
+  // висотою й пробуємо ще раз.
+  const handleScrollToIndexFailed = useCallback(
+    (info: { index: number; averageItemLength: number }) => {
+      if (jumpAttemptsRef.current >= 6) return;
+      jumpAttemptsRef.current += 1;
+      flatListRef.current?.scrollToOffset({
+        offset: Math.max(0, info.averageItemLength * info.index),
+        animated: false,
+      });
+      setTimeout(() => {
+        if (info.index < rowsRef.current.length) {
+          flatListRef.current?.scrollToIndex({
+            index: info.index,
+            animated: true,
+            viewPosition: 0.5,
+          });
+        }
+      }, 150);
+    },
+    [],
+  );
+
+  const jumpToMessage = useCallback(
+    async (id: Id<"messages">) => {
+      Keyboard.dismiss();
+      setPanelOpen(false);
+      if (scrollToMessage(id)) return;
+      try {
+        const meta = await convex.query(api.messages.getMessageMeta, {
+          messageId: id,
+        });
+        if (!meta) {
+          showToast("Оригінальне повідомлення видалено");
+          return;
+        }
+        if (scrollToMessage(id)) return;
+        showToast("Шукаю повідомлення…");
+        pendingJumpRef.current = { id, loads: 0 };
+        if (statusRef.current === "CanLoadMore") {
+          pendingJumpRef.current.loads = 1;
+          loadMoreRef.current(100);
+        }
+      } catch (error) {
+        console.error("Не вдалося перейти до повідомлення:", error);
+        showToast("Не вдалося знайти повідомлення");
+      }
+    },
+    [convex, scrollToMessage, showToast],
+  );
+
+  // Дозавантажуємо старіші повідомлення, доки потрібне не зʼявиться у списку.
+  useEffect(() => {
+    const pending = pendingJumpRef.current;
+    if (!pending) return;
+    if (rows.some((r) => r.item._id === pending.id)) {
+      pendingJumpRef.current = null;
+      scrollToMessage(pending.id);
+      return;
+    }
+    if (status === "CanLoadMore" && pending.loads < 60) {
+      pending.loads += 1;
+      loadMore(100);
+      return;
+    }
+    if (status === "Exhausted" || pending.loads >= 60) {
+      pendingJumpRef.current = null;
+      showToast("Повідомлення не знайдено");
+    }
+  }, [rows, status, loadMore, scrollToMessage, showToast]);
+
   const handleOpenActions = useCallback((message: MessageItemData) => {
     Keyboard.dismiss();
     setActionMessage(message);
@@ -773,11 +892,15 @@ export default function ChatRoomScreen() {
         onReply={handleStartReply}
         onImagePress={setFullscreenImage}
         onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
+        onReplyPress={jumpToMessage}
+        flashToken={flash?.id === row.item._id ? flash.token : 0}
       />
     ),
     [
       actionMessage?._id,
       currentUser?._id,
+      flash,
+      jumpToMessage,
       handleOpenActions,
       handleStartReply,
       handleToggleReaction,
@@ -1004,7 +1127,8 @@ export default function ChatRoomScreen() {
           <FlatList
             ref={flatListRef}
             data={rows}
-            extraData={actionMessage?._id}
+            extraData={`${actionMessage?._id ?? ""}|${flash?.token ?? 0}`}
+            onScrollToIndexFailed={handleScrollToIndexFailed}
             keyExtractor={(row) => row.item._id}
             inverted={true}
             // paddingTop інвертованого списку = низ екрана: повідомлення їдуть під поле вводу

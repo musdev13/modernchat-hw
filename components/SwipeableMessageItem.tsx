@@ -15,6 +15,8 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
+  withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -66,6 +68,10 @@ interface SwipeableMessageItemProps {
   onReply: (message: MessageItemData) => void;
   onImagePress?: (url: string) => void;
   onAuthorPress?: (userId: Id<"users">) => void;
+  /** Тап по цитаті відповіді: перейти до оригінального повідомлення. */
+  onReplyPress?: (messageId: Id<"messages">) => void;
+  /** Змінюється, коли треба коротко підсвітити це повідомлення (після переходу). */
+  flashToken?: number;
 }
 
 const SWIPE_THRESHOLD = 50;
@@ -166,9 +172,20 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   onReply,
   onImagePress,
   onAuthorPress,
+  onReplyPress,
+  flashToken = 0,
 }) => {
   const c = useChatPalette();
   const translateX = useSharedValue(0);
+  const flashValue = useSharedValue(0);
+
+  useEffect(() => {
+    if (!flashToken) return;
+    flashValue.value = withSequence(
+      withTiming(1, { duration: 220 }),
+      withDelay(1100, withTiming(0, { duration: 700 })),
+    );
+  }, [flashToken, flashValue]);
   // Підсвітка рядка: під час довгого натискання та поки відкрите меню дій.
   const pressed = useSharedValue(0);
   const selected = useSharedValue(0);
@@ -238,7 +255,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   }));
 
   const highlightStyle = useAnimatedStyle(() => ({
-    opacity: Math.max(pressed.value, selected.value),
+    opacity: Math.max(pressed.value, selected.value, flashValue.value),
   }));
 
   const animatedIconStyle = useAnimatedStyle(() => {
@@ -425,7 +442,9 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                 )}
 
                 {item.replyToSender ? (
-                  <View
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => item.replyToId && onReplyPress?.(item.replyToId)}
                     style={{
                       maxWidth: 220,
                       marginBottom: 3,
@@ -450,7 +469,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     >
                       {item.replyToText || "Наліпка"}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 ) : null}
 
                 {/* Час — під наліпкою в куті, щоб не перекривати малюнок. */}
@@ -534,7 +553,9 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                 )}
 
                 {item.replyToSender ? (
-                  <View
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => item.replyToId && onReplyPress?.(item.replyToId)}
                     style={[
                       {
                         marginBottom: 4,
@@ -564,7 +585,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     <Text numberOfLines={2} style={{ color: textColor, opacity: 0.8, fontSize: 13 }}>
                       {item.replyToText || "📷 Фотографія"}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 ) : null}
 
                 {hasImage && (
@@ -684,6 +705,8 @@ export const SwipeableMessageItem = memo(
     prev.item.senderPhoto === next.item.senderPhoto &&
     prev.item.replyToSender === next.item.replyToSender &&
     prev.item.replyToText === next.item.replyToText &&
+    prev.item.replyToId === next.item.replyToId &&
+    prev.flashToken === next.flashToken &&
     JSON.stringify(prev.item.reactions) === JSON.stringify(next.item.reactions),
 );
 

@@ -216,6 +216,19 @@ export const listMessages = query({
   },
 });
 
+// Метадані повідомлення для переходу з цитати (null, якщо його видалено).
+export const getMessageMeta = query({
+  args: { messageId: v.id("messages") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized");
+    const message = await ctx.db.get(args.messageId);
+    if (!message) return null;
+    await assertRoomMember(ctx, message.chatRoomId, me._id);
+    return { createdAt: message._creationTime };
+  },
+});
+
 export const sendMessage = mutation({
   args: {
     chatRoomId: v.id("chatRooms"),
