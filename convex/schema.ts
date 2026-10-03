@@ -64,6 +64,15 @@ export default defineSchema({
     .index("by_message", ["messageId"])
     .index("by_user_and_message", ["userId", "messageId"]),
 
+  // Коли користувач востаннє читав кімнату (непрочитані та галочки «прочитано»).
+  roomReads: defineTable({
+    userId: v.id("users"),
+    chatRoomId: v.id("chatRooms"),
+    lastReadAt: v.number(),
+  })
+    .index("by_user_and_room", ["userId", "chatRoomId"])
+    .index("by_room", ["chatRoomId"]),
+
   typingIndicators: defineTable({
     chatRoomId: v.id("chatRooms"),
     userId: v.id("users"),

@@ -6,7 +6,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import { Stack, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -27,6 +27,8 @@ export default function HomeScreen() {
 
   const rooms = useQuery(api.rooms.listRooms);
   const currentUser = useQuery(api.users.currentUser);
+  const unread = useQuery(api.reads.getUnreadCounts);
+  const ensureReads = useMutation(api.reads.ensureReads);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
   const removeParticipant = useMutation(api.rooms.removeParticipant);
 
@@ -39,6 +41,12 @@ export default function HomeScreen() {
     if (!q) return rooms;
     return rooms.filter((r) => r.title.toLowerCase().includes(q));
   }, [rooms, search]);
+
+  // Для кімнат без запису про прочитання (старі дані) починаємо відлік з поточного моменту.
+  const readsMissing = unread?.missing ?? false;
+  useEffect(() => {
+    if (readsMissing) ensureReads().catch(() => {});
+  }, [ensureReads, readsMissing]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -286,6 +294,7 @@ export default function HomeScreen() {
       ) : (
         <FlatList
           data={filteredRooms}
+          extraData={unread}
           keyExtractor={(item) => item._id}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 110 }}
@@ -324,6 +333,7 @@ export default function HomeScreen() {
             <SwipeableRoomItem
               room={item}
               isCreator={item.creatorId === currentUser?._id}
+              unreadCount={unread?.counts[item._id] ?? 0}
               onPress={() => router.push(`/chat/${item._id}`)}
               onDelete={handleDeleteRoom}
             />

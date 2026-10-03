@@ -13,6 +13,7 @@ import type * as http from "../http.js";
 import type * as messages from "../messages.js";
 import type * as presence from "../presence.js";
 import type * as pushNotifications from "../pushNotifications.js";
+import type * as reads from "../reads.js";
 import type * as rooms from "../rooms.js";
 import type * as typing from "../typing.js";
 import type * as users from "../users.js";
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   messages: typeof messages;
   presence: typeof presence;
   pushNotifications: typeof pushNotifications;
+  reads: typeof reads;
   rooms: typeof rooms;
   typing: typeof typing;
   users: typeof users;

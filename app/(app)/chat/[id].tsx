@@ -44,6 +44,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   BackHandler,
   FlatList,
   Image,
@@ -119,6 +120,9 @@ export default function ChatRoomScreen() {
   const deleteMessage = useMutation(api.messages.deleteMessage);
   const toggleReaction = useMutation(api.messages.toggleReaction);
   const togglePin = useMutation(api.messages.togglePin);
+  const markRead = useMutation(api.reads.markRead);
+  const readState = useQuery(api.reads.getReadState, { chatRoomId });
+  const othersLastReadAt = readState?.othersLastReadAt ?? 0;
   const pinnedMessages = useQuery(api.messages.getPinnedMessages, {
     chatRoomId,
   });
@@ -281,6 +285,33 @@ export default function ChatRoomScreen() {
       };
     }, [chatRoomId, setActiveChat, clearActiveChat, clearTyping]),
   );
+
+  // Позначаємо кімнату прочитаною: при відкритті чату, коли надходять нові
+  // повідомлення, поки він відкритий, і коли застосунок знову стає активним.
+  const focusedRef = useRef(false);
+  const newestMessageId = messages[0]?._id;
+
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      markRead({ chatRoomId }).catch(() => {});
+      const sub = AppState.addEventListener("change", (state) => {
+        if (state === "active" && focusedRef.current) {
+          markRead({ chatRoomId }).catch(() => {});
+        }
+      });
+      return () => {
+        focusedRef.current = false;
+        sub.remove();
+      };
+    }, [chatRoomId, markRead]),
+  );
+
+  useEffect(() => {
+    if (!newestMessageId || !focusedRef.current) return;
+    if (AppState.currentState !== "active") return;
+    markRead({ chatRoomId }).catch(() => {});
+  }, [chatRoomId, markRead, newestMessageId]);
 
   const handleTextChange = useCallback(
     (text: string) => {
@@ -983,6 +1014,13 @@ export default function ChatRoomScreen() {
         onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
         onReplyPress={jumpToMessage}
         flashToken={flash?.id === row.item._id ? flash.token : 0}
+        readStatus={
+          row.item.senderId === currentUser?._id
+            ? row.item._creationTime <= othersLastReadAt
+              ? "read"
+              : "sent"
+            : undefined
+        }
       />
     ),
     [
@@ -990,6 +1028,7 @@ export default function ChatRoomScreen() {
       currentUser?._id,
       flash,
       jumpToMessage,
+      othersLastReadAt,
       handleOpenActions,
       handleStartReply,
       handleToggleReaction,
@@ -1239,7 +1278,7 @@ export default function ChatRoomScreen() {
           <FlatList
             ref={flatListRef}
             data={rows}
-            extraData={`${actionMessage?._id ?? ""}|${flash?.token ?? 0}`}
+            extraData={`${actionMessage?._id ?? ""}|${flash?.token ?? 0}|${othersLastReadAt}`}
             onScrollToIndexFailed={handleScrollToIndexFailed}
             keyExtractor={(row) => row.item._id}
             inverted={true}

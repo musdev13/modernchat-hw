@@ -111,6 +111,13 @@ export const createRoom = mutation({
       content: "🎉 Груповий чат створено",
       isSystem: true,
     });
+    for (const participantId of participantIds) {
+      await ctx.db.insert("roomReads", {
+        userId: participantId,
+        chatRoomId: roomId,
+        lastReadAt: Date.now(),
+      });
+    }
     return roomId;
   },
 });
@@ -150,6 +157,13 @@ export const addParticipants = mutation({
       content,
       isSystem: true,
     });
+    for (const addedId of toAdd) {
+      await ctx.db.insert("roomReads", {
+        userId: addedId,
+        chatRoomId: args.roomId,
+        lastReadAt: Date.now(),
+      });
+    }
     return { addedCount: toAdd.length };
   },
 });
@@ -241,6 +255,13 @@ export const removeParticipant = mutation({
       content,
       isSystem: true,
     });
+    const removedReads = await ctx.db
+      .query("roomReads")
+      .withIndex("by_user_and_room", (q) =>
+        q.eq("userId", args.targetUserId).eq("chatRoomId", args.roomId),
+      )
+      .collect();
+    for (const read of removedReads) await ctx.db.delete(read._id);
     return { success: true };
   },
 });
@@ -276,6 +297,11 @@ export const deleteRoom = mutation({
       .withIndex("by_room", (q) => q.eq("chatRoomId", args.roomId))
       .collect();
     for (const indicator of typing) await ctx.db.delete(indicator._id);
+    const reads = await ctx.db
+      .query("roomReads")
+      .withIndex("by_room", (q) => q.eq("chatRoomId", args.roomId))
+      .collect();
+    for (const read of reads) await ctx.db.delete(read._id);
     await ctx.db.delete(args.roomId);
     return { success: true };
   },

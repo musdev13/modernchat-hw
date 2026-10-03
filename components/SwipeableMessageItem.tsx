@@ -70,6 +70,8 @@ interface SwipeableMessageItemProps {
   onAuthorPress?: (userId: Id<"users">) => void;
   /** Тап по цитаті відповіді: перейти до оригінального повідомлення. */
   onReplyPress?: (messageId: Id<"messages">) => void;
+  /** Лише для власних повідомлень: «sent» — одна галочка, «read» — прочитано іншими. */
+  readStatus?: "sent" | "read";
   /** Змінюється, коли треба коротко підсвітити це повідомлення (після переходу). */
   flashToken?: number;
 }
@@ -174,6 +176,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   onAuthorPress,
   onReplyPress,
   flashToken = 0,
+  readStatus,
 }) => {
   const c = useChatPalette();
   const translateX = useSharedValue(0);
@@ -313,14 +316,28 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   const overlayMeta =
     hasImage && !hasText && !hasReactions && !item.replyToSender;
 
+  // Галочки: одна — надіслано, дві — прочитано.
+  const ticks = (idleColor: string, readColor: string) =>
+    isOwn && readStatus ? (
+      <Ionicons
+        name={readStatus === "read" ? "checkmark-done" : "checkmark"}
+        size={15}
+        color={readStatus === "read" ? readColor : idleColor}
+        style={{ marginLeft: 3 }}
+      />
+    ) : null;
+
   const meta = (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       {item.isEdited && (
         <Text style={{ color: metaColor, fontSize: 11, marginRight: 4 }}>ред.</Text>
       )}
       <Text style={{ color: metaColor, fontSize: 11 }}>{time}</Text>
+      {ticks(metaColor, c.onAccent)}
     </View>
   );
+  const videoTimeLabel =
+    isOwn && readStatus ? `${time}  ${readStatus === "read" ? "✓✓" : "✓"}` : time;
 
   const bubbleStyle = {
     backgroundColor: isOwn ? c.outgoing : c.incoming,
@@ -423,7 +440,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                 isMine={isOwn}
                 reactions={item.reactions}
                 onToggleReaction={onToggleReaction}
-                timeLabel={time}
+                timeLabel={videoTimeLabel}
               />
             ) : isSticker ? (
               <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
@@ -492,7 +509,10 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       paddingVertical: 1,
                     }}
                   >
-                    <Text style={{ color: "#FFFFFF", fontSize: 11 }}>{time}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Text style={{ color: "#FFFFFF", fontSize: 11 }}>{time}</Text>
+                      {ticks("rgba(255,255,255,0.65)", "#FFFFFF")}
+                    </View>
                   </View>
                 </View>
 
@@ -532,7 +552,10 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     paddingVertical: 1,
                   }}
                 >
-                  <Text style={{ color: c.text, opacity: 0.85, fontSize: 11 }}>{time}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={{ color: c.text, opacity: 0.85, fontSize: 11 }}>{time}</Text>
+                    {ticks(c.muted, c.accent)}
+                  </View>
                 </View>
               </View>
             ) : (
@@ -608,7 +631,10 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                           paddingVertical: 1,
                         }}
                       >
-                        <Text style={{ color: "#FFFFFF", fontSize: 11 }}>{time}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <Text style={{ color: "#FFFFFF", fontSize: 11 }}>{time}</Text>
+                          {ticks("rgba(255,255,255,0.65)", "#FFFFFF")}
+                        </View>
                       </View>
                     )}
                   </View>
@@ -639,7 +665,12 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                         {/* Місце під час у правому нижньому куті: переноситься разом
                             з останнім словом, а якщо рядок повний — на новий рядок. */}
                         {"\u00A0"}
-                        <View style={{ width: item.isEdited ? 66 : 42, height: 1 }} />
+                        <View
+                          style={{
+                            width: (item.isEdited ? 66 : 42) + (isOwn ? 16 : 0),
+                            height: 1,
+                          }}
+                        />
                       </Text>
                       <View style={{ position: "absolute", right: 0, bottom: 0 }}>
                         {meta}
@@ -707,6 +738,7 @@ export const SwipeableMessageItem = memo(
     prev.item.replyToText === next.item.replyToText &&
     prev.item.replyToId === next.item.replyToId &&
     prev.flashToken === next.flashToken &&
+    prev.readStatus === next.readStatus &&
     JSON.stringify(prev.item.reactions) === JSON.stringify(next.item.reactions),
 );
 

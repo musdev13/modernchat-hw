@@ -23,6 +23,8 @@ interface RoomData {
 interface SwipeableRoomItemProps {
   room: RoomData;
   isCreator: boolean;
+  /** Кількість непрочитаних (0 або undefined — все прочитано). */
+  unreadCount?: number;
   onPress: () => void;
   onDelete: (roomId: Id<"chatRooms">) => void;
 }
@@ -45,9 +47,11 @@ function formatTime(ts: number): string {
 export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   room,
   isCreator,
+  unreadCount = 0,
   onPress,
   onDelete,
 }) => {
+  const hasUnread = unreadCount > 0;
   const { colors: c } = useTheme();
   const translateX = useSharedValue(0);
 
@@ -204,7 +208,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                     style={{
                       color: c.text,
                       fontSize: 16,
-                      fontWeight: "700",
+                      fontWeight: hasUnread ? "800" : "600",
                       flexShrink: 1,
                     }}
                   >
@@ -221,23 +225,51 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                 </View>
 
                 {room.lastMessageAt ? (
-                  <Text style={{ color: c.muted, fontSize: 12 }}>
+                  <Text
+                    style={{
+                      color: hasUnread ? c.accent : c.muted,
+                      fontSize: 12,
+                      fontWeight: hasUnread ? "700" : "400",
+                    }}
+                  >
                     {formatTime(room.lastMessageAt)}
                   </Text>
                 ) : null}
               </View>
 
-              <Text
-                numberOfLines={1}
-                style={{
-                  color: c.muted,
-                  fontSize: 14,
-                  marginTop: 3,
-                  fontStyle: room.lastMessage ? "normal" : "italic",
-                }}
-              >
-                {room.lastMessage || room.description || "Повідомлень ще немає"}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    flex: 1,
+                    color: hasUnread ? c.text : c.muted,
+                    fontSize: 14,
+                    fontWeight: hasUnread ? "600" : "400",
+                    fontStyle: room.lastMessage ? "normal" : "italic",
+                  }}
+                >
+                  {room.lastMessage || room.description || "Повідомлень ще немає"}
+                </Text>
+                {hasUnread && (
+                  <View
+                    accessibilityLabel={`Непрочитаних: ${unreadCount}`}
+                    style={{
+                      minWidth: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      paddingHorizontal: 6,
+                      marginLeft: 8,
+                      backgroundColor: c.accent,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ color: c.onAccent, fontSize: 12, fontWeight: "700" }}>
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           </TouchableOpacity>
 
