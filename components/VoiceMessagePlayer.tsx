@@ -1,5 +1,5 @@
 import { AudioWaveform } from "@/components/AudioWaveform";
-import { COLORS } from "@/constants/theme";
+import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Haptics from "expo-haptics";
@@ -24,6 +24,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
   waveform,
   isMine = false,
 }) => {
+  const c = useChatPalette();
   const player = useAudioPlayer({ uri: audioUrl });
   const status = useAudioPlayerStatus(player);
 
@@ -76,26 +77,28 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
     ? formatSeconds(currentPosition)
     : formatSeconds(totalDuration);
 
+  const fg = isMine ? c.onAccent : c.accent;
+  const subtle = isMine ? c.outgoingMeta : c.muted;
+  const fast = currentSpeed > 1.0;
+
   return (
     <View className="flex-row items-center my-1 w-64">
       {/* Кнопка Play / Pause */}
       <TouchableOpacity
         onPress={togglePlayPause}
         activeOpacity={0.8}
-        className={`w-9 h-9 rounded-full items-center justify-center mr-2.5 ${
-          isMine ? "bg-white/20" : "bg-primary/20"
-        }`}
+        className="w-10 h-10 rounded-full items-center justify-center mr-2.5"
+        style={{ backgroundColor: isMine ? c.onAccent : c.accent }}
+        accessibilityRole="button"
+        accessibilityLabel={isPlaying ? "Пауза" : "Відтворити"}
       >
         {isBuffering ? (
-          <ActivityIndicator
-            size="small"
-            color={isMine ? COLORS.white : COLORS.primary}
-          />
+          <ActivityIndicator size="small" color={isMine ? c.accent : c.onAccent} />
         ) : (
           <Ionicons
             name={isPlaying ? "pause" : "play"}
-            size={18}
-            color={isMine ? COLORS.white : COLORS.primary}
+            size={20}
+            color={isMine ? c.accent : c.onAccent}
             style={{ marginLeft: isPlaying ? 0 : 2 }}
           />
         )}
@@ -113,13 +116,7 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
         />
 
         <View className="flex-row justify-between items-center mt-1">
-          <Text
-            className={`text-[10px] ${
-              isMine ? "text-white/70" : "text-textMuted"
-            }`}
-          >
-            {displayTime}
-          </Text>
+          <Text style={{ color: subtle, fontSize: 11 }}>{displayTime}</Text>
         </View>
       </View>
 
@@ -127,18 +124,17 @@ export const VoiceMessagePlayer: React.FC<VoiceMessagePlayerProps> = ({
       <TouchableOpacity
         onPress={handleCycleSpeed}
         activeOpacity={0.7}
-        className={`ml-2 px-2 py-0.5 rounded-full border ${
-          currentSpeed > 1.0
-            ? "bg-primary border-primary"
-            : isMine
-              ? "bg-white/10 border-white/20"
-              : "bg-surfaceLight border-surfaceLight"
-        }`}
+        className="ml-2 px-2 py-0.5 rounded-full"
+        style={{ backgroundColor: fast ? fg : withAlpha(fg, 0.18) }}
+        accessibilityRole="button"
+        accessibilityLabel="Швидкість відтворення"
       >
         <Text
-          className={`text-[10px] font-bold ${
-            currentSpeed > 1.0 ? "text-white" : "text-textMuted"
-          }`}
+          style={{
+            fontSize: 10,
+            fontWeight: "700",
+            color: fast ? (isMine ? c.accent : c.onAccent) : fg,
+          }}
         >
           {currentSpeed}x
         </Text>

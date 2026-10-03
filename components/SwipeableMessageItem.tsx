@@ -1,12 +1,15 @@
-import { COLORS } from "@/constants/theme";
+import { avatarColor, initialsOf } from "@/constants/theme";
 import { Id } from "@/convex/_generated/dataModel";
+import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
+import { emojiOnlyCount, formatTime } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
-import React, { memo, useRef } from "react";
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import React, { memo, useState } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  FadeInDown,
+  FadeIn,
   FadeOutLeft,
   FadeOutRight,
   runOnJS,
@@ -15,7 +18,6 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { MessageReactions, ReactionItem } from "./MessageReactions";
-import { ReactionPickerPosition } from "./ReactionPickerModal";
 import { VideoNotePlayer } from "./VideoNotePlayer";
 import { VoiceMessagePlayer } from "./VoiceMessagePlayer";
 
@@ -49,10 +51,13 @@ export interface MessageItemData {
 interface SwipeableMessageItemProps {
   item: MessageItemData;
   isOwn: boolean;
-  onLongPress: (
-    position: ReactionPickerPosition,
-    message: MessageItemData,
-  ) => void;
+  /** Перше повідомлення серії від одного автора (показуємо імʼя й аватар). */
+  isFirstInSeries: boolean;
+  /** Останнє повідомлення серії (маленький «хвостик» бульбашки). */
+  isLastInSeries: boolean;
+  /** Мітка дати над повідомленням (Сьогодні/Вчора/дата). */
+  dateLabel?: string;
+  onLongPress: (message: MessageItemData) => void;
   onDoubleTap: (message: MessageItemData) => void;
   onToggleReaction: (emoji: string) => void;
   onReply: (message: MessageItemData) => void;
@@ -61,29 +66,80 @@ interface SwipeableMessageItemProps {
 }
 
 const SWIPE_THRESHOLD = 50;
+const IMAGE_WIDTH = 240;
+const AVATAR_SIZE = 34;
 
-function getReplyPreviewText(message: MessageItemData): string {
-  if (message.content && message.content.trim().length > 0) {
-    return message.content;
-  }
-  if (message.isVideoNote && message.videoUrl) {
-    return "📹 Відеоповідомлення";
-  }
-  if (message.audioUrl) {
-    const dur = message.audioDuration
-      ? ` (${Math.round(message.audioDuration)}с)`
-      : "";
-    return `🎤 Голосове повідомлення${dur}`;
-  }
-  if (message.imageUrl) {
-    return "📷 Фотографія";
-  }
-  return "";
+/** Зображення з пропорціями оригіналу (також анімовані GIF). */
+function ChatImage({ uri }: { uri: string }) {
+  const [ratio, setRatio] = useState(1);
+  return (
+    <Image
+      source={{ uri }}
+      style={{
+        width: IMAGE_WIDTH,
+        height: IMAGE_WIDTH / ratio,
+        borderRadius: 15,
+        maxHeight: 360,
+      }}
+      contentFit="cover"
+      onLoad={(e) => {
+        const { width, height } = e.source;
+        if (width > 0 && height > 0) {
+          setRatio(Math.min(1.8, Math.max(0.6, width / height)));
+        }
+      }}
+    />
+  );
+}
+
+function Avatar({
+  name,
+  photo,
+  onPress,
+}: {
+  name: string;
+  photo?: string;
+  onPress?: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Профіль: ${name}`}
+    >
+      {photo ? (
+        <Image
+          source={{ uri: photo }}
+          style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2 }}
+          contentFit="cover"
+        />
+      ) : (
+        <View
+          style={{
+            width: AVATAR_SIZE,
+            height: AVATAR_SIZE,
+            borderRadius: AVATAR_SIZE / 2,
+            backgroundColor: avatarColor(name),
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 13 }}>
+            {initialsOf(name)}
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 }
 
 const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   item,
   isOwn,
+  isFirstInSeries,
+  isLastInSeries,
+  dateLabel,
   onLongPress,
   onDoubleTap,
   onToggleReaction,
@@ -91,8 +147,8 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   onImagePress,
   onAuthorPress,
 }) => {
+  const c = useChatPalette();
   const translateX = useSharedValue(0);
-  const containerRef = useRef<View>(null);
 
   const triggerReply = () => {
     onReply(item);
@@ -100,6 +156,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-10, 10])
+    .failOffsetY([-12, 12])
     .onUpdate((event) => {
       if (event.translationX > 0) {
         translateX.value = Math.min(event.translationX, 80);
@@ -120,10 +177,8 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
     void Haptics.impactAsync(style);
   };
 
-  const measureAndOpenReactionPicker = () => {
-    containerRef.current?.measureInWindow((x, y, width) => {
-      onLongPress({ x: isOwn ? x + width : x, y, isOwn }, item);
-    });
+  const openActions = () => {
+    onLongPress(item);
   };
 
   const doubleTapGesture = Gesture.Tap()
@@ -136,11 +191,10 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
     });
 
   const longPressGesture = Gesture.LongPress()
-    .minDuration(350)
-    .onEnd((_event, success) => {
-      if (!success) return;
-      runOnJS(triggerHaptic)(Haptics.ImpactFeedbackStyle.Heavy);
-      runOnJS(measureAndOpenReactionPicker)();
+    .minDuration(320)
+    .onStart(() => {
+      runOnJS(triggerHaptic)(Haptics.ImpactFeedbackStyle.Medium);
+      runOnJS(openActions)();
     });
 
   const composedGesture = Gesture.Simultaneous(
@@ -162,9 +216,16 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 
   if (item.isSystem) {
     return (
-      <View className="my-2 items-center justify-center px-6">
-        <View className="rounded-full border border-surfaceLight bg-secondary px-3 py-1.5">
-          <Text className="text-center text-[11px] font-medium text-textMuted">
+      <View style={{ marginVertical: 8, alignItems: "center", paddingHorizontal: 24 }}>
+        <View
+          style={{
+            borderRadius: 14,
+            backgroundColor: withAlpha(c.muted, 0.22),
+            paddingHorizontal: 12,
+            paddingVertical: 4,
+          }}
+        >
+          <Text style={{ color: c.text, opacity: 0.85, fontSize: 12, textAlign: "center" }}>
             {item.content}
           </Text>
         </View>
@@ -174,88 +235,225 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 
   const hasVideoNote = !!(item.isVideoNote && item.videoUrl);
   const hasVoice = !!item.audioUrl;
+  const hasImage = !!item.imageUrl;
   const hasReactions = !!(item.reactions && item.reactions.length > 0);
+  const content = item.content?.trim() ? item.content : "";
+  const hasText = content.length > 0;
 
-  // 🔹 "Чистый" кружок — без bubble: только видео, без текста/reply/reactions/подписи
+  // «Чистий» кружок — без бульбашки.
   const isPureVideoNote =
-    hasVideoNote &&
-    !item.content?.trim() &&
-    !item.replyToSender &&
-    !hasReactions;
+    hasVideoNote && !hasText && !item.replyToSender && !hasReactions;
 
-  // Отступы и фон bubble применяем только если это НЕ чистый кружок
-  const bubbleClassName = isPureVideoNote
-    ? ""
-    : `max-w-[82%] rounded-2xl p-3 ${
-        isOwn ? "bg-primary rounded-br-xs" : "bg-secondary rounded-bl-xs"
-      }`;
+  const emojiCount =
+    hasText && !hasImage && !hasVideoNote && !hasVoice && !item.replyToSender && !hasReactions
+      ? emojiOnlyCount(content)
+      : 0;
+  const isBigEmoji = emojiCount >= 1 && emojiCount <= 3;
+
+  const textColor = isOwn ? c.outgoingText : c.incomingText;
+  const metaColor = isOwn ? c.outgoingMeta : c.incomingMeta;
+  const time = formatTime(item._creationTime);
+
+  const inlineMeta =
+    hasText && !hasImage && !hasVideoNote && !hasVoice && !hasReactions;
+  const overlayMeta =
+    hasImage && !hasText && !hasReactions && !item.replyToSender;
+
+  const meta = (
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      {item.isEdited && (
+        <Text style={{ color: metaColor, fontSize: 11, marginRight: 4 }}>ред.</Text>
+      )}
+      <Text style={{ color: metaColor, fontSize: 11 }}>{time}</Text>
+    </View>
+  );
+
+  const bubbleStyle = {
+    backgroundColor: isOwn ? c.outgoing : c.incoming,
+    maxWidth: "80%" as const,
+    borderRadius: 18,
+    borderBottomRightRadius: isOwn && isLastInSeries ? 5 : 18,
+    borderBottomLeftRadius: !isOwn && isLastInSeries ? 5 : 18,
+    paddingHorizontal: hasImage ? 3 : 10,
+    paddingVertical: hasImage ? 3 : 6,
+  };
+
+  const innerPad = hasImage ? { paddingHorizontal: 7, paddingBottom: 3 } : null;
 
   return (
     <Animated.View
-      entering={FadeInDown.springify().damping(15)}
+      entering={FadeIn.duration(180)}
       exiting={isOwn ? FadeOutRight.duration(200) : FadeOutLeft.duration(200)}
-      className="relative justify-center my-1"
+      style={{ marginTop: isFirstInSeries ? 7 : 1.5 }}
     >
-      <Animated.View
-        style={animatedIconStyle}
-        className="absolute left-2 z-0 items-center justify-center w-8 h-8 rounded-full bg-primary/30"
-      >
-        <Ionicons name="arrow-undo" size={18} color={COLORS.primary} />
-      </Animated.View>
+      {dateLabel ? (
+        <View style={{ alignItems: "center", marginTop: 6, marginBottom: 10 }}>
+          <View
+            style={{
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+              backgroundColor: withAlpha(c.muted, 0.28),
+            }}
+          >
+            <Text style={{ color: c.text, fontSize: 12, fontWeight: "600" }}>
+              {dateLabel}
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
-      <GestureDetector gesture={composedGesture}>
+      <View style={{ justifyContent: "center" }}>
         <Animated.View
-          style={animatedBubbleStyle}
-          className={`flex-row ${isOwn ? "justify-end" : "justify-start"}`}
+          style={[
+            animatedIconStyle,
+            {
+              position: "absolute",
+              left: 10,
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: withAlpha(c.muted, 0.3),
+            },
+          ]}
         >
-          <View ref={containerRef} className={bubbleClassName}>
-            {/* 🔹 Чистый кружок — только видео, без всего остального */}
+          <Ionicons name="arrow-undo" size={17} color={c.text} />
+        </Animated.View>
+
+        <GestureDetector gesture={composedGesture}>
+          <Animated.View
+            style={[
+              animatedBubbleStyle,
+              {
+                flexDirection: "row",
+                justifyContent: isOwn ? "flex-end" : "flex-start",
+                alignItems: "flex-start",
+                paddingHorizontal: 8,
+              },
+            ]}
+          >
+            {!isOwn && (
+              <View style={{ width: AVATAR_SIZE, marginRight: 6 }}>
+                {isFirstInSeries ? (
+                  <Avatar
+                    name={item.senderName}
+                    photo={item.senderPhoto}
+                    onPress={() => onAuthorPress?.(item.senderId)}
+                  />
+                ) : null}
+              </View>
+            )}
+
             {isPureVideoNote ? (
-              <VideoNotePlayer
-                videoUrl={item.videoUrl!}
-                duration={item.videoDuration}
-                isMine={isOwn}
-              />
+              <View>
+                <VideoNotePlayer
+                  videoUrl={item.videoUrl!}
+                  duration={item.videoDuration}
+                  isMine={isOwn}
+                />
+                <View
+                  style={{
+                    position: "absolute",
+                    right: 6,
+                    bottom: 4,
+                    backgroundColor: "rgba(0,0,0,0.45)",
+                    borderRadius: 10,
+                    paddingHorizontal: 6,
+                    paddingVertical: 1,
+                  }}
+                >
+                  <Text style={{ color: "#FFFFFF", fontSize: 11 }}>{time}</Text>
+                </View>
+              </View>
+            ) : isBigEmoji ? (
+              <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
+                {!isOwn && isFirstInSeries && (
+                  <Text style={{ color: avatarColor(item.senderName), fontWeight: "700", fontSize: 13, marginBottom: 2 }}>
+                    {item.senderName}
+                  </Text>
+                )}
+                <Text style={{ fontSize: emojiCount === 1 ? 64 : emojiCount === 2 ? 52 : 42 }}>
+                  {content}
+                </Text>
+                <Text style={{ color: c.muted, fontSize: 11 }}>{time}</Text>
+              </View>
             ) : (
-              <>
-                {!isOwn && (
+              <View style={bubbleStyle}>
+                {!isOwn && isFirstInSeries && (
                   <TouchableOpacity
                     onPress={() => onAuthorPress?.(item.senderId)}
                     activeOpacity={0.7}
-                    className="mb-1"
+                    style={[{ marginBottom: 2 }, innerPad]}
                   >
-                    <Text className="text-primary font-bold text-xs">
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: avatarColor(item.senderName), fontWeight: "700", fontSize: 13 }}
+                    >
                       {item.senderName}
                     </Text>
                   </TouchableOpacity>
                 )}
 
-                {item.replyToSender && (
-                  <View className="mb-2 p-2 rounded-lg bg-surface/50 border-l-2 border-primary">
-                    <Text className="text-primary font-semibold text-[11px]">
+                {item.replyToSender ? (
+                  <View
+                    style={[
+                      {
+                        marginBottom: 4,
+                        paddingLeft: 8,
+                        paddingRight: 8,
+                        paddingVertical: 3,
+                        borderLeftWidth: 2,
+                        borderLeftColor: isOwn ? c.onAccent : c.accent,
+                        backgroundColor: isOwn
+                          ? withAlpha(c.onAccent, 0.15)
+                          : withAlpha(c.accent, 0.1),
+                        borderRadius: 6,
+                      },
+                      hasImage ? { marginHorizontal: 4, marginTop: 4 } : null,
+                    ]}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: isOwn ? c.onAccent : c.accent,
+                        fontWeight: "700",
+                        fontSize: 13,
+                      }}
+                    >
                       {item.replyToSender}
                     </Text>
-
-                    <Text
-                      className="text-white/70 text-xs mt-0.5"
-                      numberOfLines={2}
-                    >
+                    <Text numberOfLines={2} style={{ color: textColor, opacity: 0.8, fontSize: 13 }}>
                       {item.replyToText || "📷 Фотографія"}
                     </Text>
                   </View>
-                )}
+                ) : null}
 
-                {item.imageUrl && (
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={() => onImagePress?.(item.imageUrl!)}
-                  >
-                    <Image
-                      source={{ uri: item.imageUrl }}
-                      className="w-56 h-56 rounded-xl mb-1.5 bg-surface"
-                      resizeMode="cover"
-                    />
-                  </TouchableOpacity>
+                {hasImage && (
+                  <View>
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={() => onImagePress?.(item.imageUrl!)}
+                    >
+                      <ChatImage uri={item.imageUrl!} />
+                    </TouchableOpacity>
+                    {overlayMeta && (
+                      <View
+                        style={{
+                          position: "absolute",
+                          right: 8,
+                          bottom: 8,
+                          backgroundColor: "rgba(0,0,0,0.5)",
+                          borderRadius: 10,
+                          paddingHorizontal: 6,
+                          paddingVertical: 1,
+                        }}
+                      >
+                        <Text style={{ color: "#FFFFFF", fontSize: 11 }}>{time}</Text>
+                      </View>
+                    )}
+                  </View>
                 )}
 
                 {hasVideoNote && (
@@ -275,37 +473,57 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   />
                 )}
 
-                {item.content ? (
-                  <Text className="text-white text-base leading-5">
-                    {item.content}
-                  </Text>
+                {hasText ? (
+                  inlineMeta ? (
+                    <View>
+                      <Text style={{ color: textColor, fontSize: 16, lineHeight: 22 }}>
+                        {content}
+                        <Text style={{ color: "transparent", fontSize: 11 }}>
+                          {"\u00A0".repeat(item.isEdited ? 18 : 10)}
+                        </Text>
+                      </Text>
+                      <View style={{ position: "absolute", right: 0, bottom: 0 }}>
+                        {meta}
+                      </View>
+                    </View>
+                  ) : (
+                    <Text
+                      style={[
+                        { color: textColor, fontSize: 16, lineHeight: 22 },
+                        innerPad,
+                        hasImage ? { paddingTop: 5 } : null,
+                      ]}
+                    >
+                      {content}
+                    </Text>
+                  )
                 ) : null}
 
-                <MessageReactions
-                  reactions={item.reactions}
-                  isOwn={isOwn}
-                  onToggleReaction={onToggleReaction}
-                />
+                {hasReactions && (
+                  <View style={innerPad}>
+                    <MessageReactions
+                      reactions={item.reactions}
+                      isOwn={isOwn}
+                      onToggleReaction={onToggleReaction}
+                    />
+                  </View>
+                )}
 
-                <View className="flex-row items-center justify-end mt-1 gap-1">
-                  {item.isEdited && (
-                    <Text className="text-white/60 text-[10px] italic">
-                      (ред.)
-                    </Text>
-                  )}
-
-                  <Text className="text-white/60 text-[10px]">
-                    {new Date(item._creationTime).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </Text>
-                </View>
-              </>
+                {!inlineMeta && !overlayMeta && (
+                  <View
+                    style={[
+                      { alignSelf: "flex-end", marginTop: 2 },
+                      hasImage ? { paddingRight: 7 } : null,
+                    ]}
+                  >
+                    {meta}
+                  </View>
+                )}
+              </View>
             )}
-          </View>
-        </Animated.View>
-      </GestureDetector>
+          </Animated.View>
+        </GestureDetector>
+      </View>
     </Animated.View>
   );
 };
@@ -313,13 +531,20 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 export const SwipeableMessageItem = memo(
   SwipeableMessageItemComponent,
   (prev, next) =>
+    prev.isOwn === next.isOwn &&
+    prev.isFirstInSeries === next.isFirstInSeries &&
+    prev.isLastInSeries === next.isLastInSeries &&
+    prev.dateLabel === next.dateLabel &&
     prev.item._id === next.item._id &&
     prev.item.content === next.item.content &&
     prev.item.isEdited === next.item.isEdited &&
     prev.item.imageUrl === next.item.imageUrl &&
     prev.item.audioUrl === next.item.audioUrl &&
     prev.item.videoUrl === next.item.videoUrl &&
-    prev.item.waveform === next.item.waveform &&
-    prev.item.reactions === next.item.reactions &&
-    prev.isOwn === next.isOwn,
+    prev.item.senderName === next.item.senderName &&
+    prev.item.senderPhoto === next.item.senderPhoto &&
+    prev.item.replyToSender === next.item.replyToSender &&
+    prev.item.replyToText === next.item.replyToText &&
+    JSON.stringify(prev.item.reactions) === JSON.stringify(next.item.reactions),
 );
+

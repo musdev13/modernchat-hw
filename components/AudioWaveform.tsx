@@ -1,4 +1,4 @@
-import { COLORS } from "@/constants/theme";
+import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import * as Haptics from "expo-haptics";
 import React, { useMemo, useRef } from "react";
 import { GestureResponderEvent, View } from "react-native";
@@ -41,6 +41,7 @@ export const AudioWaveform: React.FC<AudioWaveformProps> = ({
   onSeek,
   height = 32,
 }) => {
+  const c = useChatPalette();
   const containerRef = useRef<View>(null);
 
   const bars = useMemo(() => {
@@ -64,10 +65,10 @@ export const AudioWaveform: React.FC<AudioWaveformProps> = ({
     });
   };
 
-  const activeColor = isMine ? COLORS.white : COLORS.primary;
+  const activeColor = isMine ? c.onAccent : c.accent;
   const inactiveColor = isMine
-    ? "rgba(255, 255, 255, 0.35)"
-    : "rgba(148, 163, 184, 0.45)"; // COLORS.textMuted @ 45%
+    ? withAlpha(c.onAccent, 0.38)
+    : withAlpha(c.muted, 0.5);
 
   return (
     <View

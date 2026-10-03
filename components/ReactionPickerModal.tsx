@@ -1,144 +1,125 @@
+import { QUICK_REACTIONS } from "@/constants/emoji";
+import { useChatPalette } from "@/hooks/useChatPalette";
 import * as Haptics from "expo-haptics";
-import { useEffect, useMemo, useRef } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import {
-  Animated,
   Modal,
   Pressable,
   Text,
   TouchableOpacity,
+  View,
   useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { EmojiPanel } from "./EmojiPanel";
 
-const EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🔥", "🎉", "👏"];
-const EMOJI_SIZE = 36;
-const PICKER_HEIGHT = 54;
-const HORIZONTAL_PADDING = 8;
-
-export type ReactionPickerPosition = {
-  x: number;
-  y: number;
-  isOwn: boolean;
+type QuickBarProps = {
+  /** Емодзі, яке вже обране користувачем (підсвічується). */
+  selected?: string[];
+  onSelect: (emoji: string) => void;
+  onMore: () => void;
 };
+
+/** Рядок швидких реакцій + кнопка «ще» (відкриває повну панель емодзі). */
+export function QuickReactionBar({ selected = [], onSelect, onMore }: QuickBarProps) {
+  const c = useChatPalette();
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        backgroundColor: c.sheet,
+        borderRadius: 28,
+        paddingHorizontal: 6,
+        height: 52,
+        borderWidth: 1,
+        borderColor: c.divider,
+      }}
+    >
+      {QUICK_REACTIONS.map((emoji) => {
+        const active = selected.includes(emoji);
+        return (
+          <TouchableOpacity
+            key={emoji}
+            activeOpacity={0.6}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onSelect(emoji);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Додати реакцію ${emoji}`}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: active ? c.field : "transparent",
+            }}
+          >
+            <Text style={{ fontSize: 23 }}>{emoji}</Text>
+          </TouchableOpacity>
+        );
+      })}
+      <TouchableOpacity
+        onPress={onMore}
+        accessibilityRole="button"
+        accessibilityLabel="Усі емодзі"
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: c.field,
+        }}
+      >
+        <Ionicons name="add" size={20} color={c.muted} />
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 type Props = {
   visible: boolean;
-  position: ReactionPickerPosition | null;
   onClose: () => void;
   onSelectEmoji: (emoji: string) => void;
 };
 
-export function ReactionPickerModal({
-  visible,
-  position,
-  onClose,
-  onSelectEmoji,
-}: Props) {
-  const scale = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const pickerWidth = Math.min(
-    EMOJIS.length * EMOJI_SIZE + HORIZONTAL_PADDING * 2,
-    screenWidth - 16,
-  );
-
-  useEffect(() => {
-    if (!visible) return;
-
-    scale.setValue(0);
-    opacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: 1,
-        damping: 14,
-        stiffness: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 120,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [opacity, scale, visible]);
-
-  const pickerPosition = useMemo(() => {
-    if (!position) return { left: 8, top: screenHeight / 2 };
-
-    const margin = 8;
-    const above = position.y - PICKER_HEIGHT - margin;
-    const top = above < 60 ? position.y + 48 + margin : above;
-    const anchoredLeft = position.isOwn
-      ? position.x - pickerWidth
-      : position.x;
-
-    return {
-      top: Math.max(60, Math.min(top, screenHeight - PICKER_HEIGHT - margin)),
-      left: Math.max(8, Math.min(anchoredLeft, screenWidth - pickerWidth - 8)),
-    };
-  }, [pickerWidth, position, screenHeight, screenWidth]);
-
-  const handleSelect = (emoji: string) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onSelectEmoji(emoji);
-    onClose();
-  };
+/** Повна панель емодзі як нижній лист — вибір реакції на повідомлення. */
+export function ReactionPickerModal({ visible, onClose, onSelectEmoji }: Props) {
+  const c = useChatPalette();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const panelHeight = Math.min(380, Math.round(height * 0.5));
 
   return (
     <Modal
       transparent
       visible={visible}
-      animationType="none"
+      animationType="slide"
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <Pressable
-        style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.35)" }}
-        onPress={onClose}
-      />
-      <Animated.View
-        style={{
-          position: "absolute",
-          top: pickerPosition.top,
-          left: pickerPosition.left,
-          width: pickerWidth,
-          height: PICKER_HEIGHT,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-around",
-          paddingHorizontal: HORIZONTAL_PADDING,
-          borderRadius: 27,
-          backgroundColor: "#1C1C1E",
-          borderWidth: 1,
-          borderColor: "rgba(255, 255, 255, 0.1)",
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.5,
-          shadowRadius: 16,
-          elevation: 24,
-          opacity,
-          transformOrigin: position?.isOwn ? "100% 100%" : "0% 100%",
-          transform: [{ scale }],
-        }}
-      >
-        {EMOJIS.map((emoji) => (
-          <TouchableOpacity
-            key={emoji}
-            activeOpacity={0.65}
-            onPress={() => handleSelect(emoji)}
-            accessibilityRole="button"
-            accessibilityLabel={`Додати реакцію ${emoji}`}
-            style={{
-              width: EMOJI_SIZE,
-              height: EMOJI_SIZE,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: EMOJI_SIZE / 2,
-            }}
-          >
-            <Text style={{ fontSize: 22 }}>{emoji}</Text>
-          </TouchableOpacity>
-        ))}
-      </Animated.View>
+      <Pressable style={{ flex: 1, backgroundColor: c.overlay }} onPress={onClose} />
+      <View style={{ backgroundColor: c.sheet, borderTopLeftRadius: 18, borderTopRightRadius: 18, overflow: "hidden" }}>
+        <View style={{ alignItems: "center", paddingVertical: 8 }}>
+          <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: c.divider }} />
+        </View>
+        <Text style={{ color: c.text, fontSize: 15, fontWeight: "700", textAlign: "center", marginBottom: 4 }}>
+          Оберіть реакцію
+        </Text>
+        <EmojiPanel
+          height={panelHeight}
+          bottomInset={insets.bottom}
+          onSelectEmoji={(emoji) => {
+            onSelectEmoji(emoji);
+            onClose();
+          }}
+        />
+      </View>
     </Modal>
   );
 }

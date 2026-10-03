@@ -1,5 +1,5 @@
 // components/VideoNotePlayer.tsx
-import { COLORS } from "@/constants/theme";
+import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { useEventListener } from "expo";
 import * as Haptics from "expo-haptics";
@@ -55,12 +55,9 @@ const VideoNotePlaceholder: React.FC<{
   isMine?: boolean;
   onPress: () => void;
 }> = ({ duration = 0, isMine = false, onPress }) => {
-  const bgColor = isMine
-    ? "rgba(255,255,255,0.15)"
-    : "rgba(255,255,255,0.08)";
-  const borderColor = isMine
-    ? "rgba(255,255,255,0.3)"
-    : "rgba(255,255,255,0.18)";
+  const c = useChatPalette();
+  const bgColor = withAlpha(isMine ? c.accent : c.muted, 0.22);
+  const borderColor = withAlpha(isMine ? c.accent : c.muted, 0.5);
 
   return (
     <TouchableOpacity
@@ -87,7 +84,7 @@ const VideoNotePlaceholder: React.FC<{
         <Ionicons
           name="play"
           size={32}
-          color={COLORS.white}
+          color="#FFFFFF"
           style={{ marginLeft: 4 }}
         />
       </View>
@@ -114,6 +111,7 @@ const VideoNoteActive: React.FC<VideoNotePlayerProps> = ({
   duration = 0,
   isMine = false,
 }) => {
+  const c = useChatPalette();
   const [isMuted, setIsMuted] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -222,9 +220,7 @@ const VideoNoteActive: React.FC<VideoNotePlayerProps> = ({
           cx={CIRCLE_SIZE / 2}
           cy={CIRCLE_SIZE / 2}
           r={RADIUS}
-          stroke={
-            isMine ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.15)"
-          }
+          stroke={withAlpha(c.muted, 0.35)}
           strokeWidth={STROKE_WIDTH}
           fill="none"
         />
@@ -232,7 +228,7 @@ const VideoNoteActive: React.FC<VideoNotePlayerProps> = ({
           cx={CIRCLE_SIZE / 2}
           cy={CIRCLE_SIZE / 2}
           r={RADIUS}
-          stroke={COLORS.primary}
+          stroke={c.accent}
           strokeWidth={STROKE_WIDTH}
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={strokeDashoffset}
@@ -261,7 +257,7 @@ const VideoNoteActive: React.FC<VideoNotePlayerProps> = ({
           />
         ) : (
           <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <ActivityIndicator size="large" color={c.accent} />
           </View>
         )}
 
@@ -282,7 +278,7 @@ const VideoNoteActive: React.FC<VideoNotePlayerProps> = ({
               <Ionicons
                 name="play"
                 size={30}
-                color={COLORS.white}
+                color="#FFFFFF"
                 style={{ marginLeft: 3 }}
               />
             </View>
@@ -306,7 +302,7 @@ const VideoNoteActive: React.FC<VideoNotePlayerProps> = ({
           <Ionicons
             name={isMuted ? "volume-mute" : "volume-high"}
             size={16}
-            color={COLORS.white}
+            color="#FFFFFF"
           />
         </TouchableOpacity>
       )}
@@ -314,14 +310,17 @@ const VideoNoteActive: React.FC<VideoNotePlayerProps> = ({
       <TouchableOpacity
         onPress={handleCycleSpeed}
         activeOpacity={0.8}
-        className={`absolute z-20 px-2 py-0.5 rounded-full border ${
-          currentSpeed > 1.0
-            ? "bg-primary border-primary"
-            : "bg-black/60 border-white/20"
-        }`}
-        style={{ top: 6, right: 6 }}
+        className="absolute z-20 px-2 py-0.5 rounded-full"
+        style={{
+          top: 6,
+          right: 6,
+          backgroundColor: currentSpeed > 1.0 ? c.accent : "rgba(0,0,0,0.55)",
+        }}
       >
-        <Text className="text-[10px] font-bold text-white">
+        <Text
+          className="text-[10px] font-bold"
+          style={{ color: currentSpeed > 1.0 ? c.onAccent : "#FFFFFF" }}
+        >
           {currentSpeed}x
         </Text>
       </TouchableOpacity>

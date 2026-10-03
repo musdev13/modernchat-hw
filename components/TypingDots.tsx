@@ -1,3 +1,4 @@
+import { useChatPalette } from "@/hooks/useChatPalette";
 import { View, Text } from "react-native";
 import { useEffect } from "react";
 import Animated, {
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export function TypingDots({ typingUsers }: Props) {
+  const c = useChatPalette();
   const dot1 = useSharedValue(0);
   const dot2 = useSharedValue(0);
   const dot3 = useSharedValue(0);
@@ -59,30 +61,35 @@ export function TypingDots({ typingUsers }: Props) {
       ? `${typingUsers[0]} друкує`
       : `${typingUsers.join(", ")} друкують`;
 
+  const dotStyle = {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: c.accent,
+  } as const;
+
   return (
-    <View
-      className="flex-row items-center px-4 py-1.5"
-      style={{ backgroundColor: "#0A0F1D" }}
-    >
-      <Text className="text-xs mr-2" style={{ color: "#94A3B8" }}>
-        {text}
-      </Text>
+    <View style={{ paddingHorizontal: 12, paddingVertical: 4, alignItems: "flex-start" }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: c.incoming,
+          borderRadius: 16,
+          borderBottomLeftRadius: 4,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+        }}
+      >
+        <Text numberOfLines={1} style={{ color: c.muted, fontSize: 13, marginRight: 8, maxWidth: 220 }}>
+          {text}
+        </Text>
 
-      <View className="flex-row items-center gap-1">
-        <Animated.View
-          className="w-1.5 h-1.5 rounded-full bg-primary"
-          style={dot1Style}
-        />
-
-        <Animated.View
-          className="w-1.5 h-1.5 rounded-full bg-primary"
-          style={dot2Style}
-        />
-
-        <Animated.View
-          className="w-1.5 h-1.5 rounded-full bg-primary"
-          style={dot3Style}
-        />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+          <Animated.View style={[dotStyle, dot1Style]} />
+          <Animated.View style={[dotStyle, dot2Style]} />
+          <Animated.View style={[dotStyle, dot3Style]} />
+        </View>
       </View>
     </View>
   );

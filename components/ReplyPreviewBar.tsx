@@ -1,7 +1,8 @@
-import React from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { avatarColor } from "@/constants/theme";
+import { useChatPalette } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/theme";
+import React from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
 
 export interface ReplyTarget {
@@ -19,33 +20,56 @@ export const ReplyPreviewBar: React.FC<ReplyPreviewBarProps> = ({
   replyTarget,
   onCancel,
 }) => {
+  const c = useChatPalette();
+
   return (
     <Animated.View
-      entering={SlideInDown.duration(250)}
-      exiting={SlideOutDown.duration(200)}
-      className="flex-row items-center justify-between px-4 py-2 bg-surfaceLight/95 border-t border-surface border-l-4 border-l-primary"
+      entering={SlideInDown.duration(200)}
+      exiting={SlideOutDown.duration(150)}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: c.header,
+        borderTopWidth: 1,
+        borderTopColor: c.divider,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+      }}
     >
-      <View className="flex-row items-center flex-1 mr-2">
-        <Ionicons
-          name="arrow-undo"
-          size={18}
-          color={COLORS.primary}
-          style={{ marginRight: 8 }}
-        />
+      <Ionicons name="arrow-undo" size={22} color={c.accent} />
 
-        <View className="flex-1">
-          <Text className="text-primary font-bold text-xs">
-            Відповідь для {replyTarget.senderName}
-          </Text>
-
-          <Text className="text-white/80 text-xs mt-0.5" numberOfLines={1}>
-            {replyTarget.text || "📷 Зображення"}
-          </Text>
-        </View>
+      <View
+        style={{
+          flex: 1,
+          marginLeft: 12,
+          paddingLeft: 8,
+          borderLeftWidth: 2,
+          borderLeftColor: c.accent,
+        }}
+      >
+        <Text
+          numberOfLines={1}
+          style={{
+            color: avatarColor(replyTarget.senderName),
+            fontWeight: "700",
+            fontSize: 13,
+          }}
+        >
+          {replyTarget.senderName}
+        </Text>
+        <Text numberOfLines={1} style={{ color: c.muted, fontSize: 13, marginTop: 1 }}>
+          {replyTarget.text || "📷 Зображення"}
+        </Text>
       </View>
 
-      <TouchableOpacity onPress={onCancel} className="p-1">
-        <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+      <TouchableOpacity
+        onPress={onCancel}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Скасувати відповідь"
+        style={{ padding: 4 }}
+      >
+        <Ionicons name="close" size={22} color={c.muted} />
       </TouchableOpacity>
     </Animated.View>
   );

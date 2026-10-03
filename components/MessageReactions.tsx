@@ -1,6 +1,6 @@
+import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, Text, View } from "react-native";
-import { COLORS } from "@/constants/theme";
 
 export interface ReactionItem {
   emoji: string;
@@ -16,11 +16,14 @@ type Props = {
 
 function ReactionPill({
   item,
+  isOwn,
   onToggle,
 }: {
   item: ReactionItem;
+  isOwn: boolean;
   onToggle: () => void;
 }) {
+  const c = useChatPalette();
   const scale = useRef(new Animated.Value(0.5)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -40,6 +43,12 @@ function ReactionPill({
     ]).start();
   }, [opacity, scale]);
 
+  // У власній бульбашці (колір акценту) пілюлі світлі, у чужій — акцентні.
+  const idleBg = isOwn ? withAlpha(c.onAccent, 0.2) : withAlpha(c.accent, 0.14);
+  const activeBg = isOwn ? c.onAccent : c.accent;
+  const idleText = isOwn ? c.onAccent : c.accent;
+  const activeText = isOwn ? c.accent : c.onAccent;
+
   return (
     <Animated.View style={{ opacity, transform: [{ scale }] }}>
       <Pressable
@@ -49,24 +58,18 @@ function ReactionPill({
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: 3,
+          gap: 4,
           paddingHorizontal: 8,
-          paddingVertical: 4,
-          borderRadius: 16,
-          borderWidth: 1,
-          backgroundColor: item.hasReacted
-            ? "rgba(59, 130, 246, 0.24)"
-            : "rgba(255, 255, 255, 0.08)",
-          borderColor: item.hasReacted
-            ? COLORS.primary
-            : "rgba(255, 255, 255, 0.15)",
+          paddingVertical: 3,
+          borderRadius: 14,
+          backgroundColor: item.hasReacted ? activeBg : idleBg,
         }}
       >
-        <Text style={{ fontSize: 13 }}>{item.emoji}</Text>
+        <Text style={{ fontSize: 14 }}>{item.emoji}</Text>
         <Text
           style={{
-            color: item.hasReacted ? "#BFDBFE" : COLORS.textMuted,
-            fontSize: 11,
+            color: item.hasReacted ? activeText : idleText,
+            fontSize: 12,
             fontWeight: "700",
           }}
         >
@@ -91,13 +94,13 @@ export function MessageReactions({
         flexWrap: "wrap",
         gap: 4,
         marginTop: 6,
-        justifyContent: isOwn ? "flex-end" : "flex-start",
       }}
     >
       {reactions.map((item) => (
         <ReactionPill
           key={item.emoji}
           item={item}
+          isOwn={isOwn}
           onToggle={() => onToggleReaction(item.emoji)}
         />
       ))}
