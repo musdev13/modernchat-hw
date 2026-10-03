@@ -63,6 +63,10 @@ const LIVE_MIN_BAR_HEIGHT = 4;
 const PRESENCE_HEARTBEAT_MS = 15_000;
 const LOCAL_TYPING_TIMEOUT_MS = 3_000;
 const DEFAULT_PANEL_HEIGHT = 300;
+const MIN_PANEL_HEIGHT = 240;
+const MAX_PANEL_HEIGHT = 520;
+// Висота клавіатури запамʼятовується між відкриттями чату.
+let lastKeyboardHeight = 0;
 // Floating "Dynamic Island" header
 const ISLAND_HEIGHT = 56;
 const ISLAND_COMPACT_HEIGHT = 44;
@@ -131,7 +135,11 @@ export default function ChatRoomScreen() {
     useState<Id<"messages"> | null>(null);
 
   const [panelOpen, setPanelOpen] = useState(false);
-  const [panelHeight, setPanelHeight] = useState(DEFAULT_PANEL_HEIGHT);
+  // Висота системної клавіатури (без нижньої системної панелі на Android).
+  const [keyboardHeight, setKeyboardHeight] = useState(lastKeyboardHeight);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  // Фокус у полі пошуку всередині панелі емодзі/GIF/наліпок.
+  const [panelSearching, setPanelSearching] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const [inputMode, setInputMode] = useState<"audio" | "video">("audio");
@@ -151,6 +159,9 @@ export default function ChatRoomScreen() {
 
   const flatListRef = useRef<FlatList<MessageRow>>(null);
   const inputRef = useRef<TextInput>(null);
+  const keyboardVisibleRef = useRef(false);
+  const panelSearchingRef = useRef(false);
+  const panelOpenedAtRef = useRef(0);
   const lastTypingCallRef = useRef<number>(0);
   const localTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -172,15 +183,44 @@ export default function ChatRoomScreen() {
     [],
   );
 
-  // Запамʼятовуємо висоту клавіатури, щоб панель емодзі займала те саме місце.
+  // Стежимо за клавіатурою: запамʼятовуємо висоту (панель займає те саме місце)
+  // і закриваємо панель емодзі, коли користувач повернувся до системної клавіатури.
   useEffect(() => {
-    const event =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const sub = Keyboard.addListener(event, (e) => {
-      const h = Math.round(e.endCoordinates.height);
-      setPanelHeight(Math.min(420, Math.max(240, h)));
-    });
-    return () => sub.remove();
+    const ios = Platform.OS === "ios";
+    const showSub = Keyboard.addListener(
+      ios ? "keyboardWillShow" : "keyboardDidShow",
+      (e) => {
+        const h = Math.round(e.endCoordinates.height);
+        if (h > 0) {
+          lastKeyboardHeight = h;
+          setKeyboardHeight(h);
+        }
+        keyboardVisibleRef.current = true;
+        setKeyboardVisible(true);
+        // Клавіатура пошуку в самій панелі не має закривати панель.
+        // Короткий проміжок після відкриття панелі ігнорує «хвіст» події від клавіатури, що ховається.
+        const justOpened = Date.now() - panelOpenedAtRef.current < 350;
+        if (!panelSearchingRef.current && !justOpened) setPanelOpen(false);
+      },
+    );
+    const hideSub = Keyboard.addListener(
+      ios ? "keyboardWillHide" : "keyboardDidHide",
+      () => {
+        keyboardVisibleRef.current = false;
+        setKeyboardVisible(false);
+        panelSearchingRef.current = false;
+        setPanelSearching(false);
+      },
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const handlePanelSearchFocus = useCallback((focused: boolean) => {
+    panelSearchingRef.current = focused;
+    setPanelSearching(focused);
   }, []);
 
   // Кнопка «Назад» (Android) спочатку закриває панель емодзі.
@@ -272,9 +312,12 @@ export default function ChatRoomScreen() {
 
   const togglePanel = useCallback(() => {
     if (panelOpen) {
-      setPanelOpen(false);
+      // Панель лишається, доки не зʼявиться клавіатура (без стрибка поля вводу).
+      // Якщо клавіатура вже відкрита (пошук у панелі) — закриваємо одразу.
+      if (keyboardVisibleRef.current) setPanelOpen(false);
       inputRef.current?.focus();
     } else {
+      panelOpenedAtRef.current = Date.now();
       Keyboard.dismiss();
       setPanelOpen(true);
     }
@@ -519,7 +562,7 @@ export default function ChatRoomScreen() {
 
         downloaded = await File.downloadFileAsync(
           gif.url,
-          new File(Paths.cache, `gif-${gif.id}.gif`),
+          new File(Paths.cache, `${gif.kind}-${gif.id}.gif`),
           { idempotent: true },
         );
         const storageId = await uploadFile(downloaded.uri, "image/gif");
@@ -531,15 +574,21 @@ export default function ChatRoomScreen() {
             ? (replyTarget.messageId as Id<"messages">)
             : undefined,
           replyToSender: replyTarget?.senderName,
-          replyToText: replyTarget?.text || "GIF",
+          replyToText:
+            replyTarget?.text || (gif.kind === "sticker" ? "Наліпка" : "GIF"),
         });
 
         setReplyTarget(null);
         setPanelOpen(false);
         resetTyping();
       } catch (error) {
-        console.error("Не вдалося надіслати GIF:", error);
-        Alert.alert("Помилка", "Не вдалося надіслати GIF");
+        console.error("Не вдалося надіслати GIF/наліпку:", error);
+        Alert.alert(
+          "Помилка",
+          gif.kind === "sticker"
+            ? "Не вдалося надіслати наліпку"
+            : "Не вдалося надіслати GIF",
+        );
       } finally {
         try {
           downloaded?.delete();
@@ -785,6 +834,24 @@ export default function ChatRoomScreen() {
 
   // Нижний отступ для панелей — не меньше 8px для визуального комфорта
   const bottomInset = Math.max(insets.bottom, 8);
+  // Поле вводу притиснуте до клавіатури/панелі — нижній safe area тримає лише
+  // сама клавіатура/панель, тож зайвого проміжку між ними немає.
+  const composerBottomPadding =
+    keyboardVisible || panelOpen ? 6 : bottomInset;
+
+  // Панель = висота останньої клавіатури (+ нижня системна панель на Android,
+  // яку клавіатура також перекриває). Під час пошуку панель компактна над клавіатурою.
+  const keyboardTotal =
+    keyboardHeight > 0
+      ? keyboardHeight + (Platform.OS === "android" ? insets.bottom : 0)
+      : DEFAULT_PANEL_HEIGHT;
+  const fullPanelHeight = Math.min(
+    MAX_PANEL_HEIGHT,
+    Math.max(MIN_PANEL_HEIGHT, keyboardTotal),
+  );
+  const panelHeight = panelSearching
+    ? Math.max(200, Math.round(fullPanelHeight * 0.62))
+    : fullPanelHeight;
 
   const roomTitle = room?.title ?? "Чат";
   const memberCount = room?.participants?.length ?? 0;
@@ -994,6 +1061,9 @@ export default function ChatRoomScreen() {
         className="flex-1"
         behavior="padding"
         keyboardVerticalOffset={0}
+        // Коли відкрита панель (клавіатури немає), відступ від клавіатури не потрібен —
+        // інакше між полем вводу і панеллю лишається порожнє місце.
+        enabled={!panelOpen || panelSearching}
       >
         <View className="flex-1">
           <FlatList
@@ -1166,7 +1236,7 @@ export default function ChatRoomScreen() {
               backgroundColor: "transparent",
               paddingHorizontal: 10,
               paddingTop: 6,
-              paddingBottom: bottomInset,
+              paddingBottom: composerBottomPadding,
             }}
           >
             <TouchableOpacity
@@ -1282,7 +1352,7 @@ export default function ChatRoomScreen() {
               backgroundColor: "transparent",
               paddingHorizontal: 10,
               paddingTop: 6,
-              paddingBottom: panelOpen ? 6 : bottomInset,
+              paddingBottom: composerBottomPadding,
             }}
           >
             <View
@@ -1306,7 +1376,7 @@ export default function ChatRoomScreen() {
                 onPress={togglePanel}
                 style={iconButtonStyle}
                 accessibilityRole="button"
-                accessibilityLabel={panelOpen ? "Показати клавіатуру" : "Емодзі та GIF"}
+                accessibilityLabel={panelOpen ? "Показати клавіатуру" : "Емодзі, GIF та наліпки"}
               >
                 <Ionicons
                   name={panelOpen ? "keypad-outline" : "happy-outline"}
@@ -1339,7 +1409,10 @@ export default function ChatRoomScreen() {
                 onChangeText={handleTextChange}
                 selection={selection}
                 onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
-                onFocus={() => setPanelOpen(false)}
+                onFocus={() => {
+                  // Клавіатура вже відкрита (напр. пошук у панелі) — одразу повертаємось до неї.
+                  if (keyboardVisibleRef.current) setPanelOpen(false);
+                }}
                 selectionColor={c.accent}
                 multiline
               />
@@ -1451,10 +1524,11 @@ export default function ChatRoomScreen() {
         {panelOpen && !isRecording && (
           <EmojiPanel
             height={panelHeight}
-            bottomInset={insets.bottom}
+            bottomInset={panelSearching ? 0 : insets.bottom}
             onSelectEmoji={handleInsertEmoji}
             onBackspace={handleEmojiBackspace}
             onSelectGif={handleSendGif}
+            onSearchFocusChange={handlePanelSearchFocus}
           />
         )}
       </KeyboardAvoidingView>
