@@ -3,7 +3,13 @@ import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { useEventListener } from "expo";
 import * as Haptics from "expo-haptics";
-import { useVideoPlayer, VideoView } from "expo-video";
+import { Image } from "expo-image";
+import {
+  createVideoPlayer,
+  useVideoPlayer,
+  VideoThumbnail,
+  VideoView,
+} from "expo-video";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,7 +18,12 @@ import {
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { runOnJS } from "react-native-reanimated";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
 import { MessageReactions, ReactionItem } from "./MessageReactions";
 
@@ -34,6 +45,124 @@ const CIRCLE_SIZE = 200;
 const STROKE_WIDTH = 3.5;
 const RADIUS = (CIRCLE_SIZE - STROKE_WIDTH) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+// ───────────────────────────────────────────────────────────────
+// Прев'ю (перший кадр). Генеруємо мініатюру через expo-video,
+// кешуємо в пам'яті за URL. Одночасно працює лише один легкий
+// «завантажувач», а черга пропускає елементи, які вже зникли зі списку.
+// ───────────────────────────────────────────────────────────────
+const THUMB_TIME_SEC = 0.1;
+const THUMB_MAX_SIZE = 480;
+const THUMB_TIMEOUT_MS = 10_000;
+const THUMB_CACHE_LIMIT = 80;
+
+const thumbCache = new Map<string, VideoThumbnail>();
+const thumbFailed = new Set<string>();
+const thumbInflight = new Map<string, Promise<VideoThumbnail | null>>();
+const thumbWanted = new Map<string, number>();
+let thumbQueue: Promise<unknown> = Promise.resolve();
+
+async function generateThumbnail(url: string): Promise<VideoThumbnail | null> {
+  let player: ReturnType<typeof createVideoPlayer> | null = null;
+  try {
+    player = createVideoPlayer(url);
+    player.muted = true;
+    const p = player;
+
+    // Чекаємо, поки плеєр завантажить метадані (без запуску відтворення).
+    await new Promise<void>((resolve, reject) => {
+      if (p.status === "readyToPlay") {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(() => {
+        sub.remove();
+        reject(new Error("thumbnail timeout"));
+      }, THUMB_TIMEOUT_MS);
+      const sub = p.addListener("statusChange", ({ status }) => {
+        if (status === "readyToPlay") {
+          clearTimeout(timer);
+          sub.remove();
+          resolve();
+        } else if (status === "error") {
+          clearTimeout(timer);
+          sub.remove();
+          reject(new Error("thumbnail load error"));
+        }
+      });
+    });
+
+    const [thumb] = await p.generateThumbnailsAsync(THUMB_TIME_SEC, {
+      maxWidth: THUMB_MAX_SIZE,
+      maxHeight: THUMB_MAX_SIZE,
+    });
+    return thumb ?? null;
+  } catch {
+    return null;
+  } finally {
+    try {
+      player?.release();
+    } catch {}
+  }
+}
+
+function requestThumbnail(url: string): Promise<VideoThumbnail | null> {
+  const cached = thumbCache.get(url);
+  if (cached) return Promise.resolve(cached);
+  if (thumbFailed.has(url)) return Promise.resolve(null);
+  const running = thumbInflight.get(url);
+  if (running) return running;
+
+  const job = new Promise<VideoThumbnail | null>((resolve) => {
+    thumbQueue = thumbQueue.then(async () => {
+      // Користувач уже прокрутив повз цей кружечок — не витрачаємо ресурси.
+      if ((thumbWanted.get(url) ?? 0) <= 0) {
+        thumbInflight.delete(url);
+        resolve(null);
+        return;
+      }
+      const thumb = await generateThumbnail(url);
+      if (thumb) {
+        thumbCache.set(url, thumb);
+        if (thumbCache.size > THUMB_CACHE_LIMIT) {
+          const oldest = thumbCache.keys().next().value;
+          if (oldest !== undefined) thumbCache.delete(oldest);
+        }
+      } else {
+        thumbFailed.add(url);
+      }
+      thumbInflight.delete(url);
+      resolve(thumb);
+    });
+  });
+  thumbInflight.set(url, job);
+  return job;
+}
+
+function useVideoNoteThumbnail(url: string): VideoThumbnail | null {
+  const [thumb, setThumb] = useState<VideoThumbnail | null>(
+    () => thumbCache.get(url) ?? null,
+  );
+
+  useEffect(() => {
+    const cached = thumbCache.get(url);
+    if (cached) {
+      setThumb(cached);
+      return;
+    }
+    let alive = true;
+    thumbWanted.set(url, (thumbWanted.get(url) ?? 0) + 1);
+    void requestThumbnail(url).then((result) => {
+      if (alive && result) setThumb(result);
+    });
+    return () => {
+      alive = false;
+      thumbWanted.set(url, Math.max(0, (thumbWanted.get(url) ?? 1) - 1));
+    };
+  }, [url]);
+
+  return thumb;
+}
 
 function formatDuration(sec: number): string {
   const safe = Math.max(0, Math.ceil(sec));
@@ -78,6 +207,7 @@ export const VideoNotePlayer: React.FC<VideoNotePlayerProps> = (props) => {
       ) : (
         // Легкий placeholder, поки користувач не натиснув: відео не вантажиться
         <VideoNotePlaceholder
+          videoUrl={props.videoUrl}
           duration={props.duration}
           isMine={props.isMine}
           timeLabel={props.timeLabel}
@@ -149,12 +279,14 @@ const DurationBadge: React.FC<{ seconds: number }> = ({ seconds }) => (
 // Placeholder
 // ─────────────────────────────────────────────
 const VideoNotePlaceholder: React.FC<{
+  videoUrl: string;
   duration?: number;
   isMine?: boolean;
   timeLabel?: string;
   onPress: () => void;
-}> = ({ duration = 0, isMine = false, timeLabel, onPress }) => {
+}> = ({ videoUrl, duration = 0, isMine = false, timeLabel, onPress }) => {
   const c = useChatPalette();
+  const thumbnail = useVideoNoteThumbnail(videoUrl);
   const bgColor = withAlpha(isMine ? c.accent : c.muted, 0.22);
   const borderColor = withAlpha(isMine ? c.accent : c.muted, 0.5);
 
@@ -172,8 +304,17 @@ const VideoNotePlaceholder: React.FC<{
           backgroundColor: bgColor,
           borderWidth: 1,
           borderColor,
+          overflow: "hidden",
         }}
       >
+        {thumbnail && (
+          <Image
+            source={thumbnail}
+            contentFit="cover"
+            transition={250}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+          />
+        )}
         <View
           style={{
             width: 64,
@@ -181,7 +322,7 @@ const VideoNotePlaceholder: React.FC<{
             borderRadius: 32,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "rgba(0,0,0,0.4)",
+            backgroundColor: "rgba(0,0,0,0.45)",
           }}
         >
           <Ionicons
@@ -217,6 +358,10 @@ const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
   onReplay,
 }) => {
   const c = useChatPalette();
+  const thumbnail = useVideoNoteThumbnail(videoUrl);
+  const [firstFrame, setFirstFrame] = useState(false);
+  const coverOpacity = useSharedValue(1);
+  const coverStyle = useAnimatedStyle(() => ({ opacity: coverOpacity.value }));
   const [isMuted, setIsMuted] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -287,6 +432,13 @@ const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
 
     return () => clearInterval(interval);
   }, [player, duration]);
+
+  // Плавно прибираємо прев'ю, коли відео віддало перший кадр.
+  useEffect(() => {
+    if (firstFrame || isPlaying) {
+      coverOpacity.value = withTiming(0, { duration: 280 });
+    }
+  }, [firstFrame, isPlaying, coverOpacity]);
 
   const handleTap = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -387,7 +539,30 @@ const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
             style={{ width: "100%", height: "100%" }}
             contentFit="cover"
             nativeControls={false}
+            onFirstFrameRender={() => setFirstFrame(true)}
           />
+
+          {thumbnail && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                {
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                },
+                coverStyle,
+              ]}
+            >
+              <Image
+                source={thumbnail}
+                contentFit="cover"
+                style={{ width: "100%", height: "100%" }}
+              />
+            </Animated.View>
+          )}
 
           {!isReady && (
             <View
