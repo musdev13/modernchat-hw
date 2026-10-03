@@ -1,15 +1,13 @@
-import { COLORS } from "@/constants/theme";
+import { KawaiiLoadingScreen } from "@/components/ui/KawaiiLoadingScreen";
 import { useAuth } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
 
 export default function OAuthNativeCallback() {
   const router = useRouter();
   const { isSignedIn } = useAuth();
 
   useEffect(() => {
-    // Затримка, щоб Clerk встиг обробити токен з URL
     const timer = setTimeout(() => {
       if (isSignedIn) {
         router.replace("/(app)");
@@ -21,16 +19,5 @@ export default function OAuthNativeCallback() {
     return () => clearTimeout(timer);
   }, [isSignedIn]);
 
-  return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: COLORS.background,
-      }}
-    >
-      <ActivityIndicator size="large" color={COLORS.primary} />
-    </View>
-  );
+  return <KawaiiLoadingScreen />;
 }

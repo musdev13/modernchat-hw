@@ -10,66 +10,65 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-interface EditProfileModalProps {
+interface EditRoomModalProps {
   visible: boolean;
-  initialName: string;
-  initialUsername?: string;
-  initialBio?: string;
-  initialImage?: string;
+  roomId: Id<"chatRooms">;
+  initialTitle: string;
+  initialDescription?: string;
+  initialAvatarUrl?: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function EditProfileModal({
+export function EditRoomModal({
   visible,
-  initialName,
-  initialUsername,
-  initialBio,
-  initialImage,
+  roomId,
+  initialTitle,
+  initialDescription,
+  initialAvatarUrl,
   onClose,
   onSaved,
-}: EditProfileModalProps) {
+}: EditRoomModalProps) {
   const insets = useSafeAreaInsets();
-  const updateProfile = useMutation(api.users.updateUserProfile);
-  const generateUploadUrl = useMutation(api.users.generateAvatarUploadUrl);
+  const updateRoom = useMutation(api.rooms.updateRoom);
+  const generateUploadUrl = useMutation(
+    api.rooms.generateRoomAvatarUploadUrl,
+  );
 
-  const [name, setName] = useState(initialName);
-  const [username, setUsername] = useState(initialUsername ?? "");
-  const [bio, setBio] = useState(initialBio ?? "");
-  const [image, setImage] = useState<string | undefined>(initialImage);
-  const [imageError, setImageError] = useState(false);
-  const [selectedImageUri, setSelectedImageUri] = useState<string | undefined>();
-  const [selectedImageMimeType, setSelectedImageMimeType] =
-    useState<string>("image/jpeg");
+  const [title, setTitle] = useState(initialTitle);
+  const [description, setDescription] = useState(initialDescription ?? "");
+  const [avatarUri, setAvatarUri] = useState<string | undefined>();
+  const [avatarMimeType, setAvatarMimeType] = useState<string>("image/jpeg");
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>(
+    initialAvatarUrl,
+  );
+  const [clearAvatar, setClearAvatar] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
+    setTitle(initialTitle);
+    setDescription(initialDescription ?? "");
+    setAvatarUri(undefined);
+    setPreviewUrl(initialAvatarUrl);
+    setClearAvatar(false);
+  }, [visible, initialTitle, initialDescription, initialAvatarUrl]);
 
-    setName(initialName);
-    setUsername(initialUsername ?? "");
-    setBio(initialBio ?? "");
-    setImage(initialImage);
-    setImageError(false);
-    setSelectedImageUri(undefined);
-    setSelectedImageMimeType("image/jpeg");
-  }, [visible, initialName, initialUsername, initialBio, initialImage]);
-
-  const pickImage = async () => {
+  const pickAvatar = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(
@@ -89,23 +88,28 @@ export function EditProfileModal({
     if (result.canceled || !result.assets[0]) return;
 
     const asset = result.assets[0];
-    setImage(asset.uri);
-    setImageError(false);
-    setSelectedImageUri(asset.uri);
-    setSelectedImageMimeType(asset.mimeType ?? "image/jpeg");
+    setAvatarUri(asset.uri);
+    setAvatarMimeType(asset.mimeType ?? "image/jpeg");
+    setPreviewUrl(asset.uri);
+    setClearAvatar(false);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const uploadAvatar = async (
-    uri: string,
-    mimeType: string,
-  ): Promise<Id<"_storage">> => {
+  const handleClearAvatar = () => {
+    setAvatarUri(undefined);
+    setPreviewUrl(undefined);
+    setClearAvatar(true);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const uploadAvatar = async (uri: string, mimeType: string) => {
     const uploadUrl = await generateUploadUrl();
     const file = new File(uri);
 
-    if (!file.exists) throw new Error("Обране зображення не знайдено.");
+    if (!file.exists) throw new Error("Файл не знайдено");
 
     const base64 = await file.base64();
-    if (!base64) throw new Error("Не вдалося прочитати зображення.");
+    if (!base64) throw new Error("Не вдалося прочитати файл");
 
     const binaryString = atob(base64);
     const bytes = new Uint8Array(binaryString.length);
@@ -120,25 +124,19 @@ export function EditProfileModal({
     });
 
     if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      console.error(
-        "Convex avatar upload error:",
-        uploadResponse.status,
-        errorText,
-      );
-      throw new Error(`Не вдалося завантажити аватар (${uploadResponse.status})`);
+      throw new Error(`Upload failed: ${uploadResponse.status}`);
     }
 
-    const result = await uploadResponse.json();
-    if (!result.storageId) throw new Error("Convex не повернув storageId.");
+    const data = await uploadResponse.json();
+    if (!data.storageId) throw new Error("Convex не повернув storageId");
 
-    return result.storageId as Id<"_storage">;
+    return data.storageId as Id<"_storage">;
   };
 
   const handleSave = async () => {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      Alert.alert("Помилка", "Ім'я не може бути порожнім.");
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      Alert.alert("Помилка", "Назва не може бути порожньою.");
       return;
     }
 
@@ -146,18 +144,16 @@ export function EditProfileModal({
       setSaving(true);
 
       let avatarStorageId: Id<"_storage"> | undefined;
-      if (selectedImageUri) {
-        avatarStorageId = await uploadAvatar(
-          selectedImageUri,
-          selectedImageMimeType,
-        );
+      if (avatarUri) {
+        avatarStorageId = await uploadAvatar(avatarUri, avatarMimeType);
       }
 
-      await updateProfile({
-        name: trimmedName,
-        username: username.trim() || undefined,
-        bio: bio.trim() || undefined,
+      await updateRoom({
+        roomId,
+        title: trimmedTitle,
+        description: description.trim(),
         ...(avatarStorageId ? { avatarStorageId } : {}),
+        ...(clearAvatar ? { clearAvatar: true } : {}),
       });
 
       void Haptics.notificationAsync(
@@ -166,7 +162,7 @@ export function EditProfileModal({
       onSaved();
       onClose();
     } catch (error) {
-      console.error("Profile save error:", error);
+      console.error("Room save error:", error);
       Alert.alert(
         "Помилка",
         error instanceof Error ? error.message : "Не вдалося зберегти.",
@@ -240,7 +236,7 @@ export function EditProfileModal({
                     fontSize: 18,
                   }}
                 >
-                  Редагувати профіль
+                  Редагувати кімнату
                 </Text>
               </View>
 
@@ -263,53 +259,79 @@ export function EditProfileModal({
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{
-                paddingTop: 8,
-                paddingBottom: 24,
-              }}
+              contentContainerStyle={{ paddingTop: 8, paddingBottom: 24 }}
             >
-              <TouchableOpacity
-                onPress={pickImage}
-                disabled={saving}
-                style={{ alignItems: "center", marginBottom: 22 }}
-                activeOpacity={0.85}
-              >
-                <View style={{ position: "relative", paddingTop: 4 }}>
-                  <KawaiiAvatar
-                    uri={image && !imageError ? image : undefined}
-                    name={name}
-                    size={96}
-                    ring="primary"
-                  />
-                  <View
-                    style={{
-                      position: "absolute",
-                      bottom: -2,
-                      right: -2,
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderWidth: 2,
-                      borderColor: COLORS.background,
-                      backgroundColor: "#FF8FB4",
-                    }}
-                  >
-                    <Ionicons name="camera" size={15} color="#FFFFFF" />
+              <View style={{ alignItems: "center", marginBottom: 22 }}>
+                <TouchableOpacity
+                  onPress={pickAvatar}
+                  disabled={saving}
+                  activeOpacity={0.85}
+                >
+                  <View style={{ position: "relative", paddingTop: 4 }}>
+                    <KawaiiAvatar
+                      uri={previewUrl}
+                      name={title || "R"}
+                      size={96}
+                      ring="primary"
+                    />
+                    <View
+                      style={{
+                        position: "absolute",
+                        bottom: -2,
+                        right: -2,
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderWidth: 2,
+                        borderColor: COLORS.background,
+                        backgroundColor: "#FF8FB4",
+                      }}
+                    >
+                      <Ionicons name="camera" size={15} color="#FFFFFF" />
+                    </View>
                   </View>
-                </View>
-                <Text
+                </TouchableOpacity>
+
+                <View
                   style={{
-                    color: COLORS.primary,
-                    fontFamily: FONTS.bodyBold,
-                    fontSize: 12,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
                     marginTop: 10,
                   }}
                 >
-                  Змінити аватар
-                </Text>
-              </TouchableOpacity>
+                  <TouchableOpacity onPress={pickAvatar} disabled={saving}>
+                    <Text
+                      style={{
+                        color: COLORS.primary,
+                        fontFamily: FONTS.bodyBold,
+                        fontSize: 12,
+                      }}
+                    >
+                      {previewUrl ? "Змінити аватар" : "Додати аватар"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {previewUrl && (
+                    <TouchableOpacity
+                      onPress={handleClearAvatar}
+                      disabled={saving}
+                    >
+                      <Text
+                        style={{
+                          color: COLORS.danger,
+                          fontFamily: FONTS.bodyBold,
+                          fontSize: 12,
+                        }}
+                      >
+                        Прибрати
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
 
               <Text
                 style={{
@@ -321,7 +343,7 @@ export function EditProfileModal({
                   marginBottom: 6,
                 }}
               >
-                Ім'я
+                Назва
               </Text>
               <View
                 style={{
@@ -337,11 +359,12 @@ export function EditProfileModal({
               >
                 <Text style={{ fontSize: 16, marginRight: 8 }}>🎀</Text>
                 <TextInput
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Твоє ім'я"
+                  value={title}
+                  onChangeText={setTitle}
+                  placeholder="Назва кімнати"
                   placeholderTextColor={COLORS.textMuted}
                   editable={!saving}
+                  maxLength={100}
                   style={{
                     flex: 1,
                     paddingVertical: 14,
@@ -362,74 +385,33 @@ export function EditProfileModal({
                   marginBottom: 6,
                 }}
               >
-                Username
-              </Text>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  backgroundColor: "rgba(126,232,250,0.08)",
-                  borderWidth: 1,
-                  borderColor: "rgba(126,232,250,0.22)",
-                  borderRadius: 16,
-                  paddingHorizontal: 14,
-                  marginBottom: 16,
-                }}
-              >
-                <Text style={{ fontSize: 16, marginRight: 8 }}>💫</Text>
-                <TextInput
-                  value={username}
-                  onChangeText={setUsername}
-                  placeholder="@username"
-                  placeholderTextColor={COLORS.textMuted}
-                  editable={!saving}
-                  autoCapitalize="none"
-                  style={{
-                    flex: 1,
-                    paddingVertical: 14,
-                    color: COLORS.text,
-                    fontFamily: FONTS.body,
-                    fontSize: 14,
-                  }}
-                />
-              </View>
-
-              <Text
-                style={{
-                  color: COLORS.textMuted,
-                  fontFamily: FONTS.bodyBold,
-                  fontSize: 11,
-                  letterSpacing: 1,
-                  textTransform: "uppercase",
-                  marginBottom: 6,
-                }}
-              >
-                Про себе
+                Опис
               </Text>
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "flex-start",
-                  backgroundColor: "rgba(255,143,180,0.06)",
+                  backgroundColor: "rgba(126,232,250,0.06)",
                   borderWidth: 1,
-                  borderColor: "rgba(255,143,180,0.22)",
+                  borderColor: "rgba(126,232,250,0.22)",
                   borderRadius: 16,
                   paddingHorizontal: 14,
                   paddingVertical: 10,
                   marginBottom: 22,
+                  minHeight: 110,
                 }}
               >
                 <Text style={{ fontSize: 16, marginRight: 8, marginTop: 2 }}>
                   💭
                 </Text>
                 <TextInput
-                  value={bio}
-                  onChangeText={setBio}
-                  placeholder="Розкажи щось про себе ✨"
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Розкажи, про що ця кімната..."
                   placeholderTextColor={COLORS.textMuted}
                   editable={!saving}
                   multiline
-                  numberOfLines={4}
+                  maxLength={300}
                   textAlignVertical="top"
                   style={{
                     flex: 1,

@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 
-// Допоміжна функція для отримання поточного авторизованого користувача (Clerk)
 export async function getAuthUser(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
@@ -16,7 +15,6 @@ export async function getAuthUser(ctx: QueryCtx | MutationCtx) {
     .unique();
 }
 
-// Запит поточного користувача для клієнта
 export const currentUser = query({
   args: {},
   handler: async (ctx) => {
@@ -24,7 +22,6 @@ export const currentUser = query({
   },
 });
 
-// Мутація синхронізації: створює або оновлює запис користувача в базі після входу через Clerk
 export const store = mutation({
   args: {},
   handler: async (ctx) => {
@@ -33,7 +30,6 @@ export const store = mutation({
       throw new Error("Виклик store без авторизації!");
     }
 
-    // Шукаємо, чи існує вже цей користувач у таблиці users
     const user = await ctx.db
       .query("users")
       .withIndex("by_token", (q) =>
@@ -42,11 +38,19 @@ export const store = mutation({
       .unique();
 
     if (user !== null) {
-      // Оновлюємо ім'я або фото, якщо вони змінилися в акаунті Clerk
-      const newName = identity.name ?? user.name;
-      const newImage = identity.pictureUrl ?? user.image;
+      // Якщо юзер уже завантажив власну аватарку — не перезаписуємо image з Clerk.
+      // Це захищає кастомну аватарку від скидання при кожному логіні.
+      const hasCustomAvatar = !!user.avatarStorageId;
 
-      if (user.name !== newName || user.image !== newImage) {
+      const newName = identity.name ?? user.name;
+      const newImage = hasCustomAvatar
+        ? user.image
+        : identity.pictureUrl ?? user.image;
+
+      const nameChanged = user.name !== newName;
+      const imageChanged = user.image !== newImage;
+
+      if (nameChanged || imageChanged) {
         await ctx.db.patch(user._id, {
           name: newName,
           image: newImage,
@@ -55,7 +59,6 @@ export const store = mutation({
       return user._id;
     }
 
-    // Створюємо нового користувача
     return await ctx.db.insert("users", {
       name: identity.name ?? identity.nickname ?? "Користувач",
       email: identity.email,

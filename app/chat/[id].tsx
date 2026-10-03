@@ -1,16 +1,19 @@
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import {
-  ReactionPickerModal,
-  ReactionPickerPosition,
-} from "@/components/ReactionPickerModal";
+  MessageContextMenu,
+  MessageMenuAction,
+  MessageMenuPosition,
+} from "@/components/MessageContextMenu";
 import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
 import {
   MessageItemData,
   SwipeableMessageItem,
 } from "@/components/SwipeableMessageItem";
 import { TypingDots } from "@/components/TypingDots";
+import { KawaiiAvatar } from "@/components/ui/KawaiiAvatar";
+import { KawaiiGradient } from "@/components/ui/KawaiiGradient";
 import { VideoNoteRecorderModal } from "@/components/VideoNoteRecorderModal";
-import { COLORS } from "@/constants/theme";
+import { COLORS, FONTS } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
@@ -51,6 +54,7 @@ export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const chatRoomId = id as Id<"chatRooms">;
+  const insets = useSafeAreaInsets();
 
   const room = useQuery(api.rooms.getRoom, { roomId: chatRoomId });
 
@@ -69,6 +73,7 @@ export default function ChatRoomScreen() {
   const sendVideoNote = useMutation(api.messages.sendVideoNote);
   const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
   const editMessage = useMutation(api.messages.editMessage);
+  const deleteMessage = useMutation(api.messages.deleteMessage);
   const toggleReaction = useMutation(api.messages.toggleReaction);
   const setTyping = useMutation(api.typing.setTyping);
   const clearTyping = useMutation(api.typing.clearTyping);
@@ -85,9 +90,11 @@ export default function ChatRoomScreen() {
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [pickerState, setPickerState] = useState<{
-    messageId: Id<"messages">;
-    position: ReactionPickerPosition;
+  const [menuState, setMenuState] = useState<{
+    message: MessageItemData;
+    position: MessageMenuPosition;
+    canEdit: boolean;
+    canDelete: boolean;
   } | null>(null);
 
   const [inputMode, setInputMode] = useState<"audio" | "video">("audio");
@@ -103,7 +110,6 @@ export default function ChatRoomScreen() {
   } = useVoiceRecorder();
 
   const sendButtonScale = useSharedValue(1);
-  const insets = useSafeAreaInsets();
 
   const flatListRef = useRef<FlatList>(null);
   const lastTypingCallRef = useRef<number>(0);
@@ -113,7 +119,6 @@ export default function ChatRoomScreen() {
     transform: [{ scale: sendButtonScale.value }],
   }));
 
-  // Presence heartbeat + очистка typing при выходе из чата
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -164,7 +169,6 @@ export default function ChatRoomScreen() {
   const pickImage = useCallback(async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
       if (status !== "granted") {
         Alert.alert(
           "Дозвіл потрібен",
@@ -197,7 +201,7 @@ export default function ChatRoomScreen() {
         const dur = message.audioDuration
           ? ` (${Math.round(message.audioDuration)}с)`
           : "";
-        preview = `🎤 Голосове повідомлення${dur}`;
+        preview = `🎤 Голосове${dur}`;
       } else if (message.imageUrl) {
         preview = "📷 Фотографія";
       }
@@ -216,11 +220,57 @@ export default function ChatRoomScreen() {
     async (messageId: Id<"messages">, emoji: string) => {
       try {
         await toggleReaction({ messageId, emoji });
-      } catch (error) {
+      } catch (error: any) {
+        const message = String(error?.message ?? "");
+
+        if (message.includes("Максимум")) {
+          Alert.alert(
+            "Забагато реакцій 🌸",
+            "Ти вже поставив 10 реакцій на це повідомлення.\nЗніми одну, щоб додати нову ✨",
+          );
+          return;
+        }
+
         console.error("Не вдалося змінити реакцію:", error);
       }
     },
     [toggleReaction],
+  );
+
+  const handleMenuAction = useCallback(
+    (action: MessageMenuAction) => {
+      if (!menuState) return;
+      const message = menuState.message;
+
+      if (action === "reply") {
+        handleStartReply(message);
+      } else if (action === "edit") {
+        setEditingMessageId(message._id);
+        setInputText(message.content ?? "");
+        setReplyTarget(null);
+      } else if (action === "delete") {
+        Alert.alert(
+          "Видалити повідомлення? 🗑️",
+          "Цю дію неможливо скасувати.",
+          [
+            { text: "Скасувати", style: "cancel" },
+            {
+              text: "Видалити",
+              style: "destructive",
+              onPress: async () => {
+                try {
+                  await deleteMessage({ messageId: message._id });
+                } catch (error) {
+                  console.error("Delete error:", error);
+                  Alert.alert("Помилка", "Не вдалося видалити повідомлення");
+                }
+              },
+            },
+          ],
+        );
+      }
+    },
+    [menuState, handleStartReply, deleteMessage],
   );
 
   const uploadFile = useCallback(
@@ -263,7 +313,6 @@ export default function ChatRoomScreen() {
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
-
     if ((!text && !selectedImageUri) || isSubmitting) return;
 
     try {
@@ -277,7 +326,6 @@ export default function ChatRoomScreen() {
         setEditingMessageId(null);
       } else if (selectedImageUri) {
         const storageId = await uploadFile(selectedImageUri, "image/jpeg");
-
         await sendMediaMessage({
           chatRoomId,
           storageId,
@@ -288,7 +336,6 @@ export default function ChatRoomScreen() {
           replyToSender: replyTarget?.senderName,
           replyToText: replyTarget?.text,
         });
-
         setSelectedImageUri(null);
         setReplyTarget(null);
       } else {
@@ -301,7 +348,6 @@ export default function ChatRoomScreen() {
           replyToSender: replyTarget?.senderName,
           replyToText: replyTarget?.text,
         });
-
         setReplyTarget(null);
       }
 
@@ -354,7 +400,6 @@ export default function ChatRoomScreen() {
       if (!result) return;
 
       setIsSubmitting(true);
-
       const storageId = await uploadFile(result.uri, "audio/m4a");
 
       await sendVoiceMessage({
@@ -395,7 +440,6 @@ export default function ChatRoomScreen() {
     async (videoUri: string, durationSeconds: number) => {
       try {
         setIsSubmitting(true);
-
         const storageId = await uploadFile(videoUri, "video/mp4");
 
         await sendVideoNote({
@@ -422,21 +466,39 @@ export default function ChatRoomScreen() {
   );
 
   const renderMessageItem = useCallback(
-    ({ item }: { item: MessageItemData }) => (
-      <SwipeableMessageItem
-        item={item}
-        isOwn={item.senderId === currentUser?._id}
-        onLongPress={(position) =>
-          setPickerState({ messageId: item._id, position })
-        }
-        onDoubleTap={(message) => handleToggleReaction(message._id, "❤️")}
-        onToggleReaction={(emoji) => handleToggleReaction(item._id, emoji)}
-        onReply={handleStartReply}
-        onImagePress={setFullscreenImage}
-        onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
-      />
-    ),
-    [currentUser?._id, handleStartReply, handleToggleReaction, router],
+    ({ item }: { item: MessageItemData }) => {
+      const isOwn = item.senderId === currentUser?._id;
+      const isAdminOrCreator =
+        room?.currentUserRole === "creator" ||
+        room?.currentUserRole === "admin";
+
+      return (
+        <SwipeableMessageItem
+          item={item}
+          isOwn={isOwn}
+          onLongPress={(position, message) => {
+            setMenuState({
+              message,
+              position,
+              canEdit: isOwn,
+              canDelete: isOwn || isAdminOrCreator,
+            });
+          }}
+          onDoubleTap={(message) => handleToggleReaction(message._id, "❤️")}
+          onToggleReaction={(emoji) => handleToggleReaction(item._id, emoji)}
+          onReply={handleStartReply}
+          onImagePress={setFullscreenImage}
+          onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
+        />
+      );
+    },
+    [
+      currentUser?._id,
+      room?.currentUserRole,
+      handleStartReply,
+      handleToggleReaction,
+      router,
+    ],
   );
 
   const handleLoadMore = useCallback(() => {
@@ -456,8 +518,12 @@ export default function ChatRoomScreen() {
     if (status === "LoadingFirstPage") {
       return (
         <View
-          className="flex-1 items-center justify-center"
-          style={{ transform: [{ scaleY: -1 }] }}
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            transform: [{ scaleY: -1 }],
+          }}
         >
           <ActivityIndicator size="small" color={COLORS.primary} />
         </View>
@@ -466,11 +532,24 @@ export default function ChatRoomScreen() {
 
     return (
       <View
-        className="flex-1 items-center justify-center px-8"
-        style={{ transform: [{ scaleY: -1 }] }}
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 32,
+          transform: [{ scaleY: -1 }],
+        }}
       >
-        <Text className="text-white/60 text-center">
-          Повідомлень ще немає
+        <Text style={{ fontSize: 40, marginBottom: 8 }}>✨</Text>
+        <Text
+          style={{
+            color: COLORS.textMuted,
+            fontFamily: FONTS.body,
+            textAlign: "center",
+            fontSize: 13,
+          }}
+        >
+          Повідомлень ще немає. Почни першим!
         </Text>
       </View>
     );
@@ -486,56 +565,125 @@ export default function ChatRoomScreen() {
   const hasText = inputText.trim().length > 0;
   const showSendButton = hasText || !!selectedImageUri || !!editingMessageId;
 
-  // Нижний отступ для панелей — не меньше 12px для визуального комфорта
   const bottomInset = Math.max(insets.bottom, 12);
 
+  const handleOpenRoomInfo = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(`/settings/${chatRoomId}` as any);
+  };
+
   return (
-    <View className="flex-1 bg-surface">
-      {/* HEADER — вне KeyboardAvoidingView, чтобы не сжимался при клавиатуре */}
+    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
       <View
-        className="flex-row items-center border-b border-surfaceLight bg-surface px-4"
-        style={{ height: insets.top + 56, paddingTop: insets.top }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          borderBottomWidth: 1,
+          borderBottomColor: "rgba(183,148,246,0.15)",
+          backgroundColor: COLORS.background,
+          paddingHorizontal: 12,
+          height: insets.top + 56,
+          paddingTop: insets.top,
+        }}
       >
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-secondary"
+          style={{
+            marginRight: 10,
+            width: 40,
+            height: 40,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 20,
+            backgroundColor: "rgba(183,148,246,0.15)",
+          }}
           accessibilityRole="button"
           accessibilityLabel="Назад"
         >
-          <Ionicons name="arrow-back" size={22} color={COLORS.white} />
+          <Ionicons name="arrow-back" size={20} color={COLORS.primary} />
         </TouchableOpacity>
 
-        <Text numberOfLines={1} className="flex-1 text-lg font-bold text-white">
-          {room?.title ?? "Чат"}
-        </Text>
+        <TouchableOpacity
+          onPress={handleOpenRoomInfo}
+          activeOpacity={0.75}
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+          }}
+        >
+          {room?.avatarUrl ? (
+            <KawaiiAvatar
+              uri={room.avatarUrl}
+              name={room.title}
+              size={34}
+              ring="primary"
+            />
+          ) : (
+            <KawaiiGradient
+              variant="primary"
+              glow
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="chatbubbles" size={16} color="#FFFFFF" />
+            </KawaiiGradient>
+          )}
+
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                fontFamily: FONTS.headingBold,
+                fontSize: 15,
+                color: COLORS.text,
+              }}
+            >
+              {room?.title ?? "Чат"}
+            </Text>
+            <Text style={{ fontSize: 10, marginTop: -1 }}>✨ 💕</Text>
+          </View>
+        </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => router.push(`/settings/${chatRoomId}`)}
-          className="ml-3 h-10 w-10 items-center justify-center rounded-full bg-secondary"
+          onPress={handleOpenRoomInfo}
+          style={{
+            marginLeft: 6,
+            width: 40,
+            height: 40,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 20,
+            backgroundColor: "rgba(183,148,246,0.15)",
+          }}
           accessibilityRole="button"
           accessibilityLabel="Інформація про кімнату"
         >
           <Ionicons
             name="information-circle-outline"
-            size={24}
+            size={22}
             color={COLORS.primary}
           />
         </TouchableOpacity>
       </View>
 
-      {/* CONTENT + INPUT — внутри KeyboardAvoidingView */}
       <KeyboardAvoidingView
-        className="flex-1"
+        style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
       >
-        <View className="flex-1">
+        <View style={{ flex: 1 }}>
           <FlatList
             ref={flatListRef}
             data={messages}
             keyExtractor={(item) => item._id}
-            inverted={true}
-            contentContainerStyle={{ padding: 16 }}
+            inverted
+            contentContainerStyle={{ padding: 12 }}
             renderItem={renderMessageItem}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.5}
@@ -543,7 +691,7 @@ export default function ChatRoomScreen() {
             scrollEventThrottle={16}
             ListFooterComponent={
               status === "LoadingMore" ? (
-                <View className="py-3">
+                <View style={{ paddingVertical: 12 }}>
                   <ActivityIndicator size="small" color={COLORS.primary} />
                 </View>
               ) : null
@@ -559,13 +707,22 @@ export default function ChatRoomScreen() {
             <Animated.View
               entering={ZoomIn.springify()}
               exiting={ZoomOut.duration(150)}
-              className="absolute right-4 bottom-4"
+              style={{ position: "absolute", right: 16, bottom: 16 }}
             >
-              <TouchableOpacity
-                onPress={scrollToBottom}
-                className="w-11 h-11 rounded-full bg-primary items-center justify-center"
-              >
-                <Ionicons name="arrow-down" size={20} color="#FFFFFF" />
+              <TouchableOpacity onPress={scrollToBottom} activeOpacity={0.85}>
+                <KawaiiGradient
+                  variant="primary"
+                  glow
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="arrow-down" size={20} color="#FFFFFF" />
+                </KawaiiGradient>
               </TouchableOpacity>
             </Animated.View>
           )}
@@ -583,16 +740,35 @@ export default function ChatRoomScreen() {
         )}
 
         {editingMessageId && (
-          <View className="flex-row items-center justify-between px-4 py-2 bg-surfaceLight border-t border-surface">
-            <View className="flex-row items-center flex-1 mr-2">
-              <Ionicons
-                name="pencil"
-                size={16}
-                color={COLORS.primary}
-                style={{ marginRight: 6 }}
-              />
-              <Text className="text-white text-xs font-semibold">
-                Редагування повідомлення
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              backgroundColor: "rgba(255,143,180,0.08)",
+              borderTopWidth: 1,
+              borderTopColor: "rgba(255,143,180,0.2)",
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                flex: 1,
+                marginRight: 8,
+              }}
+            >
+              <Text style={{ fontSize: 12, marginRight: 6 }}>✏️</Text>
+              <Text
+                style={{
+                  color: COLORS.primary,
+                  fontFamily: FONTS.bodyBold,
+                  fontSize: 12,
+                }}
+              >
+                Редагування
               </Text>
             </View>
 
@@ -608,12 +784,36 @@ export default function ChatRoomScreen() {
         )}
 
         {selectedImageUri && (
-          <View className="flex-row items-center px-4 py-2 bg-surfaceLight border-t border-surface">
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              backgroundColor: "rgba(183,148,246,0.08)",
+              borderTopWidth: 1,
+              borderTopColor: "rgba(183,148,246,0.2)",
+            }}
+          >
             <Image
               source={{ uri: selectedImageUri }}
-              className="w-12 h-12 rounded-lg mr-3"
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 10,
+                marginRight: 10,
+              }}
             />
-            <Text className="text-white text-xs flex-1">Фото прикріплено</Text>
+            <Text
+              style={{
+                color: COLORS.text,
+                fontFamily: FONTS.body,
+                fontSize: 12,
+                flex: 1,
+              }}
+            >
+              📷 Фото прикріплено
+            </Text>
             <TouchableOpacity onPress={() => setSelectedImageUri(null)}>
               <Ionicons name="close-circle" size={22} color={COLORS.danger} />
             </TouchableOpacity>
@@ -622,29 +822,76 @@ export default function ChatRoomScreen() {
 
         {isRecording ? (
           <View
-            className="flex-row items-center px-3 pt-3 bg-surface border-t border-surfaceLight"
-            style={{ paddingBottom: bottomInset }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 12,
+              paddingTop: 10,
+              paddingBottom: bottomInset,
+              backgroundColor: COLORS.background,
+              borderTopWidth: 1,
+              borderTopColor: "rgba(255,143,180,0.15)",
+            }}
           >
             <TouchableOpacity
               onPress={handleCancelVoice}
-              className="w-11 h-11 rounded-full items-center justify-center bg-surfaceLight mr-3"
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(255,92,122,0.15)",
+                marginRight: 10,
+              }}
             >
               <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
             </TouchableOpacity>
 
-            <View className="flex-1 flex-row items-center bg-background rounded-full border border-surfaceLight px-3 py-2 mr-3">
+            <View
+              style={{
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: "rgba(183,148,246,0.1)",
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: "rgba(183,148,246,0.25)",
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                marginRight: 10,
+              }}
+            >
               <View
-                className="w-2 h-2 rounded-full bg-red-500 mr-2"
-                style={{ opacity: 0.9 }}
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: COLORS.danger,
+                  marginRight: 8,
+                }}
               />
 
-              <Text className="text-white text-xs font-bold mr-3 min-w-[38px]">
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontFamily: FONTS.bodyBold,
+                  fontSize: 12,
+                  marginRight: 12,
+                  minWidth: 38,
+                }}
+              >
                 {formatRecordingTime(durationMillis)}
               </Text>
 
               <View
-                className="flex-1 flex-row items-center justify-between"
-                style={{ height: WAVEFORM_LIVE_HEIGHT }}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  height: WAVEFORM_LIVE_HEIGHT,
+                }}
               >
                 {liveAmplitudes.length === 0
                   ? Array.from({ length: 20 }, (_, i) => (
@@ -654,7 +901,7 @@ export default function ChatRoomScreen() {
                           width: 2.5,
                           height: LIVE_MIN_BAR_HEIGHT,
                           borderRadius: 2,
-                          backgroundColor: "rgba(148, 163, 184, 0.45)",
+                          backgroundColor: "rgba(168,155,184,0.45)",
                         }}
                       />
                     ))
@@ -678,32 +925,71 @@ export default function ChatRoomScreen() {
             <TouchableOpacity
               onPress={handleSendVoice}
               disabled={isSubmitting}
-              className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
-                isSubmitting ? "opacity-50" : "active:opacity-80"
-              }`}
+              activeOpacity={0.85}
             >
-              {isSubmitting ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Ionicons name="checkmark" size={22} color="#FFFFFF" />
-              )}
+              <KawaiiGradient
+                variant="primary"
+                glow
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: isSubmitting ? 0.5 : 1,
+                }}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="checkmark" size={22} color="#FFFFFF" />
+                )}
+              </KawaiiGradient>
             </TouchableOpacity>
           </View>
         ) : (
           <View
-            className="flex-row items-center px-3 pt-3 bg-surface border-t border-surfaceLight"
-            style={{ paddingBottom: bottomInset }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 12,
+              paddingTop: 10,
+              paddingBottom: bottomInset,
+              backgroundColor: COLORS.background,
+              borderTopWidth: 1,
+              borderTopColor: "rgba(255,143,180,0.15)",
+            }}
           >
             <TouchableOpacity
               onPress={pickImage}
               disabled={isSubmitting}
-              className="mr-2 p-2 rounded-full bg-surfaceLight"
+              style={{
+                marginRight: 8,
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(183,148,246,0.12)",
+              }}
             >
               <Ionicons name="image-outline" size={22} color={COLORS.primary} />
             </TouchableOpacity>
 
             <TextInput
-              className="flex-1 bg-background text-white px-4 py-2.5 rounded-full text-base border border-surfaceLight mr-2"
+              style={{
+                flex: 1,
+                backgroundColor: "rgba(183,148,246,0.08)",
+                color: COLORS.text,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: 20,
+                fontSize: 14,
+                fontFamily: FONTS.body,
+                borderWidth: 1,
+                borderColor: "rgba(183,148,246,0.2)",
+                marginRight: 8,
+              }}
               placeholder={
                 editingMessageId
                   ? "Змініть текст..."
@@ -729,22 +1015,36 @@ export default function ChatRoomScreen() {
                   onPressOut={() => {
                     sendButtonScale.value = withSpring(1);
                   }}
-                  disabled={(!inputText.trim() && !selectedImageUri) || isSubmitting}
-                  className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
+                  disabled={
                     (!inputText.trim() && !selectedImageUri) || isSubmitting
-                      ? "opacity-50"
-                      : "active:opacity-80"
-                  }`}
+                  }
+                  activeOpacity={0.85}
                 >
-                  {isSubmitting ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Ionicons
-                      name={editingMessageId ? "checkmark" : "send"}
-                      size={20}
-                      color="#FFFFFF"
-                    />
-                  )}
+                  <KawaiiGradient
+                    variant="primary"
+                    glow
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 21,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity:
+                        (!inputText.trim() && !selectedImageUri) || isSubmitting
+                          ? 0.5
+                          : 1,
+                    }}
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Ionicons
+                        name={editingMessageId ? "checkmark" : "send"}
+                        size={20}
+                        color="#FFFFFF"
+                      />
+                    )}
+                  </KawaiiGradient>
                 </TouchableOpacity>
               </Animated.View>
             ) : (
@@ -753,15 +1053,25 @@ export default function ChatRoomScreen() {
                 onLongPress={handleMicLongPress}
                 delayLongPress={300}
                 disabled={isSubmitting}
-                className={`w-11 h-11 rounded-full items-center justify-center ${
-                  inputMode === "video" ? "bg-primary" : "bg-surfaceLight"
-                }`}
+                activeOpacity={0.85}
               >
-                <Ionicons
-                  name={inputMode === "video" ? "videocam" : "mic"}
-                  size={22}
-                  color={inputMode === "video" ? COLORS.white : COLORS.primary}
-                />
+                <KawaiiGradient
+                  variant={inputMode === "video" ? "primary" : "accent"}
+                  glow
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 21,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons
+                    name={inputMode === "video" ? "videocam" : "mic"}
+                    size={22}
+                    color="#FFFFFF"
+                  />
+                </KawaiiGradient>
               </TouchableOpacity>
             )}
           </View>
@@ -774,15 +1084,18 @@ export default function ChatRoomScreen() {
         onClose={() => setFullscreenImage(null)}
       />
 
-      <ReactionPickerModal
-        visible={!!pickerState}
-        position={pickerState?.position ?? null}
-        onClose={() => setPickerState(null)}
+      <MessageContextMenu
+        visible={!!menuState}
+        position={menuState?.position ?? null}
+        canEdit={menuState?.canEdit ?? false}
+        canDelete={menuState?.canDelete ?? false}
+        onClose={() => setMenuState(null)}
         onSelectEmoji={(emoji) => {
-          if (pickerState) {
-            void handleToggleReaction(pickerState.messageId, emoji);
+          if (menuState) {
+            void handleToggleReaction(menuState.message._id, emoji);
           }
         }}
+        onAction={handleMenuAction}
       />
 
       <VideoNoteRecorderModal

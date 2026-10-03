@@ -5,8 +5,8 @@ import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { getAuthUser } from "./users";
 
-// TTL presence — если heartbeat старше, считаем что юзер ушёл из чата
 const PRESENCE_TTL_MS = 30_000;
+const MAX_REACTIONS_PER_USER = 10;
 
 async function assertRoomMember(
   ctx: any,
@@ -21,7 +21,6 @@ async function assertRoomMember(
   return room;
 }
 
-// Возвращает true, если пользователь сейчас находится в этой комнате
 async function isUserInRoom(
   ctx: any,
   userId: Id<"users">,
@@ -64,7 +63,6 @@ async function schedulePushForNewMessage(
     recipientIds.map((id: Id<"users">) => ctx.db.get(id)),
   );
 
-  // ⚠️ Отфильтровываем получателей, которые сейчас сидят в этом же чате
   const filtered = await Promise.all(
     recipients.map(async (user: any) => {
       if (!user) return null;
@@ -114,10 +112,18 @@ export const getPaginatedMessages = query({
   },
   handler: async (ctx, args) => {
     const me = await getAuthUser(ctx);
-    if (!me) throw new Error("Unauthorized");
+    if (!me) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
     const userId = me._id;
 
-    await assertRoomMember(ctx, args.chatRoomId, userId);
+    const room = await ctx.db.get(args.chatRoomId);
+    if (!room) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
+    if (!(room.participantIds ?? [room.creatorId]).includes(userId)) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
 
     const paginated = await ctx.db
       .query("messages")
@@ -175,29 +181,35 @@ export const toggleReaction = mutation({
     if (!message) throw new Error("Message not found: Повідомлення не знайдено");
     await assertRoomMember(ctx, message.chatRoomId, userId);
 
-    const existing = await ctx.db
+    const myReactions = await ctx.db
       .query("messageReactions")
       .withIndex("by_user_and_message", (q) =>
         q.eq("userId", userId).eq("messageId", args.messageId),
       )
-      .first();
+      .collect();
 
-    if (!existing) {
-      await ctx.db.insert("messageReactions", {
-        messageId: args.messageId,
-        userId,
-        emoji: args.emoji,
-      });
-      return { action: "added", emoji: args.emoji };
-    }
+    const existingWithSameEmoji = myReactions.find(
+      (r) => r.emoji === args.emoji,
+    );
 
-    if (existing.emoji === args.emoji) {
-      await ctx.db.delete(existing._id);
+    if (existingWithSameEmoji) {
+      await ctx.db.delete(existingWithSameEmoji._id);
       return { action: "removed", emoji: args.emoji };
     }
 
-    await ctx.db.patch(existing._id, { emoji: args.emoji });
-    return { action: "updated", emoji: args.emoji };
+    if (myReactions.length >= MAX_REACTIONS_PER_USER) {
+      throw new Error(
+        `Максимум ${MAX_REACTIONS_PER_USER} реакцій на одне повідомлення`,
+      );
+    }
+
+    await ctx.db.insert("messageReactions", {
+      messageId: args.messageId,
+      userId,
+      emoji: args.emoji,
+    });
+
+    return { action: "added", emoji: args.emoji };
   },
 });
 
@@ -310,10 +322,17 @@ export const deleteMessage = mutation({
 
     const message = await ctx.db.get(args.messageId);
     if (!message) throw new Error("Message not found: Повідомлення не знайдено");
-    await assertRoomMember(ctx, message.chatRoomId, userId);
 
-    if (message.senderId !== userId) {
-      throw new Error("Forbidden: Ви можете видаляти лише власні повідомлення");
+    const room = await assertRoomMember(ctx, message.chatRoomId, userId);
+
+    const isOwn = message.senderId === userId;
+    const isCreator = room.creatorId === userId;
+    const isAdmin = (room.adminIds ?? []).includes(userId);
+
+    if (!isOwn && !isCreator && !isAdmin) {
+      throw new Error(
+        "Forbidden: Недостатньо прав для видалення цього повідомлення",
+      );
     }
 
     if (message.storageId) await ctx.storage.delete(message.storageId);

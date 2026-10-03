@@ -1,11 +1,14 @@
-import { COLORS } from "@/constants/theme";
+import { KawaiiGradient } from "@/components/ui/KawaiiGradient";
+import { COLORS, FONTS } from "@/constants/theme";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import React, { memo, useRef } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  Easing,
   FadeInDown,
   FadeOutLeft,
   FadeOutRight,
@@ -14,8 +17,8 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
+import { MessageMenuPosition } from "./MessageContextMenu";
 import { MessageReactions, ReactionItem } from "./MessageReactions";
-import { ReactionPickerPosition } from "./ReactionPickerModal";
 import { VideoNotePlayer } from "./VideoNotePlayer";
 import { VoiceMessagePlayer } from "./VoiceMessagePlayer";
 
@@ -50,7 +53,7 @@ interface SwipeableMessageItemProps {
   item: MessageItemData;
   isOwn: boolean;
   onLongPress: (
-    position: ReactionPickerPosition,
+    position: MessageMenuPosition,
     message: MessageItemData,
   ) => void;
   onDoubleTap: (message: MessageItemData) => void;
@@ -61,25 +64,6 @@ interface SwipeableMessageItemProps {
 }
 
 const SWIPE_THRESHOLD = 50;
-
-function getReplyPreviewText(message: MessageItemData): string {
-  if (message.content && message.content.trim().length > 0) {
-    return message.content;
-  }
-  if (message.isVideoNote && message.videoUrl) {
-    return "📹 Відеоповідомлення";
-  }
-  if (message.audioUrl) {
-    const dur = message.audioDuration
-      ? ` (${Math.round(message.audioDuration)}с)`
-      : "";
-    return `🎤 Голосове повідомлення${dur}`;
-  }
-  if (message.imageUrl) {
-    return "📷 Фотографія";
-  }
-  return "";
-}
 
 const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   item,
@@ -109,18 +93,14 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
       if (event.translationX > SWIPE_THRESHOLD) {
         runOnJS(triggerReply)();
       }
-
-      translateX.value = withSpring(0, {
-        damping: 16,
-        stiffness: 200,
-      });
+      translateX.value = withSpring(0, { damping: 16, stiffness: 200 });
     });
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle) => {
     void Haptics.impactAsync(style);
   };
 
-  const measureAndOpenReactionPicker = () => {
+  const measureAndOpenMenu = () => {
     containerRef.current?.measureInWindow((x, y, width) => {
       onLongPress({ x: isOwn ? x + width : x, y, isOwn }, item);
     });
@@ -140,7 +120,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
     .onEnd((_event, success) => {
       if (!success) return;
       runOnJS(triggerHaptic)(Haptics.ImpactFeedbackStyle.Heavy);
-      runOnJS(measureAndOpenReactionPicker)();
+      runOnJS(measureAndOpenMenu)();
     });
 
   const composedGesture = Gesture.Simultaneous(
@@ -162,9 +142,31 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 
   if (item.isSystem) {
     return (
-      <View className="my-2 items-center justify-center px-6">
-        <View className="rounded-full border border-surfaceLight bg-secondary px-3 py-1.5">
-          <Text className="text-center text-[11px] font-medium text-textMuted">
+      <View
+        style={{
+          marginVertical: 6,
+          alignItems: "center",
+          paddingHorizontal: 24,
+        }}
+      >
+        <View
+          style={{
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: "rgba(183,148,246,0.25)",
+            backgroundColor: "rgba(183,148,246,0.08)",
+            paddingHorizontal: 12,
+            paddingVertical: 5,
+          }}
+        >
+          <Text
+            style={{
+              textAlign: "center",
+              fontSize: 11,
+              fontFamily: FONTS.body,
+              color: COLORS.textMuted,
+            }}
+          >
             {item.content}
           </Text>
         </View>
@@ -176,69 +178,96 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   const hasVoice = !!item.audioUrl;
   const hasReactions = !!(item.reactions && item.reactions.length > 0);
 
-  // 🔹 "Чистый" кружок — без bubble: только видео, без текста/reply/reactions/подписи
   const isPureVideoNote =
     hasVideoNote &&
     !item.content?.trim() &&
     !item.replyToSender &&
     !hasReactions;
 
-  // Отступы и фон bubble применяем только если это НЕ чистый кружок
-  const bubbleClassName = isPureVideoNote
-    ? ""
-    : `max-w-[82%] rounded-2xl p-3 ${
-        isOwn ? "bg-primary rounded-br-xs" : "bg-secondary rounded-bl-xs"
-      }`;
-
   return (
     <Animated.View
-      entering={FadeInDown.springify().damping(15)}
+      entering={FadeInDown.duration(220).easing(Easing.out(Easing.cubic))}
       exiting={isOwn ? FadeOutRight.duration(200) : FadeOutLeft.duration(200)}
-      className="relative justify-center my-1"
+      style={{
+        position: "relative",
+        justifyContent: "center",
+        marginVertical: 3,
+      }}
     >
       <Animated.View
-        style={animatedIconStyle}
-        className="absolute left-2 z-0 items-center justify-center w-8 h-8 rounded-full bg-primary/30"
+        style={[
+          animatedIconStyle,
+          {
+            position: "absolute",
+            left: 8,
+            zIndex: 0,
+            alignItems: "center",
+            justifyContent: "center",
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: "rgba(255,143,180,0.25)",
+          },
+        ]}
       >
         <Ionicons name="arrow-undo" size={18} color={COLORS.primary} />
       </Animated.View>
 
       <GestureDetector gesture={composedGesture}>
         <Animated.View
-          style={animatedBubbleStyle}
-          className={`flex-row ${isOwn ? "justify-end" : "justify-start"}`}
+          style={[
+            animatedBubbleStyle,
+            {
+              flexDirection: "row",
+              justifyContent: isOwn ? "flex-end" : "flex-start",
+            },
+          ]}
         >
-          <View ref={containerRef} className={bubbleClassName}>
-            {/* 🔹 Чистый кружок — только видео, без всего остального */}
+          <View ref={containerRef} style={{ maxWidth: "82%" }}>
             {isPureVideoNote ? (
               <VideoNotePlayer
                 videoUrl={item.videoUrl!}
                 duration={item.videoDuration}
                 isMine={isOwn}
               />
-            ) : (
-              <>
-                {!isOwn && (
-                  <TouchableOpacity
-                    onPress={() => onAuthorPress?.(item.senderId)}
-                    activeOpacity={0.7}
-                    className="mb-1"
-                  >
-                    <Text className="text-primary font-bold text-xs">
-                      {item.senderName}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
+            ) : isOwn ? (
+              <KawaiiGradient
+                variant="bubble-mine"
+                style={{
+                  borderRadius: 20,
+                  borderBottomRightRadius: 6,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
                 {item.replyToSender && (
-                  <View className="mb-2 p-2 rounded-lg bg-surface/50 border-l-2 border-primary">
-                    <Text className="text-primary font-semibold text-[11px]">
+                  <View
+                    style={{
+                      marginBottom: 6,
+                      padding: 6,
+                      borderRadius: 10,
+                      backgroundColor: "rgba(0,0,0,0.15)",
+                      borderLeftWidth: 2,
+                      borderLeftColor: "#FFFFFF",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontFamily: FONTS.bodyBold,
+                        fontSize: 10,
+                      }}
+                    >
                       {item.replyToSender}
                     </Text>
-
                     <Text
-                      className="text-white/70 text-xs mt-0.5"
                       numberOfLines={2}
+                      style={{
+                        color: "rgba(255,255,255,0.8)",
+                        fontFamily: FONTS.body,
+                        fontSize: 11,
+                        marginTop: 1,
+                      }}
                     >
                       {item.replyToText || "📷 Фотографія"}
                     </Text>
@@ -252,7 +281,13 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   >
                     <Image
                       source={{ uri: item.imageUrl }}
-                      className="w-56 h-56 rounded-xl mb-1.5 bg-surface"
+                      style={{
+                        width: 200,
+                        height: 200,
+                        borderRadius: 14,
+                        marginBottom: 4,
+                        backgroundColor: COLORS.surface,
+                      }}
                       resizeMode="cover"
                     />
                   </TouchableOpacity>
@@ -262,7 +297,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   <VideoNotePlayer
                     videoUrl={item.videoUrl!}
                     duration={item.videoDuration}
-                    isMine={isOwn}
+                    isMine
                   />
                 )}
 
@@ -271,37 +306,226 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     audioUrl={item.audioUrl!}
                     duration={item.audioDuration}
                     waveform={item.waveform}
-                    isMine={isOwn}
+                    isMine
                   />
                 )}
 
                 {item.content ? (
-                  <Text className="text-white text-base leading-5">
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontFamily: FONTS.body,
+                      fontSize: 14,
+                      lineHeight: 19,
+                    }}
+                  >
                     {item.content}
                   </Text>
                 ) : null}
 
                 <MessageReactions
                   reactions={item.reactions}
-                  isOwn={isOwn}
+                  isOwn
                   onToggleReaction={onToggleReaction}
                 />
 
-                <View className="flex-row items-center justify-end mt-1 gap-1">
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    marginTop: 3,
+                    gap: 3,
+                  }}
+                >
                   {item.isEdited && (
-                    <Text className="text-white/60 text-[10px] italic">
-                      (ред.)
+                    <Text
+                      style={{
+                        color: "rgba(255,255,255,0.7)",
+                        fontFamily: FONTS.body,
+                        fontSize: 9,
+                        fontStyle: "italic",
+                      }}
+                    >
+                      ред.
                     </Text>
                   )}
-
-                  <Text className="text-white/60 text-[10px]">
+                  <Text
+                    style={{
+                      color: "rgba(255,255,255,0.75)",
+                      fontFamily: FONTS.body,
+                      fontSize: 9,
+                    }}
+                  >
                     {new Date(item._creationTime).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
                   </Text>
                 </View>
-              </>
+              </KawaiiGradient>
+            ) : (
+              <LinearGradient
+                colors={["#2E2540", "#241D33"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{
+                  borderRadius: 20,
+                  borderBottomLeftRadius: 6,
+                  borderWidth: 1,
+                  borderColor: "rgba(183,148,246,0.18)",
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                {!isOwn && (
+                  <TouchableOpacity
+                    onPress={() => onAuthorPress?.(item.senderId)}
+                    activeOpacity={0.7}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                      marginBottom: 4,
+                    }}
+                  >
+                    <Text style={{ fontSize: 10 }}>🎀</Text>
+                    <Text
+                      style={{
+                        color: COLORS.accent,
+                        fontFamily: FONTS.bodyBold,
+                        fontSize: 11,
+                      }}
+                    >
+                      {item.senderName}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {item.replyToSender && (
+                  <View
+                    style={{
+                      marginBottom: 6,
+                      padding: 6,
+                      borderRadius: 10,
+                      backgroundColor: "rgba(126,232,250,0.08)",
+                      borderLeftWidth: 2,
+                      borderLeftColor: COLORS.accent,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: COLORS.accent,
+                        fontFamily: FONTS.bodyBold,
+                        fontSize: 10,
+                      }}
+                    >
+                      {item.replyToSender}
+                    </Text>
+                    <Text
+                      numberOfLines={2}
+                      style={{
+                        color: COLORS.textMuted,
+                        fontFamily: FONTS.body,
+                        fontSize: 11,
+                        marginTop: 1,
+                      }}
+                    >
+                      {item.replyToText || "📷 Фотографія"}
+                    </Text>
+                  </View>
+                )}
+
+                {item.imageUrl && (
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => onImagePress?.(item.imageUrl!)}
+                  >
+                    <Image
+                      source={{ uri: item.imageUrl }}
+                      style={{
+                        width: 200,
+                        height: 200,
+                        borderRadius: 14,
+                        marginBottom: 4,
+                        backgroundColor: COLORS.surfaceLight,
+                      }}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                )}
+
+                {hasVideoNote && (
+                  <VideoNotePlayer
+                    videoUrl={item.videoUrl!}
+                    duration={item.videoDuration}
+                    isMine={false}
+                  />
+                )}
+
+                {hasVoice && (
+                  <VoiceMessagePlayer
+                    audioUrl={item.audioUrl!}
+                    duration={item.audioDuration}
+                    waveform={item.waveform}
+                    isMine={false}
+                  />
+                )}
+
+                {item.content ? (
+                  <Text
+                    style={{
+                      color: COLORS.text,
+                      fontFamily: FONTS.body,
+                      fontSize: 14,
+                      lineHeight: 19,
+                    }}
+                  >
+                    {item.content}
+                  </Text>
+                ) : null}
+
+                <MessageReactions
+                  reactions={item.reactions}
+                  isOwn={false}
+                  onToggleReaction={onToggleReaction}
+                />
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    marginTop: 3,
+                    gap: 3,
+                  }}
+                >
+                  {item.isEdited && (
+                    <Text
+                      style={{
+                        color: COLORS.textMuted,
+                        fontFamily: FONTS.body,
+                        fontSize: 9,
+                        fontStyle: "italic",
+                      }}
+                    >
+                      ред.
+                    </Text>
+                  )}
+                  <Text
+                    style={{
+                      color: COLORS.textMuted,
+                      fontFamily: FONTS.body,
+                      fontSize: 9,
+                    }}
+                  >
+                    {new Date(item._creationTime).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                </View>
+              </LinearGradient>
             )}
           </View>
         </Animated.View>

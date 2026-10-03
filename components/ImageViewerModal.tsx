@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useEffect } from "react";
 import {
   Dimensions,
   Modal,
@@ -7,7 +8,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import {
   Gesture,
   GestureDetector,
@@ -123,20 +123,12 @@ export function ImageViewerModal({ visible, imageUrl, onClose }: Props) {
   const animatedBackdropStyle = useAnimatedStyle(() => {
     if (scale.value <= 1 && translateY.value > 0) {
       const opacity = 1 - translateY.value / 350;
-
-      return {
-        opacity: Math.max(0.3, opacity),
-      };
+      return { opacity: Math.max(0.3, opacity) };
     }
-
-    return {
-      opacity: 1,
-    };
+    return { opacity: 1 };
   });
 
-  if (!imageUrl) {
-    return null;
-  }
+  if (!imageUrl) return null;
 
   return (
     <Modal
@@ -162,16 +154,11 @@ export function ImageViewerModal({ visible, imageUrl, onClose }: Props) {
           <TouchableOpacity
             onPress={onClose}
             style={styles.closeButton}
-            activeOpacity={0.8}
-            hitSlop={{
-              top: 15,
-              bottom: 15,
-              left: 15,
-              right: 15,
-            }}
+            activeOpacity={0.85}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
           >
             <View style={styles.closeIconCircle}>
-              <Ionicons name="close" size={24} color="#FFFFFF" />
+              <Ionicons name="close" size={22} color="#FFFFFF" />
             </View>
           </TouchableOpacity>
         </Animated.View>
@@ -181,9 +168,7 @@ export function ImageViewerModal({ visible, imageUrl, onClose }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
+  root: { flex: 1 },
   backdrop: {
     flex: 1,
     backgroundColor: "#000000",
@@ -207,13 +192,18 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   closeIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(30, 30, 30, 0.7)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,143,180,0.25)",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.2)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,143,180,0.6)",
+    shadowColor: "#FF8FB4",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.7,
+    shadowRadius: 10,
+    elevation: 6,
   },
 });

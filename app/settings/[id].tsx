@@ -1,5 +1,9 @@
 import { AddMembersModal } from "@/components/AddMembersModal";
-import { COLORS } from "@/constants/theme";
+import { EditRoomModal } from "@/components/EditRoomModal";
+import { KawaiiAvatar } from "@/components/ui/KawaiiAvatar";
+import { KawaiiBadge } from "@/components/ui/KawaiiBadge";
+import { KawaiiGradient } from "@/components/ui/KawaiiGradient";
+import { COLORS, FONTS } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,27 +13,25 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function RoomSettingsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  const room = useQuery(api.rooms.getRoom, {
-    roomId: id as Id<"chatRooms">,
-  });
-
+  const room = useQuery(api.rooms.getRoom, { roomId: id as Id<"chatRooms"> });
   const currentUser = useQuery(api.users.currentUser);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
   const updateParticipantRole = useMutation(api.rooms.updateParticipantRole);
   const removeParticipant = useMutation(api.rooms.removeParticipant);
   const [isAddMembersVisible, setIsAddMembersVisible] = useState(false);
+  const [isEditRoomVisible, setIsEditRoomVisible] = useState(false);
 
   const isLoading = room === undefined || currentUser === undefined;
 
@@ -40,6 +42,7 @@ export default function RoomSettingsScreen() {
     currentUser !== undefined &&
     room.creatorId === currentUser._id;
   const canManageMembers = room?.canManageMembers ?? false;
+  const canEditRoom = room?.canEditRoom ?? false;
 
   const handleRole = async (
     targetUserId: Id<"users">,
@@ -57,7 +60,7 @@ export default function RoomSettingsScreen() {
   };
 
   const handleRemove = (targetUserId: Id<"users">, name: string) => {
-    Alert.alert("Вилучити учасника?", `Вилучити ${name} з кімнати?`, [
+    Alert.alert("Вилучити учасника? 🚫", `Вилучити ${name} з кімнати?`, [
       { text: "Скасувати", style: "cancel" },
       {
         text: "Вилучити",
@@ -81,7 +84,7 @@ export default function RoomSettingsScreen() {
 
   const handleLeave = () => {
     if (!currentUser) return;
-    Alert.alert("Покинути кімнату?", "Ви втратите доступ до цього чату.", [
+    Alert.alert("Покинути кімнату? 🥺", "Ви втратите доступ до цього чату.", [
       { text: "Скасувати", style: "cancel" },
       {
         text: "Покинути",
@@ -107,27 +110,20 @@ export default function RoomSettingsScreen() {
 
   const handleDelete = () => {
     Alert.alert(
-      "Видалити кімнату?",
+      "Видалити кімнату? 💔",
       `Кімната «${room?.title}» та всі її повідомлення будуть видалені назавжди.`,
       [
-        {
-          text: "Скасувати",
-          style: "cancel",
-        },
+        { text: "Скасувати", style: "cancel" },
         {
           text: "Видалити",
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteRoom({
-                roomId: id as Id<"chatRooms">,
-              });
-
+              await deleteRoom({ roomId: id as Id<"chatRooms"> });
               router.dismissAll();
               router.replace("/(app)");
             } catch (error) {
               console.error("Error deleting room:", error);
-
               Alert.alert("Помилка", "Не вдалося видалити кімнату.");
             }
           },
@@ -136,153 +132,317 @@ export default function RoomSettingsScreen() {
     );
   };
 
+  const handleOpenProfile = (userId: Id<"users">) => {
+    router.push(`/user/${userId}` as any);
+  };
+
   if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 bg-surface items-center justify-center">
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </SafeAreaView>
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: COLORS.background,
+        }}
+      >
+        <KawaiiGradient
+          variant="primary"
+          glow
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 32,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        </KawaiiGradient>
+      </View>
     );
   }
 
   if (room === null) {
     return (
-      <SafeAreaView className="flex-1 bg-surface">
-        <View className="h-14 flex-row items-center px-4 border-b border-surfaceLight">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="w-10 h-10 items-center justify-center rounded-full bg-secondary"
-            activeOpacity={0.7}
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: COLORS.background,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 24,
+        }}
+      >
+        <Text style={{ fontSize: 40, marginBottom: 8 }}>😿</Text>
+        <Text
+          style={{
+            color: COLORS.text,
+            fontFamily: FONTS.headingBold,
+            fontSize: 18,
+            textAlign: "center",
+          }}
+        >
+          Кімнату не знайдено
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          activeOpacity={0.85}
+          style={{ marginTop: 20 }}
+        >
+          <KawaiiGradient
+            variant="primary"
+            glow
+            style={{
+              height: 44,
+              borderRadius: 22,
+              paddingHorizontal: 24,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            <Ionicons name="arrow-back" size={22} color={COLORS.white} />
-          </TouchableOpacity>
-
-          <Text className="text-white text-lg font-bold ml-3">
-            Налаштування
-          </Text>
-        </View>
-
-        <View className="flex-1 items-center justify-center px-6">
-          <View className="w-20 h-20 rounded-full bg-secondary items-center justify-center">
-            <Ionicons
-              name="chatbubble-ellipses-outline"
-              size={40}
-              color={COLORS.textMuted}
-            />
-          </View>
-
-          <Text className="text-white text-xl font-bold mt-5 text-center">
-            Кімнату не знайдено
-          </Text>
-
-          <Text className="text-textMuted text-sm mt-2 text-center">
-            Можливо, її вже було видалено.
-          </Text>
-
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="bg-primary rounded-2xl px-6 py-3 mt-6"
-            activeOpacity={0.8}
-          >
-            <Text className="text-white font-bold">Назад</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontFamily: FONTS.bodyBold,
+                fontSize: 14,
+              }}
+            >
+              Назад
+            </Text>
+          </KawaiiGradient>
+        </TouchableOpacity>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-surface" edges={["top", "bottom"]}>
-      <View className="h-14 flex-row items-center px-4 border-b border-surfaceLight">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="w-10 h-10 items-center justify-center rounded-full bg-secondary"
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={22} color={COLORS.white} />
-        </TouchableOpacity>
-
-        <Text className="text-white text-lg font-bold ml-3">
-          Налаштування кімнати
-        </Text>
-      </View>
-
+    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
       <ScrollView
-        className="flex-1"
-        contentContainerClassName="px-5 pt-6 pb-8"
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: insets.top + 12,
+          paddingBottom: insets.bottom + 32,
+        }}
         showsVerticalScrollIndicator={false}
       >
-        <View className="items-center mb-7">
-          <View className="w-20 h-20 rounded-2xl bg-primary/15 border border-primary/30 items-center justify-center">
-            <Ionicons
-              name="chatbubbles-outline"
-              size={38}
-              color={COLORS.primary}
+        <View style={{ alignItems: "center", marginBottom: 22 }}>
+          {room.avatarUrl ? (
+            <KawaiiAvatar
+              uri={room.avatarUrl}
+              name={room.title}
+              size={92}
+              ring="primary"
             />
-          </View>
+          ) : (
+            <KawaiiGradient
+              variant="primary"
+              glow
+              style={{
+                width: 92,
+                height: 92,
+                borderRadius: 46,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="chatbubbles" size={40} color="#FFFFFF" />
+            </KawaiiGradient>
+          )}
 
-          <Text className="text-white text-2xl font-bold text-center mt-4">
+          <Text
+            style={{
+              color: COLORS.text,
+              fontFamily: FONTS.headingBold,
+              fontSize: 22,
+              textAlign: "center",
+              marginTop: 12,
+            }}
+          >
             {room.title}
           </Text>
 
-          <Text className="text-textMuted text-sm mt-1">
-            Інформація про кімнату
-          </Text>
+          <Text style={{ fontSize: 12, marginTop: 2 }}>✨ 💕 ✨</Text>
+
+          {canEditRoom && (
+            <TouchableOpacity
+              onPress={() => setIsEditRoomVisible(true)}
+              activeOpacity={0.85}
+              style={{ marginTop: 14 }}
+            >
+              <KawaiiGradient
+                variant="primary"
+                glow
+                style={{
+                  paddingHorizontal: 18,
+                  paddingVertical: 10,
+                  borderRadius: 20,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="pencil" size={14} color="#FFFFFF" />
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    fontFamily: FONTS.bodyBold,
+                    fontSize: 12,
+                  }}
+                >
+                  Редагувати
+                </Text>
+              </KawaiiGradient>
+            </TouchableOpacity>
+          )}
         </View>
 
-        <View className="bg-secondary border border-surfaceLight rounded-2xl overflow-hidden">
-          <View className="px-5 py-4 border-b border-surfaceLight">
-            <View className="flex-row items-center mb-2">
-              <Ionicons
-                name="text-outline"
-                size={17}
-                color={COLORS.textMuted}
-              />
-
-              <Text className="text-textMuted text-xs font-semibold uppercase ml-2">
+        <View
+          style={{
+            backgroundColor: "rgba(183,148,246,0.06)",
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: "rgba(183,148,246,0.18)",
+            overflow: "hidden",
+          }}
+        >
+          <View
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(183,148,246,0.12)",
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                marginBottom: 6,
+              }}
+            >
+              <Text style={{ fontSize: 12 }}>📝</Text>
+              <Text
+                style={{
+                  color: COLORS.textMuted,
+                  fontFamily: FONTS.bodyBold,
+                  fontSize: 10,
+                  letterSpacing: 1,
+                  textTransform: "uppercase",
+                }}
+              >
                 Назва
               </Text>
             </View>
-
-            <Text className="text-white text-base font-semibold">
+            <Text
+              style={{
+                color: COLORS.text,
+                fontFamily: FONTS.bodyBold,
+                fontSize: 15,
+              }}
+            >
               {room.title}
             </Text>
           </View>
 
-          <View className="px-5 py-4">
-            <View className="flex-row items-center mb-2">
-              <Ionicons
-                name="document-text-outline"
-                size={17}
-                color={COLORS.textMuted}
-              />
-
-              <Text className="text-textMuted text-xs font-semibold uppercase ml-2">
+          <View style={{ paddingHorizontal: 16, paddingVertical: 14 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                marginBottom: 6,
+              }}
+            >
+              <Text style={{ fontSize: 12 }}>💭</Text>
+              <Text
+                style={{
+                  color: COLORS.textMuted,
+                  fontFamily: FONTS.bodyBold,
+                  fontSize: 10,
+                  letterSpacing: 1,
+                  textTransform: "uppercase",
+                }}
+              >
                 Опис
               </Text>
             </View>
-
-            <Text className="text-neutral-300 text-base leading-6">
-              {room.description || "Опис не додано"}
+            <Text
+              style={{
+                color: COLORS.text,
+                fontFamily: FONTS.body,
+                fontSize: 14,
+                lineHeight: 19,
+              }}
+            >
+              {room.description || "Опис не додано ✨"}
             </Text>
           </View>
         </View>
 
-        <View className="mt-8 rounded-2xl border border-surfaceLight bg-secondary p-4">
-          <View className="mb-3 flex-row items-center justify-between">
+        <View
+          style={{
+            marginTop: 20,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: "rgba(255,143,180,0.18)",
+            backgroundColor: "rgba(255,143,180,0.05)",
+            padding: 14,
+          }}
+        >
+          <View
+            style={{
+              marginBottom: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
             <View>
-              <Text className="text-base font-bold text-white">
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontFamily: FONTS.headingBold,
+                  fontSize: 16,
+                }}
+              >
                 Учасники ({room.participants.length})
               </Text>
-              <Text className="mt-0.5 text-xs text-textMuted">
-                👑 Творець · 🛡️ Адміністратор
-              </Text>
+              <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
+                <KawaiiBadge label="Творець" icon="👑" variant="gold" />
+                <KawaiiBadge label="Адмін" icon="🛡️" variant="primary" />
+              </View>
             </View>
             {canManageMembers && (
               <TouchableOpacity
                 onPress={() => setIsAddMembersVisible(true)}
-                className="rounded-xl bg-primary px-3 py-2"
+                activeOpacity={0.85}
               >
-                <Text className="text-xs font-bold text-white">+ Додати</Text>
+                <KawaiiGradient
+                  variant="primary"
+                  glow
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 16,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <Ionicons name="person-add" size={13} color="#FFFFFF" />
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontFamily: FONTS.bodyBold,
+                      fontSize: 11,
+                    }}
+                  >
+                    Додати
+                  </Text>
+                </KawaiiGradient>
               </TouchableOpacity>
             )}
           </View>
@@ -297,34 +457,64 @@ export default function RoomSettingsScreen() {
             return (
               <View
                 key={participant._id}
-                className="flex-row items-center border-t border-surfaceLight/60 py-3"
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: 8,
+                  borderTopWidth: 1,
+                  borderTopColor: "rgba(183,148,246,0.1)",
+                }}
               >
-                {participant.image ? (
-                  <Image
-                    source={{ uri: participant.image }}
-                    className="mr-3 h-10 w-10 rounded-full bg-surfaceLight"
-                    resizeMode="cover"
+                <TouchableOpacity
+                  onPress={() =>
+                    handleOpenProfile(participant._id as Id<"users">)
+                  }
+                  activeOpacity={0.75}
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
+                  <KawaiiAvatar
+                    uri={participant.image}
+                    name={participant.name}
+                    size={40}
+                    ring={
+                      participant.role === "creator"
+                        ? "creator"
+                        : participant.role === "admin"
+                          ? "primary"
+                          : "none"
+                    }
                   />
-                ) : (
-                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-surfaceLight">
-                    <Text className="font-bold text-primary">
-                      {participant.name.slice(0, 1).toUpperCase()}
+
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text
+                      style={{
+                        color: COLORS.text,
+                        fontFamily: FONTS.bodyBold,
+                        fontSize: 14,
+                      }}
+                    >
+                      {participant.name}
+                    </Text>
+                    <Text
+                      style={{
+                        color: COLORS.textMuted,
+                        fontFamily: FONTS.body,
+                        fontSize: 11,
+                        marginTop: 1,
+                      }}
+                    >
+                      {participant.role === "creator"
+                        ? "👑 Творець"
+                        : participant.role === "admin"
+                          ? "🛡️ Адміністратор"
+                          : "👤 Учасник"}
                     </Text>
                   </View>
-                )}
-
-                <View className="flex-1">
-                  <Text className="font-semibold text-white">
-                    {participant.name}
-                  </Text>
-                  <Text className="text-xs text-textMuted">
-                    {participant.role === "creator"
-                      ? "👑 Творець"
-                      : participant.role === "admin"
-                        ? "🛡️ Адміністратор"
-                        : "Учасник"}
-                  </Text>
-                </View>
+                </TouchableOpacity>
 
                 {isCreator && participant.role !== "creator" && (
                   <TouchableOpacity
@@ -334,7 +524,15 @@ export default function RoomSettingsScreen() {
                         participant.role === "admin" ? "member" : "admin",
                       )
                     }
-                    className="mr-2 rounded-lg bg-surfaceLight p-2"
+                    style={{
+                      marginLeft: 6,
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(183,148,246,0.15)",
+                    }}
                   >
                     <Ionicons
                       name={
@@ -342,8 +540,8 @@ export default function RoomSettingsScreen() {
                           ? "shield"
                           : "shield-outline"
                       }
-                      size={17}
-                      color={COLORS.primary}
+                      size={15}
+                      color={COLORS.secondary}
                     />
                   </TouchableOpacity>
                 )}
@@ -356,11 +554,19 @@ export default function RoomSettingsScreen() {
                         participant.name,
                       )
                     }
-                    className="rounded-lg bg-danger/10 p-2"
+                    style={{
+                      marginLeft: 6,
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(255,92,122,0.15)",
+                    }}
                   >
                     <Ionicons
                       name="person-remove-outline"
-                      size={17}
+                      size={15}
                       color={COLORS.danger}
                     />
                   </TouchableOpacity>
@@ -371,73 +577,130 @@ export default function RoomSettingsScreen() {
         </View>
 
         {isCreator ? (
-          <View className="mt-8">
-            <Text className="text-textMuted text-xs font-semibold uppercase mb-3 px-1">
-              Небезпечна зона
+          <View style={{ marginTop: 20 }}>
+            <Text
+              style={{
+                color: COLORS.textMuted,
+                fontFamily: FONTS.bodyBold,
+                fontSize: 10,
+                letterSpacing: 1.5,
+                textTransform: "uppercase",
+                marginBottom: 10,
+                paddingHorizontal: 4,
+              }}
+            >
+              ⚠️ Небезпечна зона
             </Text>
 
-            <View className="bg-secondary border border-danger/20 rounded-2xl p-5">
-              <View className="flex-row items-start">
-                <View className="w-11 h-11 rounded-xl bg-danger/10 items-center justify-center">
+            <View
+              style={{
+                backgroundColor: "rgba(255,92,122,0.06)",
+                borderWidth: 1,
+                borderColor: "rgba(255,92,122,0.25)",
+                borderRadius: 20,
+                padding: 16,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 14,
+                    backgroundColor: "rgba(255,92,122,0.15)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <Ionicons
                     name="warning-outline"
-                    size={22}
+                    size={20}
                     color={COLORS.danger}
                   />
                 </View>
 
-                <View className="flex-1 ml-3">
-                  <Text className="text-white text-base font-bold">
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text
+                    style={{
+                      color: COLORS.text,
+                      fontFamily: FONTS.bodyBold,
+                      fontSize: 14,
+                    }}
+                  >
                     Видалення кімнати
                   </Text>
-
-                  <Text className="text-textMuted text-sm leading-5 mt-1">
-                    Кімната та всі повідомлення в ній будуть видалені без
-                    можливості відновлення.
+                  <Text
+                    style={{
+                      color: COLORS.textMuted,
+                      fontFamily: FONTS.body,
+                      fontSize: 12,
+                      lineHeight: 17,
+                      marginTop: 4,
+                    }}
+                  >
+                    Кімната та всі повідомлення будуть видалені назавжди.
                   </Text>
                 </View>
               </View>
 
               <TouchableOpacity
                 onPress={handleDelete}
-                className="h-14 mt-5 rounded-xl bg-danger/10 border border-danger/40 flex-row items-center justify-center"
                 activeOpacity={0.7}
+                style={{
+                  height: 46,
+                  marginTop: 14,
+                  borderRadius: 23,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  backgroundColor: "rgba(255,92,122,0.12)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,92,122,0.4)",
+                }}
               >
-                <Ionicons
-                  name="trash-outline"
-                  size={20}
-                  color={COLORS.danger}
-                />
-
-                <Text className="text-danger text-base font-bold ml-2">
+                <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                <Text
+                  style={{
+                    color: COLORS.danger,
+                    fontFamily: FONTS.bodyBold,
+                    fontSize: 13,
+                  }}
+                >
                   Видалити кімнату
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
-        ) : (
-          <View className="mt-8 bg-secondary border border-surfaceLight rounded-2xl p-5">
-            <View className="flex-row items-center">
-              <Ionicons
-                name="information-circle-outline"
-                size={22}
-                color={COLORS.textMuted}
-              />
-
-              <Text className="text-textMuted text-sm ml-3 flex-1 leading-5">
-                Лише автор кімнати може змінювати її налаштування та видаляти
-                її.
-              </Text>
-            </View>
-          </View>
-        )}
+        ) : null}
 
         {!isCreator && (
           <TouchableOpacity
             onPress={handleLeave}
-            className="mt-4 h-13 items-center justify-center rounded-xl border border-danger/40 bg-danger/10"
+            activeOpacity={0.7}
+            style={{
+              marginTop: 14,
+              height: 46,
+              borderRadius: 23,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1.5,
+              borderColor: "rgba(255,92,122,0.4)",
+              backgroundColor: "rgba(255,92,122,0.08)",
+              flexDirection: "row",
+              gap: 6,
+            }}
           >
-            <Text className="font-bold text-danger">Покинути кімнату</Text>
+            <Ionicons name="exit-outline" size={16} color={COLORS.danger} />
+            <Text
+              style={{
+                color: COLORS.danger,
+                fontFamily: FONTS.bodyBold,
+                fontSize: 13,
+              }}
+            >
+              Покинути кімнату
+            </Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -448,6 +711,16 @@ export default function RoomSettingsScreen() {
         participantIds={room.participantIds}
         onClose={() => setIsAddMembersVisible(false)}
       />
-    </SafeAreaView>
+
+      <EditRoomModal
+        visible={isEditRoomVisible}
+        roomId={id as Id<"chatRooms">}
+        initialTitle={room.title}
+        initialDescription={room.description}
+        initialAvatarUrl={room.avatarUrl}
+        onClose={() => setIsEditRoomVisible(false)}
+        onSaved={() => setIsEditRoomVisible(false)}
+      />
+    </View>
   );
 }

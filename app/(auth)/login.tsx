@@ -1,11 +1,13 @@
-import { COLORS } from "@/constants/theme";
+import { KawaiiButton } from "@/components/ui/KawaiiButton";
+import { KawaiiGradient } from "@/components/ui/KawaiiGradient";
+import { COLORS, FONTS } from "@/constants/theme";
+import { setOAuthInProgress } from "@/lib/authFlowState";
 import { useSSO, useSignIn, useSignUp } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -92,16 +94,14 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     if (isGoogleLoading) return;
 
-    try {
-      setIsGoogleLoading(true);
+    setOAuthInProgress(true);
+    setIsGoogleLoading(true);
 
-      // ✅ Генерируем redirect URL с нашей собственной схемой из app.config.ts
+    try {
       const redirectUrl = AuthSession.makeRedirectUri({
         scheme: "modernchat-dev",
         path: "oauth-native-callback",
       });
-
-      console.log("[Google OAuth] redirectUrl:", redirectUrl);
 
       const { createdSessionId, setActive } = await startSSOFlow({
         strategy: "oauth_google",
@@ -111,10 +111,11 @@ export default function LoginScreen() {
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
       } else {
-        console.log("[Google OAuth] No session created");
+        setOAuthInProgress(false);
       }
     } catch (err: any) {
       console.error("OAuth error:", err);
+      setOAuthInProgress(false);
       Alert.alert(
         "Помилка Google",
         err?.errors?.[0]?.longMessage ||
@@ -128,41 +129,125 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-surface"
+      style={{ flex: 1, backgroundColor: COLORS.background }}
     >
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <View className="items-center mt-20">
-          <View className="w-20 h-20 rounded-3xl bg-primary/20 items-center justify-center border border-primary/30">
-            <Ionicons name="chatbubbles" size={38} color={COLORS.primary} />
+        <View
+          style={{
+            alignItems: "center",
+            paddingTop: 80,
+            paddingHorizontal: 24,
+          }}
+        >
+          <View style={{ position: "relative" }}>
+            <KawaiiGradient
+              variant="primary"
+              glow
+              style={{
+                width: 96,
+                height: 96,
+                borderRadius: 48,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="chatbubbles" size={44} color="#FFFFFF" />
+            </KawaiiGradient>
+            <Text
+              style={{
+                position: "absolute",
+                top: -18,
+                right: -18,
+                fontSize: 22,
+              }}
+            >
+              ✨
+            </Text>
+            <Text
+              style={{
+                position: "absolute",
+                bottom: -14,
+                left: -20,
+                fontSize: 22,
+              }}
+            >
+              🌸
+            </Text>
           </View>
 
-          <Text className="text-3xl font-bold text-white mt-5 tracking-tight">
+          <Text
+            style={{
+              fontFamily: FONTS.headingBold,
+              fontSize: 34,
+              color: COLORS.text,
+              marginTop: 24,
+              letterSpacing: 0.5,
+            }}
+          >
             Modern Chat
           </Text>
 
-          <Text className="text-sm text-textMuted mt-2 text-center px-6">
-            {isSignUp
-              ? "Створіть акаунт для спілкування в кімнатах"
-              : "Увійдіть, щоб продовжити спілкування"}
-          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 10,
+            }}
+          >
+            <Text style={{ fontSize: 12 }}>💕</Text>
+            <Text
+              style={{
+                fontFamily: FONTS.body,
+                fontSize: 13,
+                color: COLORS.textMuted,
+                letterSpacing: 0.3,
+              }}
+            >
+              {isSignUp
+                ? "створи свій кавайний профіль"
+                : "з поверненням, друже!"}
+            </Text>
+            <Text style={{ fontSize: 12 }}>💕</Text>
+          </View>
         </View>
 
-        <View className="px-6 mt-12 w-full items-center gap-4">
+        <View
+          style={{
+            paddingHorizontal: 24,
+            marginTop: 48,
+            gap: 14,
+            alignItems: "center",
+          }}
+        >
           {isSignUp && (
-            <View className="flex-row items-center bg-secondary border border-surfaceLight rounded-2xl px-4 w-full max-w-sm">
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color={COLORS.textMuted}
-                style={{ marginRight: 12 }}
-              />
-
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: "rgba(183,148,246,0.08)",
+                borderWidth: 1.5,
+                borderColor: "rgba(255,143,180,0.25)",
+                borderRadius: 20,
+                paddingHorizontal: 16,
+                width: "100%",
+                maxWidth: 360,
+              }}
+            >
+              <Text style={{ fontSize: 18, marginRight: 10 }}>🎀</Text>
               <TextInput
-                className="flex-1 py-3.5 text-base text-white"
-                placeholder="Ваше ім'я"
+                style={{
+                  flex: 1,
+                  paddingVertical: 16,
+                  fontSize: 15,
+                  color: COLORS.text,
+                  fontFamily: FONTS.body,
+                }}
+                placeholder="Твоє ім'я"
                 placeholderTextColor={COLORS.textMuted}
                 value={name}
                 onChangeText={setName}
@@ -171,16 +256,28 @@ export default function LoginScreen() {
             </View>
           )}
 
-          <View className="flex-row items-center bg-secondary border border-surfaceLight rounded-2xl px-4 w-full max-w-sm">
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={COLORS.textMuted}
-              style={{ marginRight: 12 }}
-            />
-
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "rgba(183,148,246,0.08)",
+              borderWidth: 1.5,
+              borderColor: "rgba(255,143,180,0.25)",
+              borderRadius: 20,
+              paddingHorizontal: 16,
+              width: "100%",
+              maxWidth: 360,
+            }}
+          >
+            <Text style={{ fontSize: 18, marginRight: 10 }}>💌</Text>
             <TextInput
-              className="flex-1 py-3.5 text-base text-white"
+              style={{
+                flex: 1,
+                paddingVertical: 16,
+                fontSize: 15,
+                color: COLORS.text,
+                fontFamily: FONTS.body,
+              }}
               placeholder="Email"
               placeholderTextColor={COLORS.textMuted}
               value={email}
@@ -191,16 +288,28 @@ export default function LoginScreen() {
             />
           </View>
 
-          <View className="flex-row items-center bg-secondary border border-surfaceLight rounded-2xl px-4 w-full max-w-sm">
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={COLORS.textMuted}
-              style={{ marginRight: 12 }}
-            />
-
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "rgba(183,148,246,0.08)",
+              borderWidth: 1.5,
+              borderColor: "rgba(255,143,180,0.25)",
+              borderRadius: 20,
+              paddingHorizontal: 16,
+              width: "100%",
+              maxWidth: 360,
+            }}
+          >
+            <Text style={{ fontSize: 18, marginRight: 10 }}>🔒</Text>
             <TextInput
-              className="flex-1 py-3.5 text-base text-white"
+              style={{
+                flex: 1,
+                paddingVertical: 16,
+                fontSize: 15,
+                color: COLORS.text,
+                fontFamily: FONTS.body,
+              }}
               placeholder="Пароль"
               placeholderTextColor={COLORS.textMuted}
               value={password}
@@ -210,48 +319,93 @@ export default function LoginScreen() {
             />
           </View>
 
-          <TouchableOpacity
-            className={`flex-row items-center justify-center bg-primary rounded-2xl py-4 w-full max-w-sm mt-3 active:bg-primaryDark ${
-              isLoading || isGoogleLoading ? "opacity-60" : ""
-            }`}
-            activeOpacity={0.85}
-            onPress={handleAuth}
-            disabled={isLoading || isGoogleLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text className="text-white text-base font-bold">
-                {isSignUp ? "Зареєструватися" : "Увійти"}
-              </Text>
-            )}
-          </TouchableOpacity>
+          <View style={{ width: "100%", maxWidth: 360, marginTop: 8 }}>
+            <KawaiiButton
+              title={isSignUp ? "Створити профіль" : "Увійти"}
+              icon={isSignUp ? "sparkles" : "log-in"}
+              onPress={handleAuth}
+              loading={isLoading}
+              disabled={isGoogleLoading}
+            />
+          </View>
 
-          <View className="flex-row items-center w-full max-w-sm my-1">
-            <View className="flex-1 h-px bg-surfaceLight" />
-            <Text className="text-textMuted text-xs font-bold px-3 tracking-widest">
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              width: "100%",
+              maxWidth: 360,
+              marginVertical: 8,
+            }}
+          >
+            <View
+              style={{
+                flex: 1,
+                height: 1,
+                backgroundColor: "rgba(183,148,246,0.25)",
+              }}
+            />
+            <Text
+              style={{
+                color: COLORS.textMuted,
+                fontFamily: FONTS.bodyBold,
+                fontSize: 11,
+                letterSpacing: 3,
+                paddingHorizontal: 14,
+              }}
+            >
               АБО
             </Text>
-            <View className="flex-1 h-px bg-surfaceLight" />
+            <View
+              style={{
+                flex: 1,
+                height: 1,
+                backgroundColor: "rgba(183,148,246,0.25)",
+              }}
+            />
           </View>
 
           <TouchableOpacity
-            className={`flex-row items-center justify-center bg-secondary border border-surfaceLight rounded-2xl py-4 w-full max-w-sm gap-2.5 ${
-              isLoading || isGoogleLoading ? "opacity-60" : ""
-            }`}
             activeOpacity={0.85}
             onPress={handleGoogleSignIn}
             disabled={isLoading || isGoogleLoading}
+            style={{
+              width: "100%",
+              maxWidth: 360,
+              height: 54,
+              borderRadius: 27,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              backgroundColor: "rgba(183,148,246,0.12)",
+              borderWidth: 1.5,
+              borderColor: "rgba(126,232,250,0.35)",
+              opacity: isLoading || isGoogleLoading ? 0.5 : 1,
+            }}
           >
             {isGoogleLoading ? (
-              <ActivityIndicator color={COLORS.white} size="small" />
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontFamily: FONTS.bodyBold,
+                  fontSize: 15,
+                }}
+              >
+                Зачекай...
+              </Text>
             ) : (
               <>
                 <Ionicons name="logo-google" size={20} color="#EA4335" />
-                <Text className="text-white text-base font-bold">
-                  {isSignUp
-                    ? "Зареєструватися через Google"
-                    : "Продовжити з Google"}
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontFamily: FONTS.bodyBold,
+                    fontSize: 15,
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  Продовжити з Google
                 </Text>
               </>
             )}
@@ -259,12 +413,19 @@ export default function LoginScreen() {
 
           <TouchableOpacity
             onPress={() => setIsSignUp(!isSignUp)}
-            className="mt-3 py-2"
+            style={{ marginTop: 16, paddingVertical: 8 }}
           >
-            <Text className="text-primary text-sm font-medium">
+            <Text
+              style={{
+                color: COLORS.primary,
+                fontFamily: FONTS.bodyBold,
+                fontSize: 14,
+                letterSpacing: 0.2,
+              }}
+            >
               {isSignUp
-                ? "Вже є акаунт? Увійти"
-                : "Немає акаунту? Створити новий"}
+                ? "Вже маєш профіль? Увійти 🌸"
+                : "Немає профілю? Створити ✨"}
             </Text>
           </TouchableOpacity>
         </View>

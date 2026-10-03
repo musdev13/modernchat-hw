@@ -24,6 +24,8 @@ export default defineSchema({
     adminIds: v.optional(v.array(v.id("users"))),
     lastMessage: v.optional(v.string()),
     lastMessageAt: v.optional(v.number()),
+    avatarUrl: v.optional(v.string()),
+    avatarStorageId: v.optional(v.id("_storage")),
   }).index("by_creator", ["creatorId"]),
 
   messages: defineTable({
@@ -71,7 +73,6 @@ export default defineSchema({
     .index("by_room", ["chatRoomId"])
     .index("by_user_and_room", ["userId", "chatRoomId"]),
 
-  // 🔔 Кто сейчас находится в каком чате (для отключения push в активном чате)
   chatPresence: defineTable({
     userId: v.id("users"),
     chatRoomId: v.id("chatRooms"),

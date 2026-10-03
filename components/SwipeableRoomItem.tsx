@@ -1,14 +1,18 @@
+import { KawaiiAvatar } from "@/components/ui/KawaiiAvatar";
+import { KawaiiBadge } from "@/components/ui/KawaiiBadge";
+import { KawaiiGradient } from "@/components/ui/KawaiiGradient";
+import { COLORS, FONTS } from "@/constants/theme";
+import { Id } from "@/convex/_generated/dataModel";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
-import { View, Text, TouchableOpacity } from "react-native";
-import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import { Text, TouchableOpacity, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  useSharedValue,
   useAnimatedStyle,
+  useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/theme";
-import { Id } from "@/convex/_generated/dataModel";
 
 interface RoomData {
   _id: Id<"chatRooms">;
@@ -17,6 +21,7 @@ interface RoomData {
   creatorId: Id<"users">;
   lastMessage?: string;
   lastMessageAt?: number;
+  avatarUrl?: string;
 }
 
 interface SwipeableRoomItemProps {
@@ -26,7 +31,7 @@ interface SwipeableRoomItemProps {
   onDelete: (roomId: Id<"chatRooms">) => void;
 }
 
-const ACTION_WIDTH = 80;
+const ACTION_WIDTH = 82;
 
 export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   room,
@@ -38,11 +43,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
 
   const resetPosition = () => {
     "worklet";
-
-    translateX.value = withSpring(0, {
-      damping: 18,
-      stiffness: 180,
-    });
+    translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
   };
 
   const handleDeletePress = () => {
@@ -54,10 +55,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
     .activeOffsetX([-10, 10])
     .onUpdate((event) => {
       if (event.translationX <= 0) {
-        translateX.value = Math.max(
-          event.translationX,
-          -ACTION_WIDTH - 20
-        );
+        translateX.value = Math.max(event.translationX, -ACTION_WIDTH - 20);
       } else {
         translateX.value = event.translationX * 0.15;
       }
@@ -69,10 +67,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
           stiffness: 180,
         });
       } else {
-        translateX.value = withSpring(0, {
-          damping: 18,
-          stiffness: 180,
-        });
+        translateX.value = withSpring(0, { damping: 18, stiffness: 180 });
       }
     });
 
@@ -81,45 +76,63 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   }));
 
   const animatedIconStyle = useAnimatedStyle(() => {
-    const progress = Math.min(
-      Math.abs(translateX.value) / ACTION_WIDTH,
-      1
-    );
-
+    const progress = Math.min(Math.abs(translateX.value) / ACTION_WIDTH, 1);
     return {
       opacity: progress,
-      transform: [
-        {
-          scale: 0.6 + 0.4 * progress,
-        },
-      ],
+      transform: [{ scale: 0.6 + 0.4 * progress }],
     };
   });
 
   return (
-    <View className="relative overflow-hidden rounded-2xl mb-3">
-      <View className="absolute inset-0 bg-danger rounded-2xl flex-row justify-end items-center pr-5">
+    <View
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 20,
+        marginBottom: 10,
+      }}
+    >
+      <LinearGradient
+        colors={["#FF5C7A", "#E11D48"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          flexDirection: "row",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          paddingRight: 18,
+        }}
+      >
         <TouchableOpacity
           onPress={handleDeletePress}
           activeOpacity={0.8}
-          className="items-center justify-center h-full px-2"
+          style={{
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            paddingHorizontal: 8,
+          }}
         >
-          <Animated.View
-            style={animatedIconStyle}
-            className="items-center"
-          >
-            <Ionicons
-              name="trash-outline"
-              size={24}
-              color="#FFFFFF"
-            />
-
-            <Text className="text-white text-[11px] font-bold mt-1">
+          <Animated.View style={[animatedIconStyle, { alignItems: "center" }]}>
+            <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontFamily: FONTS.bodyBold,
+                fontSize: 10,
+                marginTop: 2,
+              }}
+            >
               {isCreator ? "Видалити" : "Покинути"}
             </Text>
           </Animated.View>
         </TouchableOpacity>
-      </View>
+      </LinearGradient>
 
       <GestureDetector gesture={panGesture}>
         <Animated.View style={animatedCardStyle}>
@@ -132,71 +145,137 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
               }
             }}
             activeOpacity={0.9}
-            className="bg-secondary border border-surfaceLight rounded-2xl p-4 flex-row items-center justify-between"
           >
-            <View className="flex-row items-center flex-1 mr-3">
-              <View className="w-12 h-12 rounded-xl bg-surfaceLight items-center justify-center mr-3.5">
-                <Ionicons
-                  name="chatbubbles"
-                  size={22}
-                  color={COLORS.primary}
-                />
+            <LinearGradient
+              colors={["#2A2238", "#241D33"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: "rgba(255,143,180,0.15)",
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                shadowColor: "#FF8FB4",
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.12,
+                shadowRadius: 10,
+                elevation: 4,
+              }}
+            >
+              <View style={{ marginRight: 12 }}>
+                {room.avatarUrl ? (
+                  <KawaiiAvatar
+                    uri={room.avatarUrl}
+                    name={room.title}
+                    size={46}
+                    ring="none"
+                  />
+                ) : (
+                  <KawaiiGradient
+                    variant="primary"
+                    glow
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 23,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="chatbubbles" size={20} color="#FFFFFF" />
+                  </KawaiiGradient>
+                )}
               </View>
 
-              <View className="flex-1">
-                <View className="flex-row items-center gap-1.5">
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 3,
+                  }}
+                >
                   <Text
-                    className="text-white text-base font-bold flex-shrink"
                     numberOfLines={1}
+                    style={{
+                      fontFamily: FONTS.headingBold,
+                      fontSize: 15,
+                      color: COLORS.text,
+                      flexShrink: 1,
+                    }}
                   >
                     {room.title}
                   </Text>
 
                   {isCreator && (
-                    <View className="bg-primary/20 px-1.5 py-0.5 rounded">
-                      <Text className="text-primary text-[10px] font-semibold">
-                        автор
-                      </Text>
-                    </View>
+                    <KawaiiBadge label="автор" icon="👑" variant="gold" />
                   )}
                 </View>
 
                 {room.lastMessage ? (
                   <Text
-                    className="text-textMuted text-xs mt-1"
                     numberOfLines={1}
+                    style={{
+                      fontFamily: FONTS.body,
+                      fontSize: 12,
+                      color: COLORS.textMuted,
+                    }}
                   >
                     {room.lastMessage}
                   </Text>
                 ) : (
                   <Text
-                    className="text-textMuted/60 text-xs italic mt-1"
                     numberOfLines={1}
+                    style={{
+                      fontFamily: FONTS.body,
+                      fontSize: 12,
+                      color: "rgba(168,155,184,0.6)",
+                      fontStyle: "italic",
+                    }}
                   >
-                    {room.description || "Повідомлень ще немає"}
+                    {room.description || "Повідомлень ще немає ✨"}
                   </Text>
                 )}
               </View>
-            </View>
 
-            <View className="items-end">
-              {room.lastMessageAt ? (
-                <Text className="text-textMuted text-[10px] mb-1">
-                  {new Date(
-                    room.lastMessageAt
-                  ).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              ) : null}
+              <View style={{ alignItems: "flex-end", gap: 5 }}>
+                {room.lastMessageAt ? (
+                  <Text
+                    style={{
+                      fontFamily: FONTS.body,
+                      fontSize: 10,
+                      color: COLORS.textMuted,
+                    }}
+                  >
+                    {new Date(room.lastMessageAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                ) : null}
 
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={COLORS.textMuted}
-              />
-            </View>
+                <View
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 11,
+                    backgroundColor: "rgba(255,143,180,0.12)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons
+                    name="chevron-forward"
+                    size={13}
+                    color={COLORS.primary}
+                  />
+                </View>
+              </View>
+            </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
       </GestureDetector>

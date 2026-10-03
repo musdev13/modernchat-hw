@@ -74,9 +74,16 @@ export const getRoom = query({
       ),
       currentUserRole: isCreator ? "creator" : isAdmin ? "admin" : "member",
       canManageMembers: isAdmin,
+      canEditRoom: isAdmin,
       canDeleteRoom: isCreator,
     };
   },
+});
+
+export const generateRoomAvatarUploadUrl = mutation(async (ctx) => {
+  const me = await getAuthUser(ctx);
+  if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+  return await ctx.storage.generateUploadUrl();
 });
 
 export const createRoom = mutation({
@@ -84,6 +91,7 @@ export const createRoom = mutation({
     title: v.string(),
     description: v.optional(v.string()),
     participantIds: v.optional(v.array(v.id("users"))),
+    avatarStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     const me = await getAuthUser(ctx);
@@ -93,7 +101,16 @@ export const createRoom = mutation({
     const title = args.title.trim();
     if (!title) throw new Error("Введіть назву кімнати");
 
-    const participantIds = Array.from(new Set([userId, ...(args.participantIds ?? [])]));
+    const participantIds = Array.from(
+      new Set([userId, ...(args.participantIds ?? [])]),
+    );
+
+    let avatarUrl: string | undefined;
+    if (args.avatarStorageId) {
+      const url = await ctx.storage.getUrl(args.avatarStorageId);
+      if (url) avatarUrl = url;
+    }
+
     const now = Date.now();
     const roomId = await ctx.db.insert("chatRooms", {
       title,
@@ -103,7 +120,10 @@ export const createRoom = mutation({
       adminIds: [userId],
       lastMessage: "🎉 Груповий чат створено",
       lastMessageAt: now,
+      avatarUrl,
+      avatarStorageId: args.avatarStorageId,
     });
+
     await ctx.db.insert("messages", {
       chatRoomId: roomId,
       senderId: userId,
@@ -111,7 +131,68 @@ export const createRoom = mutation({
       content: "🎉 Груповий чат створено",
       isSystem: true,
     });
+
     return roomId;
+  },
+});
+
+export const updateRoom = mutation({
+  args: {
+    roomId: v.id("chatRooms"),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    avatarStorageId: v.optional(v.id("_storage")),
+    clearAvatar: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = me._id;
+
+    const room = await requireMember(ctx, args.roomId, userId);
+    const isCreator = room.creatorId === userId;
+    const isAdmin = adminIdsOf(room).includes(userId);
+
+    if (!isCreator && !isAdmin) {
+      throw new Error("Лише адміністратори можуть редагувати кімнату");
+    }
+
+    const patch: Record<string, unknown> = {};
+
+    if (typeof args.title === "string") {
+      const trimmed = args.title.trim();
+      if (!trimmed) throw new Error("Назва не може бути порожньою");
+      patch.title = trimmed;
+    }
+
+    if (typeof args.description === "string") {
+      patch.description = args.description.trim() || undefined;
+    }
+
+    if (args.clearAvatar && room.avatarStorageId) {
+      await ctx.storage.delete(room.avatarStorageId);
+      patch.avatarUrl = undefined;
+      patch.avatarStorageId = undefined;
+    }
+
+    if (args.avatarStorageId) {
+      const url = await ctx.storage.getUrl(args.avatarStorageId);
+      if (!url) throw new Error("Не вдалося отримати посилання на аватар");
+
+      if (room.avatarStorageId) {
+        await ctx.storage.delete(room.avatarStorageId);
+      }
+
+      patch.avatarUrl = url;
+      patch.avatarStorageId = args.avatarStorageId;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return { success: true, updated: false };
+    }
+
+    await ctx.db.patch(args.roomId, patch);
+    return { success: true, updated: true };
   },
 });
 
@@ -184,7 +265,11 @@ export const updateParticipantRole = mutation({
         ? `🛡️ ${nameOf(target)} тепер адміністратор(ка)`
         : `👤 ${nameOf(target)} більше не адміністратор(ка)`;
     const now = Date.now();
-    await ctx.db.patch(args.roomId, { adminIds, lastMessage: content, lastMessageAt: now });
+    await ctx.db.patch(args.roomId, {
+      adminIds,
+      lastMessage: content,
+      lastMessageAt: now,
+    });
     await ctx.db.insert("messages", {
       chatRoomId: args.roomId,
       senderId: userId,
@@ -219,7 +304,9 @@ export const removeParticipant = mutation({
       if (!isCreator && targetIsAdmin)
         throw new Error("Адміністратор не може вилучити іншого адміністратора");
     } else if (isCreator && participants.length > 1) {
-      throw new Error("Творець не може покинути кімнату, поки в ній є інші учасники");
+      throw new Error(
+        "Творець не може покинути кімнату, поки в ній є інші учасники",
+      );
     }
 
     const target = await ctx.db.get(args.targetUserId);
@@ -256,14 +343,20 @@ export const deleteRoom = mutation({
     if (room.creatorId !== userId)
       throw new Error("Видалити кімнату може лише її творець");
 
+    if (room.avatarStorageId) {
+      await ctx.storage.delete(room.avatarStorageId);
+    }
+
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_chat_room", (q) => q.eq("chatRoomId", args.roomId))
       .collect();
     for (const message of messages) {
       if (message.storageId) await ctx.storage.delete(message.storageId);
-      if (message.audioStorageId) await ctx.storage.delete(message.audioStorageId);
-      if (message.videoStorageId) await ctx.storage.delete(message.videoStorageId);
+      if (message.audioStorageId)
+        await ctx.storage.delete(message.audioStorageId);
+      if (message.videoStorageId)
+        await ctx.storage.delete(message.videoStorageId);
       const reactions = await ctx.db
         .query("messageReactions")
         .withIndex("by_message", (q) => q.eq("messageId", message._id))

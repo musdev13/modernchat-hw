@@ -1,4 +1,6 @@
-import { COLORS } from "@/constants/theme";
+import { KawaiiAvatar } from "@/components/ui/KawaiiAvatar";
+import { KawaiiGradient } from "@/components/ui/KawaiiGradient";
+import { COLORS, FONTS } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,8 +10,8 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Modal,
+  Pressable,
   Text,
   TextInput,
   TouchableOpacity,
@@ -23,7 +25,12 @@ type Props = {
   onClose: () => void;
 };
 
-export function AddMembersModal({ visible, roomId, participantIds, onClose }: Props) {
+export function AddMembersModal({
+  visible,
+  roomId,
+  participantIds,
+  onClose,
+}: Props) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Id<"users">[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -37,7 +44,9 @@ export function AddMembersModal({ visible, roomId, participantIds, onClose }: Pr
 
   const toggle = (id: Id<"users">) => {
     setSelected((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+      current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id],
     );
   };
 
@@ -61,86 +70,259 @@ export function AddMembersModal({ visible, roomId, participantIds, onClose }: Pr
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-      <View className="flex-1 justify-end bg-black/70">
-        <View className="h-[80%] rounded-t-3xl border-t border-surfaceLight bg-surface p-4">
-          <View className="flex-row items-center justify-between border-b border-surfaceLight pb-3">
-            <TouchableOpacity onPress={close} className="p-1">
-              <Ionicons name="close" size={24} color="#fff" />
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={close}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.75)",
+          justifyContent: "flex-end",
+        }}
+      >
+        <Pressable style={{ flex: 1 }} onPress={close} />
+
+        <View
+          style={{
+            height: "82%",
+            backgroundColor: COLORS.background,
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            borderTopWidth: 1,
+            borderTopColor: "rgba(255,143,180,0.25)",
+            paddingHorizontal: 16,
+            paddingTop: 12,
+          }}
+        >
+          <View style={{ alignItems: "center", marginBottom: 12 }}>
+            <View
+              style={{
+                width: 44,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: "rgba(183,148,246,0.3)",
+              }}
+            />
+          </View>
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingBottom: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(183,148,246,0.15)",
+            }}
+          >
+            <TouchableOpacity
+              onPress={close}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(183,148,246,0.15)",
+              }}
+            >
+              <Ionicons name="close" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
-            <Text className="text-lg font-bold text-white">Додати учасників</Text>
+
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ fontSize: 14 }}>💌</Text>
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontFamily: FONTS.headingBold,
+                  fontSize: 16,
+                }}
+              >
+                Додати учасників
+              </Text>
+            </View>
+
             <TouchableOpacity
               onPress={submit}
               disabled={!selected.length || submitting}
-              className={`rounded-full px-3 py-1.5 ${selected.length ? "bg-primary" : "opacity-40"}`}
+              activeOpacity={0.85}
             >
-              {submitting ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text className="text-xs font-bold text-white">Додати ({selected.length})</Text>
-              )}
+              <KawaiiGradient
+                variant="primary"
+                glow
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 16,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  opacity: !selected.length || submitting ? 0.5 : 1,
+                }}
+              >
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="add" size={14} color="#FFFFFF" />
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontFamily: FONTS.bodyBold,
+                        fontSize: 11,
+                      }}
+                    >
+                      {selected.length}
+                    </Text>
+                  </>
+                )}
+              </KawaiiGradient>
             </TouchableOpacity>
           </View>
 
-          <View className="my-3 flex-row items-center rounded-xl bg-secondary px-3 py-2">
-            <Ionicons name="search" size={18} color={COLORS.textMuted} />
+          <View
+            style={{
+              marginTop: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "rgba(183,148,246,0.08)",
+              borderWidth: 1,
+              borderColor: "rgba(183,148,246,0.22)",
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+            }}
+          >
+            <Ionicons name="search" size={16} color={COLORS.textMuted} />
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Пошук користувачів"
+              placeholder="Пошук користувачів..."
               placeholderTextColor={COLORS.textMuted}
               autoCapitalize="none"
-              className="ml-2 flex-1 text-sm text-white"
+              style={{
+                marginLeft: 8,
+                flex: 1,
+                paddingVertical: 10,
+                color: COLORS.text,
+                fontFamily: FONTS.body,
+                fontSize: 13,
+              }}
             />
           </View>
 
           {users === undefined ? (
-            <View className="flex-1 items-center justify-center">
-              <ActivityIndicator color={COLORS.primary} />
+            <View
+              style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+            >
+              <KawaiiGradient
+                variant="primary"
+                glow
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 28,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              </KawaiiGradient>
             </View>
           ) : (
             <FlatList
               data={available}
               keyExtractor={(item) => item._id}
+              contentContainerStyle={{ paddingTop: 10, paddingBottom: 24 }}
               ListEmptyComponent={
-                <Text className="mt-10 text-center text-sm text-textMuted">
-                  Немає доступних користувачів
-                </Text>
+                <View
+                  style={{
+                    alignItems: "center",
+                    marginTop: 40,
+                    paddingHorizontal: 24,
+                  }}
+                >
+                  <Text style={{ fontSize: 40, marginBottom: 8 }}>🌸</Text>
+                  <Text
+                    style={{
+                      textAlign: "center",
+                      fontFamily: FONTS.body,
+                      fontSize: 13,
+                      color: COLORS.textMuted,
+                    }}
+                  >
+                    Немає доступних користувачів
+                  </Text>
+                </View>
               }
               renderItem={({ item }) => {
                 const checked = selected.includes(item._id);
                 return (
                   <TouchableOpacity
                     onPress={() => toggle(item._id)}
-                    className="flex-row items-center border-b border-surfaceLight/50 px-2 py-3"
+                    activeOpacity={0.8}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingVertical: 10,
+                      paddingHorizontal: 4,
+                      borderBottomWidth: 1,
+                      borderBottomColor: "rgba(183,148,246,0.1)",
+                    }}
                   >
-                    {item.image ? (
-                      <Image
-                        source={{ uri: item.image }}
-                        className="mr-3 h-10 w-10 rounded-full bg-surfaceLight"
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-surfaceLight">
-                        <Text className="font-bold text-primary">
-                          {item.name.slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
+                    <KawaiiAvatar
+                      uri={item.image}
+                      name={item.name}
+                      size={42}
+                      ring={checked ? "primary" : "none"}
+                    />
 
-                    <View className="flex-1">
-                      <Text className="font-semibold text-white">{item.name}</Text>
-                      <Text className="text-xs text-textMuted">
-                        {item.username ? `@${item.username}` : ""}
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text
+                        style={{
+                          color: COLORS.text,
+                          fontFamily: FONTS.bodyBold,
+                          fontSize: 14,
+                        }}
+                      >
+                        {item.name}
                       </Text>
+                      {item.username && (
+                        <Text
+                          style={{
+                            color: COLORS.textMuted,
+                            fontFamily: FONTS.body,
+                            fontSize: 11,
+                            marginTop: 1,
+                          }}
+                        >
+                          @{item.username}
+                        </Text>
+                      )}
                     </View>
 
                     <View
-                      className={`h-6 w-6 items-center justify-center rounded-full border ${
-                        checked ? "border-primary bg-primary" : "border-textMuted"
-                      }`}
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: 13,
+                        borderWidth: 2,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderColor: checked
+                          ? COLORS.primary
+                          : "rgba(183,148,246,0.4)",
+                        backgroundColor: checked
+                          ? COLORS.primary
+                          : "transparent",
+                      }}
                     >
-                      {checked && <Ionicons name="checkmark" size={16} color="#fff" />}
+                      {checked && (
+                        <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                      )}
                     </View>
                   </TouchableOpacity>
                 );
