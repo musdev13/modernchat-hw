@@ -242,7 +242,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 
   // «Чистий» кружок — без бульбашки.
   const isPureVideoNote =
-    hasVideoNote && !hasText && !item.replyToSender && !hasReactions;
+    hasVideoNote && !hasText && !item.replyToSender;
 
   const emojiCount =
     hasText && !hasImage && !hasVideoNote && !hasVoice && !item.replyToSender && !hasReactions
@@ -347,26 +347,14 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
             )}
 
             {isPureVideoNote ? (
-              <View>
-                <VideoNotePlayer
-                  videoUrl={item.videoUrl!}
-                  duration={item.videoDuration}
-                  isMine={isOwn}
-                />
-                <View
-                  style={{
-                    position: "absolute",
-                    right: 6,
-                    bottom: 4,
-                    backgroundColor: "rgba(0,0,0,0.45)",
-                    borderRadius: 10,
-                    paddingHorizontal: 6,
-                    paddingVertical: 1,
-                  }}
-                >
-                  <Text style={{ color: "#FFFFFF", fontSize: 11 }}>{time}</Text>
-                </View>
-              </View>
+              <VideoNotePlayer
+                videoUrl={item.videoUrl!}
+                duration={item.videoDuration}
+                isMine={isOwn}
+                reactions={item.reactions}
+                onToggleReaction={onToggleReaction}
+                timeLabel={time}
+              />
             ) : isBigEmoji ? (
               <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
                 {!isOwn && isFirstInSeries && (
