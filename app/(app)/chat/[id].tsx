@@ -3,7 +3,9 @@ import { EmojiPanel } from "@/components/EmojiPanel";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import type { GifItem } from "@/components/GifPicker";
 import { EdgeScrim } from "@/components/EdgeScrim";
+import { getCachedVideoThumb } from "@/components/AttachmentBubbles";
 import { MediaViewer, type ViewerItem } from "@/components/MediaViewer";
+import { saveMedia } from "@/utils/mediaSave";
 import {
   MessageAction,
   MessageActionSheet,
@@ -1199,7 +1201,16 @@ export default function ChatRoomScreen() {
         .sort((x, y) => x._creationTime - y._creationTime)
         .flatMap((m): ViewerItem[] => {
           if (m.videoUrl && !m.isVideoNote) {
-            return [{ id: m._id, kind: "video", url: m.videoUrl, senderName: m.senderName, createdAt: m._creationTime }];
+            return [
+              {
+                id: m._id,
+                kind: "video",
+                url: m.videoUrl,
+                senderName: m.senderName,
+                createdAt: m._creationTime,
+                poster: getCachedVideoThumb(m.videoUrl),
+              },
+            ];
           }
           if (m.imageUrl && !isStickerContent(m.content)) {
             return [{ id: m._id, kind: "image", url: m.imageUrl, senderName: m.senderName, createdAt: m._creationTime }];
@@ -1356,6 +1367,22 @@ export default function ChatRoomScreen() {
         : "кілька людей друкують…"
       : null;
 
+  const handleSaveMedia = useCallback(
+    async (m: MessageItemData) => {
+      const kind = m.videoUrl && !m.isVideoNote ? "video" : m.imageUrl ? "image" : m.fileUrl ? "file" : null;
+      const url = kind === "video" ? m.videoUrl : kind === "image" ? m.imageUrl : m.fileUrl;
+      if (!kind || !url) return;
+      showToast("Завантаження…");
+      try {
+        const res = await saveMedia(url, kind, undefined, kind === "file" ? m.fileName : undefined);
+        if (res === "gallery") showToast("Збережено в галерею");
+      } catch (e) {
+        showToast(e instanceof Error && e.message ? e.message : "Не вдалося зберегти");
+      }
+    },
+    [showToast],
+  );
+
   const actionList = useMemo<MessageAction[]>(() => {
     const m = actionMessage;
     if (!m) return [];
@@ -1396,6 +1423,16 @@ export default function ChatRoomScreen() {
         onPress: () => setForwardTarget(m),
       });
     }
+    const isSaveable =
+      !m.isSystem && !isStickerContent(m.content) && !!((m.videoUrl && !m.isVideoNote) || m.imageUrl || m.fileUrl);
+    if (isSaveable) {
+      list.push({
+        key: "save",
+        label: "Зберегти",
+        icon: "download-outline",
+        onPress: () => void handleSaveMedia(m),
+      });
+    }
     if (own && hasContent) {
       list.push({
         key: "edit",
@@ -1421,6 +1458,7 @@ export default function ChatRoomScreen() {
     currentUser?._id,
     handleCopy,
     handleDelete,
+    handleSaveMedia,
     handleStartEdit,
     handleStartReply,
     handleTogglePin,

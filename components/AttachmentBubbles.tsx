@@ -20,6 +20,11 @@ export function ratioFrom(width?: number, height?: number, fallback = 1): number
 // ── Прев'ю відео: перший кадр генеруємо локально й кешуємо ──
 const thumbCache = new Map<string, VideoThumbnail>();
 
+/** Уже згенероване прев'ю відео (для плавного відкриття переглядача без чорного кадру). */
+export function getCachedVideoThumb(url: string): VideoThumbnail | undefined {
+  return thumbCache.get(url);
+}
+
 function ThumbGenerator({ url, onReady }: { url: string; onReady: (t: VideoThumbnail) => void }) {
   const player = useVideoPlayer(url);
   useEffect(() => {

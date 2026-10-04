@@ -1,13 +1,14 @@
+import { saveMedia, shareMedia } from "@/utils/mediaSave";
 import { dayLabel, formatTime } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
+import { Image as ExpoImage, type ImageProps } from "expo-image";
 import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import * as Haptics from "expo-haptics";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import {
   ActivityIndicator,
   Modal,
   Platform,
-  Share,
   StatusBar,
   StyleSheet,
   Text,
@@ -37,6 +38,9 @@ export interface ViewerItem {
   url: string;
   senderName?: string;
   createdAt?: number;
+  /** Мініатюра відео: показується, доки не з'явиться перший кадр (без чорного спалаху). */
+  poster?: ImageProps["source"];
+  fileName?: string;
 }
 
 interface Props {
@@ -82,9 +86,11 @@ function usePlayerState(
   const [ended, setEnded] = useState(false);
   const [muted, setMuted] = useState(false);
   const [rate, setRate] = useState(1);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!active) return;
+    setError(null);
     setPlaying(player.playing);
     setTime(0);
     setDuration(player.duration || 0);
@@ -112,6 +118,8 @@ function usePlayerState(
       }),
       player.addListener("statusChange", (e) => {
         setLoading(e.status === "loading");
+        if (e.status === "error") setError(e.error?.message ?? "error");
+        else if (e.status === "readyToPlay") setError(null);
         if (player.duration > 0) setDuration(player.duration);
       }),
       player.addListener("sourceLoad", (e) => {
@@ -128,7 +136,7 @@ function usePlayerState(
     return () => subs.forEach((s) => s.remove());
   }, [player, active, progress, buffered, scrubbing]);
 
-  return { playing, time, duration, loading, ended, muted, rate };
+  return { playing, time, duration, loading, ended, muted, rate, error };
 }
 
 /** Перемотка: смужка з ручкою, що тягнеться; тап по смужці — перехід до місця. */
@@ -239,10 +247,12 @@ function Viewer({
   items,
   initialIndex,
   onClose,
+  closeRef,
 }: {
   items: ViewerItem[];
   initialIndex: number;
   onClose: () => void;
+  closeRef: MutableRefObject<(() => void) | null>;
 }) {
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -263,6 +273,7 @@ function Viewer({
   const savedScale = useSharedValue(1);
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
+  const appear = useSharedValue(0);
   const savedTx = useSharedValue(0);
   const savedTy = useSharedValue(0);
 
@@ -274,6 +285,8 @@ function Viewer({
   const player = useVideoPlayer(activeUrl, (p) => {
     p.loop = false;
     p.timeUpdateEventInterval = 0.25;
+    p.keepScreenOnWhilePlaying = true; // екран не гасне під час відтворення
+    p.audioMixingMode = "doNotMix"; // забираємо аудіофокус, як у Telegram
     if (activeUrl) p.play();
   });
   const ps = usePlayerState(player, isVideo, progress, buffered, scrubbing);
@@ -283,6 +296,11 @@ function Viewer({
   const [touchTick, setTouchTick] = useState(0);
   const chromeSV = useSharedValue(1);
   const [speedMenu, setSpeedMenu] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [frameReady, setFrameReady] = useState(false);
+  const [dl, setDl] = useState<{ label: string; pct: number } | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const busyRef = useRef(false);
   const [flash, setFlash] = useState<{ id: number; side: "left" | "right" } | null>(null);
   const flashId = useRef(0);
 
@@ -299,6 +317,7 @@ function Viewer({
   const poke = useCallback(() => setTouchTick((n) => n + 1), []);
   const toggleChrome = useCallback(() => {
     setSpeedMenu(false);
+    setMenu(false);
     setChrome((v) => !v);
     poke();
   }, [poke]);
@@ -359,8 +378,85 @@ function Viewer({
   const commitIndex = useCallback((next: number) => {
     setIndex(next);
     setSpeedMenu(false);
+    setMenu(false);
     setFlash(null);
+    setFrameReady(false);
   }, []);
+
+  // Вхід: затемнення + легкий масштаб; вихід — зворотна анімація, після якої батько отримує onClose
+  const exiting = useRef(false);
+  const finished = useRef(false);
+  // onClose у ref: батьки передають нестабільну стрілку, а жести/колбеки не мають перебудовуватись посеред свайпу
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const finishClose = useCallback(() => {
+    if (finished.current) return;
+    finished.current = true;
+    onCloseRef.current();
+  }, []);
+  const requestClose = useCallback(() => {
+    if (exiting.current || finished.current) return;
+    exiting.current = true;
+    try {
+      player.pause();
+    } catch {
+      // плеєр уже знищено
+    }
+    appear.value = withTiming(0, { duration: 170, easing: Easing.in(Easing.quad) }, () => {
+      runOnJS(finishClose)();
+    });
+  }, [appear, finishClose, player]);
+
+  useEffect(() => {
+    appear.value = withTiming(1, { duration: 230, easing: Easing.out(Easing.cubic) });
+  }, [appear]);
+  useEffect(() => {
+    closeRef.current = requestClose;
+    return () => {
+      closeRef.current = null;
+    };
+  }, [closeRef, requestClose]);
+
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(null), 2200);
+    return () => clearTimeout(t);
+  }, [note]);
+
+  const runAction = useCallback(
+    async (mode: "save" | "share") => {
+      setMenu(false);
+      if (!item || busyRef.current) return;
+      busyRef.current = true;
+      setDl({ label: mode === "save" ? "Збереження" : "Підготовка", pct: 0 });
+      const onProgress = (f: number) => setDl({ label: mode === "save" ? "Збереження" : "Підготовка", pct: Math.round(f * 100) });
+      try {
+        if (mode === "save") {
+          await saveMedia(item.url, item.kind, onProgress, item.fileName);
+          setNote("Збережено в галерею");
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          await shareMedia(item.url, item.kind, onProgress, item.fileName);
+        }
+      } catch (e) {
+        setNote(e instanceof Error && e.message ? e.message : "Не вдалося виконати дію");
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } finally {
+        busyRef.current = false;
+        setDl(null);
+      }
+    },
+    [item],
+  );
+
+  const onFirstFrame = useCallback(() => setFrameReady(true), []);
+
+  const retry = useCallback(() => {
+    if (!item || item.kind !== "video") return;
+    setFrameReady(false);
+    player.replace(item.url);
+    player.play();
+  }, [item, player]);
 
   const gesture = useMemo(() => {
     const resetZoom = () => {
@@ -452,7 +548,7 @@ function Viewer({
           if (Math.abs(dragY.value) > 110 || Math.abs(e.velocityY) > 900) {
             const sign = dragY.value >= 0 ? 1 : -1;
             dragY.value = withTiming(sign * H * 0.5, { duration: 180 }, (finished) => {
-              if (finished) runOnJS(onClose)();
+              if (finished) runOnJS(finishClose)();
             });
           } else {
             dragY.value = withSpring(0, { damping: 20, stiffness: 240 });
@@ -500,7 +596,7 @@ function Viewer({
     H,
     count,
     isVideo,
-    onClose,
+    finishClose,
     commitIndex,
     doubleTapSeek,
     toggleChrome,
@@ -517,10 +613,14 @@ function Viewer({
   ]);
 
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: 1 - Math.min(1, Math.abs(dragY.value) / (H * 0.5)) * 0.85,
+    opacity: appear.value * (1 - Math.min(1, Math.abs(dragY.value) / (H * 0.5)) * 0.85),
+  }));
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: appear.value,
+    transform: [{ scale: 0.92 + appear.value * 0.08 }],
   }));
   const chromeStyle = useAnimatedStyle(() => ({
-    opacity: chromeSV.value * (1 - Math.min(1, Math.abs(dragY.value) / 140)),
+    opacity: appear.value * chromeSV.value * (1 - Math.min(1, Math.abs(dragY.value) / 140)),
   }));
   const topBarStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - chromeSV.value) * -14 }],
@@ -531,18 +631,10 @@ function Viewer({
 
   const visibleIdx = [index - 1, index, index + 1].filter((i) => i >= 0 && i < count);
 
-  const handleShare = useCallback(async () => {
-    if (!item) return;
-    try {
-      await Share.share(Platform.OS === "ios" ? { url: item.url } : { message: item.url });
-    } catch {
-      // користувач закрив меню
-    }
-  }, [item]);
-
   if (!item) return null;
 
   const barWidth = W - 32;
+
   const subtitle =
     item.createdAt !== undefined ? `${dayLabel(item.createdAt).toLowerCase()}, ${formatTime(item.createdAt)}` : "";
   const chromePointer = chrome ? "box-none" : "none";
@@ -552,7 +644,7 @@ function Viewer({
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: "#000" }, backdropStyle]} />
 
       <GestureDetector gesture={gesture}>
-        <Animated.View style={StyleSheet.absoluteFill}>
+        <Animated.View style={[StyleSheet.absoluteFill, contentStyle]}>
           {visibleIdx.map((i) => (
             <Page
               key={items[i].id}
@@ -560,6 +652,8 @@ function Viewer({
               pageIndex={i}
               active={i === index}
               player={player}
+              frameReady={frameReady}
+              onFirstFrame={onFirstFrame}
               W={W}
               H={H}
               indexSV={indexSV}
@@ -599,7 +693,93 @@ function Viewer({
         </Animated.View>
       ) : null}
 
-      {isVideo && ps.loading && !ps.ended ? (
+      {isVideo && ps.error ? (
+        <View
+          pointerEvents="box-none"
+          style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }]}
+        >
+          <Ionicons name="alert-circle-outline" size={44} color="rgba(255,255,255,0.85)" />
+          <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "600", marginTop: 10, textAlign: "center" }}>
+            Не вдалося відтворити відео
+          </Text>
+          <TouchableOpacity
+            onPress={retry}
+            accessibilityRole="button"
+            style={{
+              marginTop: 16,
+              height: 42,
+              paddingHorizontal: 24,
+              borderRadius: 21,
+              backgroundColor: "rgba(255,255,255,0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: "#FFF", fontSize: 15, fontWeight: "700" }}>Повторити</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {dl ? (
+        <Animated.View
+          pointerEvents="none"
+          entering={FadeIn.duration(140)}
+          exiting={FadeOut.duration(140)}
+          style={{ position: "absolute", left: 0, right: 0, top: topInset + BAR_H + 52, alignItems: "center" }}
+        >
+          <View
+            style={{
+              minWidth: 190,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderRadius: 16,
+              backgroundColor: "rgba(28,28,30,0.95)",
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <ActivityIndicator size="small" color="#FFF" />
+              <Text style={{ color: "#FFF", fontSize: 14, fontWeight: "600" }}>
+                {dl.label}… {dl.pct}%
+              </Text>
+            </View>
+            <View style={{ height: 3, borderRadius: 2, marginTop: 8, backgroundColor: "rgba(255,255,255,0.22)" }}>
+              <View style={{ height: 3, borderRadius: 2, backgroundColor: "#FFF", width: `${dl.pct}%` }} />
+            </View>
+          </View>
+        </Animated.View>
+      ) : null}
+
+      {note ? (
+        <Animated.View
+          pointerEvents="none"
+          entering={FadeIn.duration(160)}
+          exiting={FadeOut.duration(200)}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: bottomInset + (isVideo ? 120 : 40),
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              paddingHorizontal: 16,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: "rgba(28,28,30,0.95)",
+            }}
+          >
+            <Ionicons name="checkmark-circle" size={18} color="#34C759" />
+            <Text style={{ color: "#FFF", fontSize: 14, fontWeight: "600" }}>{note}</Text>
+          </View>
+        </Animated.View>
+      ) : null}
+
+      {isVideo && ps.loading && !ps.error && !ps.ended ? (
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}>
           <ActivityIndicator size="large" color="#FFFFFF" />
         </View>
@@ -616,7 +796,7 @@ function Viewer({
         >
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 8 }}>
             <TouchableOpacity
-              onPress={onClose}
+              onPress={requestClose}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
               accessibilityLabel="Закрити"
@@ -635,13 +815,17 @@ function Viewer({
               ) : null}
             </View>
             <TouchableOpacity
-              onPress={() => void handleShare()}
+              onPress={() => {
+                setSpeedMenu(false);
+                setMenu((v) => !v);
+                poke();
+              }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel="Поділитися"
+              accessibilityLabel="Меню"
               style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
             >
-              <Ionicons name="share-outline" size={24} color="#FFFFFF" />
+              <Ionicons name="ellipsis-vertical" size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -666,6 +850,37 @@ function Viewer({
               </Text>
             </View>
           </View>
+        ) : null}
+
+        {menu ? (
+          <Animated.View
+            entering={FadeIn.duration(130)}
+            exiting={FadeOut.duration(100)}
+            style={{
+              position: "absolute",
+              top: topInset + BAR_H - 2,
+              right: 10,
+              borderRadius: 14,
+              backgroundColor: "rgba(28,28,30,0.97)",
+              paddingVertical: 4,
+              minWidth: 190,
+            }}
+          >
+            {[
+              { key: "save" as const, icon: "download-outline" as const, label: "Зберегти" },
+              { key: "share" as const, icon: "share-outline" as const, label: "Поділитися" },
+            ].map((m) => (
+              <TouchableOpacity
+                key={m.key}
+                onPress={() => void runAction(m.key)}
+                accessibilityRole="button"
+                style={{ height: 48, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 14 }}
+              >
+                <Ionicons name={m.icon} size={22} color="#FFF" />
+                <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "500" }}>{m.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </Animated.View>
         ) : null}
 
         {isVideo ? (
@@ -819,6 +1034,8 @@ function Page({
   pageIndex,
   active,
   player,
+  frameReady,
+  onFirstFrame,
   W,
   H,
   indexSV,
@@ -832,6 +1049,8 @@ function Page({
   pageIndex: number;
   active: boolean;
   player: VideoPlayer;
+  frameReady: boolean;
+  onFirstFrame: () => void;
   W: number;
   H: number;
   indexSV: SharedValue<number>;
@@ -857,17 +1076,28 @@ function Page({
   return (
     <Animated.View style={[{ position: "absolute", top: 0, left: 0, width: W, height: H }, style]}>
       {item.kind === "image" ? (
-        <Animated.Image
+        <ExpoImage
           source={{ uri: item.url }}
-          resizeMode="contain"
+          contentFit="contain"
+          transition={120}
+          cachePolicy="memory-disk"
+          recyclingKey={item.id}
           style={{ width: W, height: H }}
         />
       ) : active ? (
         <View pointerEvents="none" style={{ width: W, height: H }}>
+          {item.poster ? (
+            <ExpoImage
+              source={item.poster}
+              contentFit="contain"
+              style={{ position: "absolute", width: W, height: H, opacity: frameReady ? 0 : 1 }}
+            />
+          ) : null}
           {/* textureView: поверх нього можна малювати елементи й масштабувати (surfaceView не вміє) */}
           <VideoView
             player={player}
-            style={{ width: W, height: H }}
+            style={{ width: W, height: H, opacity: frameReady || !item.poster ? 1 : 0 }}
+            onFirstFrameRender={onFirstFrame}
             contentFit="contain"
             nativeControls={false}
             surfaceType="textureView"
@@ -877,6 +1107,13 @@ function Page({
         </View>
       ) : (
         <View style={{ width: W, height: H, alignItems: "center", justifyContent: "center" }}>
+          {item.poster ? (
+            <ExpoImage
+              source={item.poster}
+              contentFit="contain"
+              style={{ position: "absolute", width: W, height: H }}
+            />
+          ) : null}
           <Ionicons name="play-circle" size={64} color="rgba(255,255,255,0.5)" />
         </View>
       )}
@@ -910,19 +1147,23 @@ const styles = StyleSheet.create({
  * для відео — власні елементи керування (перемотка, швидкість, звук).
  */
 export function MediaViewer({ visible, items, initialIndex = 0, onClose }: Props) {
+  const closeRef = useRef<(() => void) | null>(null);
+  const open = visible && items.length > 0;
+  // Модалка монтується лише поки переглядач відкритий і повністю знімається після закриття
+  // (animationType="none" + власна анімація): так на Android не лишається «привида» вікна,
+  // що перекривав наступну модалку (редагування профілю).
+  if (!open) return null;
   return (
     <Modal
-      visible={visible && items.length > 0}
+      visible
       transparent
-      animationType="fade"
-      onRequestClose={onClose}
+      animationType="none"
+      onRequestClose={() => (closeRef.current ? closeRef.current() : onClose())}
       statusBarTranslucent
     >
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: "transparent" }}>
-        {visible && items.length > 0 ? (
-          <Viewer items={items} initialIndex={initialIndex} onClose={onClose} />
-        ) : null}
+        <Viewer items={items} initialIndex={initialIndex} onClose={onClose} closeRef={closeRef} />
       </GestureHandlerRootView>
     </Modal>
   );

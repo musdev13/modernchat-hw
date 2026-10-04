@@ -135,6 +135,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
       "expo-secure-store",
 
+      // 💾 Збереження фото/відео в галерею («Зберегти») та «Поділитися» файлом
+      [
+        "expo-media-library",
+        {
+          photosPermission: "Додатку Modern Chat потрібен доступ до ваших фотографій.",
+          savePhotosPermission: "Додатку Modern Chat потрібен дозвіл, щоб зберігати фото й відео в галерею.",
+          isAccessMediaLocationEnabled: false,
+        },
+      ],
+      "expo-sharing",
+
       // 🎥 ДЗ 15: камера для відеокружечків
       [
         "expo-camera",
