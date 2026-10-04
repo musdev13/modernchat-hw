@@ -704,6 +704,7 @@ export function StretchyProfile({
 
   return (
     <GlassProvider>
+      <View style={{ flex: 1, backgroundColor: c.divider }}>
       <GestureDetector gesture={pan}>
         <View style={{ flex: 1, backgroundColor: c.divider }}>
           <GlassTarget style={{ flex: 1, backgroundColor: c.divider }}>
@@ -1043,8 +1044,6 @@ export function StretchyProfile({
             </Animated.View>
           ) : null}
 
-          {bottomOverlay}
-
           <MediaViewer
             visible={viewerOpen}
             items={viewerItems}
@@ -1056,6 +1055,9 @@ export function StretchyProfile({
           />
         </View>
       </GestureDetector>
+      {/* Оверлеї (таб-бар, QR) поза зоною жестів профілю: його Pan не перехоплює їхні дотики */}
+      {bottomOverlay}
+      </View>
     </GlassProvider>
   );
 }

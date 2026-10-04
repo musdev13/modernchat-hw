@@ -7,9 +7,9 @@ import { userLink } from "@/utils/profileFormat";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image as ExpoImage } from "expo-image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, Pressable, Share, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Gesture, GestureDetector, Pressable as GHPressable } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   runOnJS,
@@ -43,6 +43,44 @@ function mixHex(a: string, b: string, t: number): string {
       .padStart(2, "0");
   };
   return `#${ch(0)}${ch(2)}${ch(4)}`;
+}
+
+/**
+ * Кнопка дії на картці. Це Pressable з react-native-gesture-handler: він бере участь у тій самій
+ * системі жестів, що й решта оверлея, тому дотик не перехоплюють ні Pan профілю, ні свайп картки.
+ * Розмітка — у звичайному View всередині (без функції style), щоб NativeWind не губив flexDirection.
+ */
+function ActionButton({
+  label,
+  icon,
+  bg,
+  fg,
+  onPress,
+}: {
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  bg: string;
+  fg: string;
+  onPress: () => void;
+}) {
+  const [pressed, setPressed] = useState(false);
+  return (
+    <GHPressable
+      onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={[styles.btn, { backgroundColor: bg, opacity: pressed ? 0.7 : 1 }]}>
+        <View style={styles.btnRow}>
+          <Ionicons name={icon} size={20} color={fg} />
+          <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
+        </View>
+      </View>
+    </GHPressable>
+  );
 }
 
 /**
@@ -133,6 +171,15 @@ export function QrOverlay({ visible, onClose, name, username, avatarUrl }: Props
   const top = lum > 0.6 ? mixHex(c.accent, "#000000", 0.55) : c.accent;
   const bottom = mixHex(top, c.isDark ? "#000000" : "#2B1055", 0.5);
 
+  const share = async () => {
+    if (!link) return;
+    try {
+      await Share.share({ message: link });
+    } catch {
+      // користувач закрив системне меню або воно недоступне
+    }
+  };
+
   const copy = async () => {
     if (!link) return;
     if ((await copyText(link)) === "copied") {
@@ -159,91 +206,84 @@ export function QrOverlay({ visible, onClose, name, username, avatarUrl }: Props
       />
 
       <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.center]}>
-        <GestureDetector gesture={swipe}>
-          <Animated.View style={[{ width: cardW }, cardStyle]}>
-            <View style={[styles.card, { backgroundColor: bottom }]}>
-              {/* Градієнт лежить у власному контейнері з однаковим радіусом з усіх боків */}
-              <View pointerEvents="none" style={styles.gradientClip}>
-                <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
-                  <Defs>
-                    <LinearGradient id="qrCard" x1="0" y1="0" x2="1" y2="1">
-                      <Stop offset="0" stopColor={top} stopOpacity="1" />
-                      <Stop offset="1" stopColor={bottom} stopOpacity="1" />
-                    </LinearGradient>
-                  </Defs>
-                  <Rect x="0" y="0" width="1" height="1" fill="url(#qrCard)" />
-                </Svg>
-              </View>
+        <Animated.View style={[{ width: cardW }, cardStyle]}>
+          <View style={[styles.card, { backgroundColor: bottom }]}>
+            {/* Градієнт лежить у власному контейнері з однаковим радіусом з усіх боків */}
+            <View pointerEvents="none" style={styles.gradientClip}>
+              <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
+                <Defs>
+                  <LinearGradient id="qrCard" x1="0" y1="0" x2="1" y2="1">
+                    <Stop offset="0" stopColor={top} stopOpacity="1" />
+                    <Stop offset="1" stopColor={bottom} stopOpacity="1" />
+                  </LinearGradient>
+                </Defs>
+                <Rect x="0" y="0" width="1" height="1" fill="url(#qrCard)" />
+              </Svg>
+            </View>
 
-              <View style={styles.grabber} />
+            {/* Жест «смикнути вниз» діє лише на верхню частину картки — кнопки лежать поза ним */}
+            <GestureDetector gesture={swipe}>
+              <View collapsable={false} style={styles.swipeZone}>
+                <View style={styles.grabber} />
 
-              {link ? (
-                <View style={[styles.tile, { width: tile, height: tile }]}>
-                  <QrCode value={link} size={qrSize} quiet={0} level="Q" />
-                  <View style={styles.avatarWrap} pointerEvents="none">
-                    <View style={[styles.avatarCircle, { backgroundColor: avatarColor(name || "?") }]}>
-                      {avatarUrl && !avatarFailed ? (
-                        <ExpoImage
-                          source={{ uri: avatarUrl }}
-                          contentFit="cover"
-                          transition={0}
-                          cachePolicy="memory-disk"
-                          onError={() => setAvatarFailed(true)}
-                          style={StyleSheet.absoluteFill}
-                        />
-                      ) : (
-                        <Text style={styles.avatarInitials}>{initialsOf(name)}</Text>
-                      )}
+                {link ? (
+                  <View style={[styles.tile, { width: tile, height: tile }]}>
+                    <QrCode value={link} size={qrSize} quiet={0} level="Q" />
+                    <View style={styles.avatarWrap} pointerEvents="none">
+                      <View style={[styles.avatarCircle, { backgroundColor: avatarColor(name || "?") }]}>
+                        {avatarUrl && !avatarFailed ? (
+                          <ExpoImage
+                            source={{ uri: avatarUrl }}
+                            contentFit="cover"
+                            transition={0}
+                            cachePolicy="memory-disk"
+                            onError={() => setAvatarFailed(true)}
+                            style={StyleSheet.absoluteFill}
+                          />
+                        ) : (
+                          <Text style={styles.avatarInitials}>{initialsOf(name)}</Text>
+                        )}
+                      </View>
                     </View>
                   </View>
-                </View>
-              ) : (
-                <View style={[styles.tile, { width: tile, height: tile }]}>
-                  <Ionicons name="qr-code-outline" size={64} color="#9CA3AF" />
-                  <Text style={styles.noUser}>Спершу задайте ім'я користувача в профілі</Text>
-                </View>
-              )}
+                ) : (
+                  <View style={[styles.tile, { width: tile, height: tile }]}>
+                    <Ionicons name="qr-code-outline" size={64} color="#9CA3AF" />
+                    <Text style={styles.noUser}>Спершу задайте ім'я користувача в профілі</Text>
+                  </View>
+                )}
 
-              <Text numberOfLines={1} style={styles.name}>
-                {name}
-              </Text>
-              {username ? (
-                <Text numberOfLines={1} style={styles.username}>
-                  @{username}
+                <Text numberOfLines={1} style={styles.name}>
+                  {name}
                 </Text>
-              ) : null}
+                {username ? (
+                  <Text numberOfLines={1} style={styles.username}>
+                    @{username}
+                  </Text>
+                ) : null}
+              </View>
+            </GestureDetector>
 
-              {link ? (
-                <View style={styles.buttons}>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => void Share.share({ message: link }).catch(() => {})}
-                    android_ripple={{ color: "rgba(0,0,0,0.12)" }}
-                    style={[styles.btn, { backgroundColor: "#FFFFFF" }]}
-                  >
-                    <View style={styles.btnRow}>
-                      <Ionicons name="share-outline" size={20} color={top} />
-                      <Text style={[styles.btnText, { color: top }]}>Поділитися</Text>
-                    </View>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => void copy()}
-                    android_ripple={{ color: "rgba(255,255,255,0.2)" }}
-                    style={[styles.btn, { backgroundColor: "rgba(255,255,255,0.22)" }]}
-                  >
-                    <View style={styles.btnRow}>
-                      <Ionicons name={copied ? "checkmark" : "copy-outline"} size={20} color="#FFFFFF" />
-                      <Text style={[styles.btnText, { color: "#FFFFFF" }]}>
-                        {copied ? "Скопійовано" : "Копіювати посилання"}
-                      </Text>
-                    </View>
-                  </Pressable>
-                </View>
-              ) : null}
-            </View>
-          </Animated.View>
-        </GestureDetector>
+            {link ? (
+              <View style={styles.buttons}>
+                <ActionButton
+                  label="Поділитися"
+                  icon="share-outline"
+                  bg="#FFFFFF"
+                  fg={top}
+                  onPress={() => void share()}
+                />
+                <ActionButton
+                  label={copied ? "Скопійовано" : "Копіювати посилання"}
+                  icon={copied ? "checkmark" : "copy-outline"}
+                  bg="rgba(255,255,255,0.22)"
+                  fg="#FFFFFF"
+                  onPress={() => void copy()}
+                />
+              </View>
+            ) : null}
+          </View>
+        </Animated.View>
       </View>
     </View>
   );
@@ -267,6 +307,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     overflow: "hidden",
   },
+  swipeZone: { alignSelf: "stretch", alignItems: "center" },
   grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.45)", marginBottom: 16 },
   tile: {
     backgroundColor: "#FFFFFF",
