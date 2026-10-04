@@ -31,8 +31,15 @@ export default function AppLayout() {
       <Stack.Screen
         name="profile"
         options={{
-          presentation: "modal",
           headerShown: false,
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="app-settings"
+        options={{
+          headerShown: false,
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen
@@ -51,8 +58,8 @@ export default function AppLayout() {
       <Stack.Screen
         name="user/[id]"
         options={{
-          title: "Профіль учасника",
-          headerBackTitle: "Назад",
+          headerShown: false,
+          animation: "slide_from_right",
         }}
       />
     </Stack>

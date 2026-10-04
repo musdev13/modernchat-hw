@@ -1,304 +1,185 @@
-import { useClerk } from "@clerk/clerk-expo";
-import { Ionicons } from "@expo/vector-icons";
+import { useUser } from "@clerk/clerk-expo";
 import { useMutation, useQuery } from "convex/react";
-import * as Notifications from "expo-notifications";
-import { router } from "expo-router";
+import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
 
-import { EditProfileModal } from "@/components/EditProfileModal";
-import { THEMES, THEME_ORDER, avatarColor, initialsOf } from "@/constants/theme";
-import { useTheme } from "@/context/ThemeContext";
+import { EditProfileModal, ProfileField } from "@/components/EditProfileModal";
+import { ActionButtons, InfoRow, Section, StatsRow } from "@/components/ProfileParts";
+import { StretchyProfile } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
+import { useChatPalette } from "@/hooks/useChatPalette";
+import { dayLabel } from "@/utils/chat";
+import { copyText } from "@/utils/clipboard";
+import { pickSquareImage, uploadImageToStorage } from "@/utils/upload";
 
 export default function ProfileScreen() {
-  const { signOut } = useClerk();
+  const router = useRouter();
+  const c = useChatPalette();
+  const { user: clerkUser } = useUser();
 
   const currentUser = useQuery(api.users.currentUser);
-  const removePushToken = useMutation(api.users.removePushToken);
-
-  const profileDetails = useQuery(
+  const profile = useQuery(
     api.users.getUserProfile,
     currentUser?._id ? { userId: currentUser._id } : "skip",
   );
+  const generateUploadUrl = useMutation(api.users.generateAvatarUploadUrl);
+  const updateProfile = useMutation(api.users.updateUserProfile);
 
   const [editVisible, setEditVisible] = useState(false);
-  const { themeId, setThemeId, colors: c } = useTheme();
+  const [focusField, setFocusField] = useState<ProfileField | undefined>();
+  const [uploading, setUploading] = useState(false);
 
-  if (currentUser === undefined || profileDetails === undefined) {
+  if (currentUser === undefined || (currentUser && profile === undefined)) {
     return (
-      <SafeAreaView
-        style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.divider }}
-      >
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.divider }}>
         <ActivityIndicator size="large" color={c.accent} />
-      </SafeAreaView>
+      </View>
     );
   }
 
-  if (!currentUser || !profileDetails) {
+  if (!currentUser || !profile) {
     return (
-      <SafeAreaView
+      <View
         style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24, backgroundColor: c.divider }}
       >
         <Text style={{ color: c.text, fontSize: 18, textAlign: "center" }}>
           Не вдалося завантажити профіль
         </Text>
-      </SafeAreaView>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ backgroundColor: c.accent, borderRadius: 14, paddingHorizontal: 28, paddingVertical: 12, marginTop: 20 }}
+        >
+          <Text style={{ color: c.onAccent, fontWeight: "700" }}>Назад</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
-  const handleSignOut = () => {
-    Alert.alert("Вихід", "Ти впевнений, що хочеш вийти?", [
-      { text: "Скасувати", style: "cancel" },
-      {
-        text: "Вийти",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            // 1. Удаляем push-токен из БД ДО выхода
-            try {
-              await removePushToken();
-            } catch (err) {
-              console.error("Failed to remove push token:", err);
-            }
-
-            // 2. Локально гасим все уведомления на этом устройстве
-            await Notifications.dismissAllNotificationsAsync();
-            await Notifications.cancelAllScheduledNotificationsAsync();
-
-            // 3. Выходим из Clerk
-            await signOut();
-
-            // 4. Редирект
-            router.replace("/(auth)/login");
-          } catch (error) {
-            console.error(error);
-          }
-        },
-      },
-    ]);
+  const openEdit = (field?: ProfileField) => {
+    setFocusField(field);
+    setEditVisible(true);
   };
 
-  const card = {
-    backgroundColor: c.header,
-    borderRadius: 16,
-    padding: 16,
-  } as const;
+  const handleSetPhoto = async () => {
+    if (uploading) return;
+    const picked = await pickSquareImage();
+    if (!picked) return;
+    try {
+      setUploading(true);
+      const uploadUrl = await generateUploadUrl();
+      const avatarStorageId = await uploadImageToStorage(uploadUrl, picked);
+      await updateProfile({
+        name: profile.name,
+        username: profile.username,
+        bio: profile.bio,
+        avatarStorageId,
+      });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error: any) {
+      console.error("Не вдалося встановити фото:", error);
+      Alert.alert("Помилка", error?.message ?? "Не вдалося встановити фото.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleCopy = async (text: string) => {
+    const result = await copyText(text);
+    if (result === "copied") void Haptics.selectionAsync();
+  };
+
+  const phone = clerkUser?.primaryPhoneNumber?.phoneNumber;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: c.divider }}>
-      <ScrollView
-        style={{ flex: 1, backgroundColor: c.divider }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+    <>
+      <StretchyProfile
+        name={profile.name}
+        imageUrl={profile.image}
+        status="у мережі"
+        statusAccent
+        busy={uploading}
+        rightIcon="create-outline"
+        rightLabel="Редагувати профіль"
+        onRightPress={() => openEdit()}
+        onBack={() => router.back()}
       >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 20,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
-            accessibilityRole="button"
-            accessibilityLabel="Назад"
-          >
-            <Ionicons name="arrow-back" size={24} color={c.text} />
-          </TouchableOpacity>
+        <ActionButtons
+          items={[
+            { key: "photo", icon: "camera-outline", label: "Встановити фото", onPress: handleSetPhoto },
+            { key: "edit", icon: "create-outline", label: "Редагувати", onPress: () => openEdit() },
+            {
+              key: "settings",
+              icon: "settings-outline",
+              label: "Налаштування",
+              onPress: () => router.push("/app-settings" as any),
+            },
+          ]}
+        />
 
-          <Text style={{ color: c.text, fontSize: 18, fontWeight: "700" }}>Профіль</Text>
-
-          <TouchableOpacity
-            onPress={() => setEditVisible(true)}
-            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
-            accessibilityRole="button"
-            accessibilityLabel="Редагувати профіль"
-          >
-            <Ionicons name="pencil" size={21} color={c.accent} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ alignItems: "center" }}>
-          {profileDetails.image ? (
-            <Image
-              source={{ uri: profileDetails.image }}
-              style={{ width: 112, height: 112, borderRadius: 56, marginBottom: 14 }}
+        <Section title="Інформація">
+          {phone ? (
+            <InfoRow
+              first
+              icon="call-outline"
+              value={phone}
+              label="Телефон"
+              onLongPress={() => handleCopy(phone)}
             />
-          ) : (
-            <View
-              style={{
-                width: 112,
-                height: 112,
-                borderRadius: 56,
-                backgroundColor: avatarColor(profileDetails.name ?? "?"),
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: 14,
-              }}
-            >
-              <Text style={{ color: "#FFFFFF", fontSize: 40, fontWeight: "700" }}>
-                {initialsOf(profileDetails.name)}
-              </Text>
-            </View>
-          )}
+          ) : null}
+          {profile.email ? (
+            <InfoRow
+              first={!phone}
+              icon="mail-outline"
+              value={profile.email}
+              label="Пошта"
+              onLongPress={() => handleCopy(profile.email!)}
+            />
+          ) : null}
+          <InfoRow
+            first={!phone && !profile.email}
+            icon="at"
+            value={profile.username ? `@${profile.username}` : undefined}
+            placeholder="Додати ім'я користувача"
+            label="Ім'я користувача"
+            onPress={profile.username ? () => handleCopy(`@${profile.username}`) : () => openEdit("username")}
+            onLongPress={profile.username ? () => openEdit("username") : undefined}
+          />
+          <InfoRow
+            icon="information-circle-outline"
+            value={profile.bio}
+            placeholder="Розкажіть про себе"
+            label="Про себе"
+            onPress={() => openEdit("bio")}
+          />
+        </Section>
 
-          <Text style={{ color: c.text, fontSize: 24, fontWeight: "700" }}>
-            {profileDetails.name}
-          </Text>
-
-          {profileDetails.username && (
-            <Text style={{ color: c.accent, fontSize: 16, marginTop: 4 }}>
-              @{profileDetails.username}
-            </Text>
-          )}
-
-          {profileDetails.email && (
-            <Text style={{ color: c.muted, fontSize: 14, marginTop: 4 }}>
-              {profileDetails.email}
-            </Text>
-          )}
-
-          {profileDetails.bio && (
-            <Text
-              style={{ color: c.text, opacity: 0.85, textAlign: "center", marginTop: 14, maxWidth: 320, fontSize: 15 }}
-            >
-              {profileDetails.bio}
-            </Text>
-          )}
-        </View>
-
-        <View style={{ flexDirection: "row", gap: 10, marginTop: 24 }}>
-          <View style={[card, { flex: 1, alignItems: "center" }]}>
-            <Text style={{ color: c.text, fontSize: 24, fontWeight: "700" }}>
-              {profileDetails.stats.messagesCount}
-            </Text>
-            <Text style={{ color: c.muted, fontSize: 13, marginTop: 4 }}>Повідомлень</Text>
-          </View>
-
-          <View style={[card, { flex: 1, alignItems: "center" }]}>
-            <Text style={{ color: c.text, fontSize: 24, fontWeight: "700" }}>
-              {profileDetails.stats.roomsCreatedCount}
-            </Text>
-            <Text style={{ color: c.muted, fontSize: 13, marginTop: 4 }}>Кімнат створено</Text>
-          </View>
-        </View>
-
-        <View style={[card, { marginTop: 16 }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-            <Ionicons name="color-palette" size={20} color={c.accent} />
-            <Text style={{ color: c.text, fontSize: 16, fontWeight: "700", marginLeft: 8 }}>
-              Тема оформлення
-            </Text>
-          </View>
-
-          <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-            {THEME_ORDER.map((id) => {
-              const t = THEMES[id];
-              const selected = id === themeId;
-              return (
-                <TouchableOpacity
-                  key={id}
-                  onPress={() => setThemeId(id)}
-                  activeOpacity={0.8}
-                  accessibilityLabel={`Тема: ${t.name}`}
-                  style={{
-                    width: "48%",
-                    marginBottom: 10,
-                    borderRadius: 14,
-                    padding: 10,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    backgroundColor: c.search,
-                    borderWidth: 2,
-                    borderColor: selected ? t.colors.accent : "transparent",
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 17,
-                      overflow: "hidden",
-                      borderWidth: 1,
-                      borderColor: c.muted,
-                      marginRight: 10,
-                    }}
-                  >
-                    <View style={{ flex: 1, backgroundColor: t.colors.bg }} />
-                    <View style={{ flex: 1, backgroundColor: t.colors.accent }} />
-                  </View>
-                  <Text
-                    numberOfLines={2}
-                    style={{
-                      flex: 1,
-                      color: c.text,
-                      fontSize: 13,
-                      fontWeight: selected ? "700" : "500",
-                    }}
-                  >
-                    {t.name}
-                  </Text>
-                  {selected && (
-                    <Ionicons name="checkmark-circle" size={18} color={t.colors.accent} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => setEditVisible(true)}
-          style={{
-            backgroundColor: c.accent,
-            borderRadius: 14,
-            paddingVertical: 14,
-            alignItems: "center",
-            marginTop: 20,
-          }}
-        >
-          <Text style={{ color: c.onAccent, fontWeight: "700", fontSize: 16 }}>
-            Редагувати профіль
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={handleSignOut}
-          style={{
-            borderWidth: 1,
-            borderColor: c.danger,
-            borderRadius: 14,
-            paddingVertical: 14,
-            alignItems: "center",
-            marginTop: 10,
-          }}
-        >
-          <Text style={{ color: c.danger, fontWeight: "700", fontSize: 16 }}>
-            Вийти з акаунта
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+        <Section title="Активність">
+          <StatsRow
+            items={[
+              { value: profile.stats.messagesCount, label: "Повідомлень" },
+              { value: profile.stats.roomsCreatedCount, label: "Кімнат створено" },
+            ]}
+          />
+          <InfoRow
+            icon="calendar-outline"
+            value={dayLabel(profile._creationTime)}
+            label="Дата реєстрації"
+          />
+        </Section>
+      </StretchyProfile>
 
       <EditProfileModal
         visible={editVisible}
-        initialName={profileDetails.name}
-        initialUsername={profileDetails.username}
-        initialBio={profileDetails.bio}
-        initialImage={profileDetails.image}
+        initialName={profile.name}
+        initialUsername={profile.username}
+        initialBio={profile.bio}
+        initialImage={profile.image}
+        focusField={focusField}
         onClose={() => setEditVisible(false)}
         onSaved={() => setEditVisible(false)}
       />
-    </SafeAreaView>
+    </>
   );
 }

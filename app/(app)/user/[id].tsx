@@ -1,168 +1,155 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "convex/react";
-import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect } from "react";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
-import { ImageViewerModal } from "@/components/ImageViewerModal";
-import { COLORS } from "@/constants/theme";
+import { ActionButtons, InfoRow, Section, StatsRow } from "@/components/ProfileParts";
+import { RoomAvatar } from "@/components/RoomAvatar";
+import { StretchyProfile } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useChatPalette } from "@/hooks/useChatPalette";
+import { dayLabel, formatTime, membersLabel } from "@/utils/chat";
+import { copyText } from "@/utils/clipboard";
 
 export default function UserProfileScreen() {
-  const { id } = useLocalSearchParams<{
-    id: string;
-  }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const c = useChatPalette();
 
-  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
-
-  const currentUser = useQuery(api.users.currentUser);
-
-  const userProfile = useQuery(
+  const profile = useQuery(
     api.users.getUserProfile,
-    id
-      ? {
-          userId: id as Id<"users">,
-        }
-      : "skip",
+    id ? { userId: id as Id<"users"> } : "skip",
+  );
+  const sharedRooms = useQuery(
+    api.users.getSharedRooms,
+    id ? { userId: id as Id<"users"> } : "skip",
   );
 
-  if (currentUser === undefined || userProfile === undefined) {
+  // Власний профіль відкриваємо в повному вигляді з редагуванням.
+  const isSelf = profile?.isSelf === true;
+  useEffect(() => {
+    if (isSelf) router.replace("/profile" as any);
+  }, [isSelf, router]);
+
+  if (profile === undefined || isSelf) {
     return (
-      <SafeAreaView
-        className="flex-1 items-center justify-center"
-        style={{ backgroundColor: COLORS.background }}
-      >
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </SafeAreaView>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.divider }}>
+        <ActivityIndicator size="large" color={c.accent} />
+      </View>
     );
   }
 
-  if (!userProfile) {
+  if (!profile) {
     return (
-      <SafeAreaView
-        className="flex-1 items-center justify-center px-6"
-        style={{ backgroundColor: COLORS.background }}
+      <View
+        style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24, backgroundColor: c.divider }}
       >
-        <Text className="text-white text-lg text-center">
-          Пользователь не найден
+        <Text style={{ color: c.text, fontSize: 18, textAlign: "center" }}>
+          Користувача не знайдено
         </Text>
-
         <TouchableOpacity
           onPress={() => router.back()}
-          className="bg-primary rounded-xl px-6 py-3 mt-5"
+          style={{ backgroundColor: c.accent, borderRadius: 14, paddingHorizontal: 28, paddingVertical: 12, marginTop: 20 }}
         >
-          <Text className="text-white font-bold">Назад</Text>
+          <Text style={{ color: c.onAccent, fontWeight: "700" }}>Назад</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  const isOwnProfile = currentUser?._id === userProfile._id;
+  const status = profile.inChatNow
+    ? "зараз у чаті"
+    : profile.lastActiveAt
+      ? `остання активність: ${dayLabel(profile.lastActiveAt)}, ${formatTime(profile.lastActiveAt)}`
+      : undefined;
+
+  const handleCopy = async (text: string) => {
+    const result = await copyText(text);
+    if (result === "copied") void Haptics.selectionAsync();
+  };
+
+  const actions = profile.username
+    ? [
+        {
+          key: "copy",
+          icon: "copy-outline" as const,
+          label: "Скопіювати нік",
+          onPress: () => handleCopy(`@${profile.username}`),
+        },
+      ]
+    : [];
 
   return (
-    <SafeAreaView
-      className="flex-1"
-      edges={["bottom"]}
-      style={{ backgroundColor: COLORS.background }}
+    <StretchyProfile
+      name={profile.name}
+      imageUrl={profile.image}
+      status={status}
+      statusAccent={profile.inChatNow}
+      onBack={() => router.back()}
     >
-      <ScrollView
-        style={{ backgroundColor: COLORS.background }}
-        contentContainerStyle={{
-          padding: 20,
-          paddingBottom: 40,
-        }}
-      >
-        <View className="items-center">
-          {userProfile.image ? (
+      <ActionButtons items={actions} />
+
+      {profile.username || profile.bio ? (
+        <Section title="Інформація">
+          {profile.username ? (
+            <InfoRow
+              first
+              icon="at"
+              value={`@${profile.username}`}
+              label="Ім'я користувача"
+              onPress={() => handleCopy(`@${profile.username}`)}
+            />
+          ) : null}
+          {profile.bio ? (
+            <InfoRow
+              first={!profile.username}
+              icon="information-circle-outline"
+              value={profile.bio}
+              label="Про себе"
+            />
+          ) : null}
+        </Section>
+      ) : null}
+
+      <Section title="Активність">
+        <StatsRow
+          items={[
+            { value: profile.stats.messagesCount, label: "Повідомлень" },
+            { value: profile.stats.roomsCreatedCount, label: "Кімнат створено" },
+          ]}
+        />
+        <InfoRow
+          icon="calendar-outline"
+          value={dayLabel(profile._creationTime)}
+          label="Дата реєстрації"
+        />
+      </Section>
+
+      {sharedRooms && sharedRooms.length > 0 ? (
+        <Section title={`Спільні кімнати · ${sharedRooms.length}`}>
+          {sharedRooms.map((room) => (
             <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setFullscreenImage(userProfile.image!)}
+              key={room._id}
+              activeOpacity={0.6}
+              onPress={() => router.push(`/chat/${room._id}` as any)}
+              style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8 }}
             >
-              <Image
-                source={{
-                  uri: userProfile.image,
-                }}
-                className="w-28 h-28 rounded-full mb-4"
-              />
+              <RoomAvatar title={room.title} imageUrl={room.avatarUrl} size={44} />
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text numberOfLines={1} style={{ color: c.text, fontSize: 16, fontWeight: "600" }}>
+                  {room.title}
+                </Text>
+                <Text style={{ color: c.muted, fontSize: 13, marginTop: 1 }}>
+                  {membersLabel(room.memberCount)}
+                </Text>
+              </View>
             </TouchableOpacity>
-          ) : (
-            <View className="w-28 h-28 rounded-full bg-secondary items-center justify-center mb-4">
-              <Ionicons name="person" size={52} color={COLORS.textMuted} />
-            </View>
-          )}
-
-          <Text className="text-white text-2xl font-bold">
-            {userProfile.name}
-          </Text>
-
-          {userProfile.username && (
-            <Text className="text-primary text-base mt-1">
-              @{userProfile.username}
-            </Text>
-          )}
-
-          {userProfile.email && (
-            <Text className="text-textMuted text-sm mt-1">
-              {userProfile.email}
-            </Text>
-          )}
-
-          {userProfile.bio && (
-            <Text className="text-white/80 text-center mt-4 max-w-[320px]">
-              {userProfile.bio}
-            </Text>
-          )}
-        </View>
-
-        <View className="flex-row gap-3 mt-8">
-          <View className="flex-1 bg-surface rounded-2xl p-4 items-center">
-            <Text className="text-white text-2xl font-bold">
-              {userProfile.stats.messagesCount}
-            </Text>
-            <Text className="text-textMuted text-sm mt-1">Повідомлень</Text>
-          </View>
-
-          <View className="flex-1 bg-surface rounded-2xl p-4 items-center">
-            <Text className="text-white text-2xl font-bold">
-              {userProfile.stats.roomsCreatedCount}
-            </Text>
-            <Text className="text-textMuted text-sm mt-1">Кімнат створено</Text>
-          </View>
-        </View>
-
-        <View className="bg-surface rounded-2xl p-4 mt-4">
-          <Text className="text-textMuted text-sm">Дата регистрации</Text>
-          <Text className="text-white text-base mt-1">
-            {new Date(userProfile._creationTime).toLocaleDateString("uk-UA")}
-          </Text>
-        </View>
-
-        {isOwnProfile && (
-          <TouchableOpacity
-            onPress={() => router.push("/profile")}
-            className="bg-primary rounded-xl py-3.5 items-center mt-6"
-          >
-            <Text className="text-white font-bold text-base">
-              Редактировать профиль
-            </Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
-
-      <ImageViewerModal
-        visible={!!fullscreenImage}
-        imageUrl={fullscreenImage}
-        onClose={() => setFullscreenImage(null)}
-      />
-    </SafeAreaView>
+          ))}
+          <View style={{ height: 6 }} />
+        </Section>
+      ) : null}
+    </StretchyProfile>
   );
 }
