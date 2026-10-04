@@ -1,3 +1,4 @@
+import { useSettings } from "@/context/SettingsContext";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
@@ -21,6 +22,7 @@ interface Props {
 /** Вкладки-«папки» під пошуком у стилі Telegram: фільтр списку чатів на клієнті. */
 export function ChatFolderTabs({ active, onChange, counts }: Props) {
   const c = useChatPalette();
+  const hidden = useSettings().settings.folders.hidden;
   return (
     <ScrollView
       horizontal
@@ -28,7 +30,7 @@ export function ChatFolderTabs({ active, onChange, counts }: Props) {
       style={{ flexGrow: 0, marginTop: 6 }}
       contentContainerStyle={{ paddingRight: 8 }}
     >
-      {CHAT_FOLDERS.map((folder) => {
+      {CHAT_FOLDERS.filter((f) => f.key === "all" || f.key === active || !hidden.includes(f.key)).map((folder) => {
         const selected = folder.key === active;
         const count = counts[folder.key];
         return (

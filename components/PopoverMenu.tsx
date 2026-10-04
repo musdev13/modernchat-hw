@@ -1,4 +1,5 @@
 import type { SheetAction } from "@/components/ActionSheet";
+import { useAnimationsEnabled } from "@/context/SettingsContext";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -86,16 +87,17 @@ export function PopoverMenu({
     if (run) run();
   }, []);
 
+  const animOn = useAnimationsEnabled();
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      progress.value = withSpring(1, SPRING);
+      progress.value = animOn ? withSpring(1, SPRING) : withTiming(1, { duration: 0 });
     } else {
-      progress.value = withTiming(0, { duration: 140, easing: Easing.out(Easing.quad) }, (done) => {
+      progress.value = withTiming(0, { duration: animOn ? 140 : 0, easing: Easing.out(Easing.quad) }, (done) => {
         if (done) runOnJS(finish)();
       });
     }
-  }, [visible, progress, finish]);
+  }, [visible, progress, finish, animOn]);
 
   const statusInset = Math.max(insets.top, Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0);
   const topPos = top ?? statusInset + 6 + 44 + 6;

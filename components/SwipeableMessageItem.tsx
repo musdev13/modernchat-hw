@@ -1,4 +1,5 @@
 import { avatarColor, initialsOf } from "@/constants/theme";
+import { useSettings } from "@/context/SettingsContext";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { emojiOnlyCount, formatTime, isStickerContent } from "@/utils/chat";
@@ -109,9 +110,66 @@ const IMAGE_WIDTH = 240;
 const AVATAR_SIZE = 34;
 const STICKER_SIZE = 140;
 
+/** Фото, які користувач завантажив вручну (при вимкненому автозавантаженні). */
+const manuallyLoaded = new Set<string>();
+
 /** Зображення з пропорціями оригіналу (також анімовані GIF). */
 function ChatImage({ uri, knownRatio }: { uri: string; knownRatio?: number }) {
+  const c = useChatPalette();
+  const { settings } = useSettings();
+  const auto = settings.data.autoPhoto;
   const [ratio, setRatio] = useState(knownRatio ?? 1);
+  // Автозавантаження вимкнено: показуємо заглушку, доки фото не завантажено (або вже є в кеші).
+  const [manual, setManual] = useState(() => manuallyLoaded.has(uri));
+  useEffect(() => {
+    if (auto || manual) return;
+    let alive = true;
+    Image.getCachePathAsync(uri)
+      .then((path) => {
+        if (alive && path) setManual(true);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [auto, manual, uri]);
+
+  if (!auto && !manual) {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => {
+          manuallyLoaded.add(uri);
+          setManual(true);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Завантажити фото"
+        style={{
+          width: IMAGE_WIDTH,
+          height: IMAGE_WIDTH / ratio,
+          maxHeight: 360,
+          borderRadius: 15,
+          backgroundColor: withAlpha(c.muted, 0.18),
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <View
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="arrow-down" size={26} color="#FFFFFF" />
+        </View>
+        <Text style={{ color: c.muted, fontSize: 12, marginTop: 8 }}>Натисніть, щоб завантажити</Text>
+      </TouchableOpacity>
+    );
+  }
   return (
     <Image
       source={{ uri }}
@@ -213,6 +271,8 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   readStatus,
 }) => {
   const c = useChatPalette();
+  const { settings } = useSettings();
+  const textScale = settings.appearance.textScale;
   const isDirect = isDirectProp || isChannel;
   const translateX = useSharedValue(0);
   const flashValue = useSharedValue(0);
@@ -387,12 +447,14 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   const videoTimeLabel =
     isOwn && readStatus ? `${time}  ${readStatus === "read" ? "✓✓" : "✓"}` : time;
 
+  const R = settings.appearance.bubbleRadius;
+  const tail = Math.min(5, R);
   const bubbleStyle = {
     backgroundColor: isOwn ? c.outgoing : c.incoming,
     maxWidth: isChannel ? ("94%" as const) : ("80%" as const),
-    borderRadius: 18,
-    borderBottomRightRadius: isOwn && isLastInSeries ? 5 : 18,
-    borderBottomLeftRadius: !isOwn && isLastInSeries ? 5 : 18,
+    borderRadius: R,
+    borderBottomRightRadius: isOwn && isLastInSeries ? tail : R,
+    borderBottomLeftRadius: !isOwn && isLastInSeries ? tail : R,
     paddingHorizontal: hasVisual ? 3 : 10,
     paddingVertical: hasVisual ? 3 : 6,
   };
@@ -401,7 +463,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 
   return (
     <Animated.View
-      entering={FadeIn.duration(180)}
+      entering={settings.appearance.animations ? FadeIn.duration(180) : undefined}
       exiting={isOwn ? FadeOutRight.duration(200) : FadeOutLeft.duration(200)}
       style={{ marginTop: isFirstInSeries ? 7 : 1.5 }}
     >
@@ -779,7 +841,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       <MessageText
                         text={content}
                         isOwn={isOwn}
-                        style={{ color: textColor, fontSize: 16, lineHeight: 22 }}
+                        style={{ color: textColor, fontSize: 16 * textScale, lineHeight: 22 * textScale }}
                       >
                         {/* Місце під час у правому нижньому куті: переноситься разом
                             з останнім словом, а якщо рядок повний — на новий рядок. */}
@@ -800,7 +862,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       text={content}
                       isOwn={isOwn}
                       style={[
-                        { color: textColor, fontSize: 16, lineHeight: 22 },
+                        { color: textColor, fontSize: 16 * textScale, lineHeight: 22 * textScale },
                         innerPad,
                         hasVisual ? { paddingTop: 5 } : null,
                       ]}

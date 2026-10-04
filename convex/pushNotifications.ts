@@ -16,10 +16,11 @@ function buildExpoMessage(params: {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  sound?: boolean;
 }) {
   return {
     to: params.pushToken,
-    sound: "default",
+    sound: params.sound === false ? null : "default",
     title: params.title,
     body: params.body,
     data: params.data ?? {},
@@ -34,6 +35,7 @@ export const sendPushNotification = internalAction({
     title: v.string(),
     body: v.string(),
     data: v.optional(v.any()),
+    sound: v.optional(v.boolean()),
   },
   handler: async (_ctx, args) => {
     if (!isValidExpoToken(args.pushToken)) {
@@ -49,6 +51,7 @@ export const sendPushNotification = internalAction({
       title: args.title,
       body: args.body,
       data: args.data,
+      sound: args.sound,
     });
 
     try {
@@ -80,6 +83,7 @@ export const sendPushNotificationsBatch = internalAction({
         title: v.string(),
         body: v.string(),
         data: v.optional(v.any()),
+        sound: v.optional(v.boolean()),
       }),
     ),
   },
@@ -92,6 +96,7 @@ export const sendPushNotificationsBatch = internalAction({
           title: n.title,
           body: n.body,
           data: n.data,
+          sound: n.sound,
         }),
       );
 

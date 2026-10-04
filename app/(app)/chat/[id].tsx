@@ -28,6 +28,7 @@ import {
 } from "@/components/SwipeableMessageItem";
 import { TypingDots } from "@/components/TypingDots";
 import { VideoNoteRecorderModal } from "@/components/VideoNoteRecorderModal";
+import { useSettings } from "@/context/SettingsContext";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
@@ -178,6 +179,9 @@ export default function ChatRoomScreen() {
     chatRoomId,
   });
   const setTyping = useMutation(api.typing.setTyping);
+  const { settings: appSettings } = useSettings();
+  const sendTypingRef = useRef(appSettings.privacy.sendTyping);
+  sendTypingRef.current = appSettings.privacy.sendTyping;
   const clearTyping = useMutation(api.typing.clearTyping);
 
   const setActiveChat = useMutation(api.presence.setActiveChat);
@@ -376,7 +380,7 @@ export default function ChatRoomScreen() {
       setInputText(text);
 
       const now = Date.now();
-      if (now - lastTypingCallRef.current > 1500) {
+      if (sendTypingRef.current && now - lastTypingCallRef.current > 1500) {
         lastTypingCallRef.current = now;
         setTyping({ chatRoomId }).catch(() => {});
       }
@@ -1773,7 +1777,7 @@ export default function ChatRoomScreen() {
 
           {toast && (
             <Animated.View
-              entering={FadeIn.duration(150)}
+              entering={appSettings.appearance.animations ? FadeIn.duration(150) : undefined}
               exiting={FadeOut.duration(150)}
               pointerEvents="none"
               style={{
@@ -1792,7 +1796,7 @@ export default function ChatRoomScreen() {
 
           {showScrollToBottom && (
             <Animated.View
-              entering={ZoomIn.springify()}
+              entering={appSettings.appearance.animations ? ZoomIn.springify() : undefined}
               exiting={ZoomOut.duration(150)}
               style={{ position: "absolute", right: 12, bottom: composerHeight + 12 }}
             >

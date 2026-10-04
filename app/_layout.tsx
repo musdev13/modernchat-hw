@@ -3,6 +3,7 @@ import "../global.css";
 
 import InitialLayout from "@/components/InitialLayout";
 import { COLORS } from "@/constants/theme";
+import { SettingsProvider } from "@/context/SettingsContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
@@ -100,7 +101,9 @@ export default function RootLayout() {
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
           <ConvexProviderWithClerk client={convex} useAuth={useConvexClerkAuth}>
             <ThemeProvider>
-              <AppContent />
+              <SettingsProvider>
+                <AppContent />
+              </SettingsProvider>
             </ThemeProvider>
           </ConvexProviderWithClerk>
         </ClerkProvider>

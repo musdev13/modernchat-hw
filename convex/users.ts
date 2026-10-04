@@ -378,6 +378,31 @@ export const setHideLastSeen = mutation({
   },
 });
 
+// Налаштування push-сповіщень: типи чатів, показ тексту, звук.
+export const setNotifPrefs = mutation({
+  args: {
+    messages: v.optional(v.boolean()),
+    groups: v.optional(v.boolean()),
+    channels: v.optional(v.boolean()),
+    preview: v.optional(v.boolean()),
+    sound: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized");
+    const prev = me.notifPrefs ?? { messages: true, groups: true, channels: true, preview: true, sound: true };
+    const next = {
+      messages: args.messages ?? prev.messages,
+      groups: args.groups ?? prev.groups,
+      channels: args.channels ?? prev.channels,
+      preview: args.preview ?? prev.preview,
+      sound: args.sound ?? prev.sound,
+    };
+    await ctx.db.patch(me._id, { notifPrefs: next });
+    return next;
+  },
+});
+
 // Приватність номера: «Усі» / «Ніхто».
 export const setPhoneVisible = mutation({
   args: { visible: v.boolean() },

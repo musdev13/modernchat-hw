@@ -1,5 +1,6 @@
 import type { SheetAction } from "@/components/ActionSheet";
 import { PopoverMenu } from "@/components/PopoverMenu";
+import { useSettings } from "@/context/SettingsContext";
 import { ChatFolder, ChatFolderTabs } from "@/components/ChatFolderTabs";
 import { PublicChannelResults } from "@/components/PublicChannelResults";
 import { GlassProvider, GlassTarget } from "@/components/Glass";
@@ -51,6 +52,15 @@ export default function ChatsTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [folder, setFolder] = useState<ChatFolder>("all");
+  // Початкова вкладка з налаштувань — застосовується один раз, коли налаштування завантажено.
+  const { settings: appSettings, ready: settingsReady } = useSettings();
+  const initialFolderApplied = useRef(false);
+  useEffect(() => {
+    if (!settingsReady || initialFolderApplied.current) return;
+    initialFolderApplied.current = true;
+    const want = appSettings.folders.initial as ChatFolder;
+    if (want !== "all" && !appSettings.folders.hidden.includes(want)) setFolder(want);
+  }, [settingsReady, appSettings.folders]);
   const [menuRoomId, setMenuRoomId] = useState<Id<"chatRooms"> | null>(null);
   const [muteRoomId, setMuteRoomId] = useState<Id<"chatRooms"> | null>(null);
 

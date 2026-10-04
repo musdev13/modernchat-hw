@@ -1,3 +1,4 @@
+import { useSettings } from "@/context/SettingsContext";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { formatFileSize } from "@/utils/attachments";
 import { formatDuration } from "@/components/RoomInfoRows";
@@ -112,10 +113,12 @@ export function VideoBubble({
 }) {
   const [thumb, setThumb] = useState<VideoThumbnail | undefined>(() => thumbCache.get(url));
   const [slot, setSlot] = useState(false);
+  // Автозавантаження відео вимкнено — мініатюру не генеруємо (чорний кадр із кнопкою ▶).
+  const autoVideo = useSettings().settings.data.autoVideo;
   useEffect(() => {
-    if (thumb) return;
+    if (thumb || !autoVideo) return;
     return acquireThumbSlot(() => setSlot(true));
-  }, [thumb]);
+  }, [thumb, autoVideo]);
   const ratio = ratioFrom(width, height, 16 / 9);
 
   return (

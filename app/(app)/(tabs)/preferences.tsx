@@ -1,23 +1,20 @@
-import { ActionSheet } from "@/components/ActionSheet";
 import { EditProfileModal, ProfileField } from "@/components/EditProfileModal";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
 import { RoomAvatar } from "@/components/RoomAvatar";
-import { THEMES, THEME_ORDER } from "@/constants/theme";
+import { SearchField } from "@/components/SearchField";
+import { Group, IconName, NavRow } from "@/components/SettingsUI";
+import { THEMES } from "@/constants/theme";
 import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
-import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
+import { useChatPalette } from "@/hooks/useChatPalette";
 import { useSignOut } from "@/hooks/useSignOut";
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation, useQuery } from "convex/react";
-import Constants from "expo-constants";
-import * as Notifications from "expo-notifications";
-import { useFocusEffect, useRouter } from "expo-router";
-import { ComponentProps, useCallback, useEffect, useState } from "react";
+import { useQuery } from "convex/react";
+import { useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  AppState,
-  Linking,
   Text,
   TouchableOpacity,
   View,
@@ -31,162 +28,30 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-type IconName = ComponentProps<typeof Ionicons>["name"];
-
 const BAR_TOP_GAP = 6;
 const BAR_BUTTON = 44;
 
-function SettingsRow({
-  icon,
-  tint,
-  label,
-  value,
-  onPress,
-  danger,
-  first,
-  chevron = true,
-}: {
+interface CatalogItem {
+  key: string;
+  label: string;
   icon: IconName;
   tint: string;
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  danger?: boolean;
-  first?: boolean;
-  chevron?: boolean;
-}) {
-  const c = useChatPalette();
-  return (
-    <TouchableOpacity
-      activeOpacity={onPress ? 0.6 : 1}
-      onPress={onPress}
-      accessibilityRole={onPress ? "button" : undefined}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        paddingLeft: 16,
-        paddingRight: 14,
-        minHeight: 54,
-      }}
-    >
-      <View
-        style={{
-          width: 30,
-          height: 30,
-          borderRadius: 8,
-          backgroundColor: tint,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Ionicons name={icon} size={18} color="#FFFFFF" />
-      </View>
-      <View
-        style={{
-          flex: 1,
-          flexDirection: "row",
-          alignItems: "center",
-          marginLeft: 14,
-          minHeight: 54,
-          borderTopWidth: first ? 0 : 1,
-          borderTopColor: c.divider,
-        }}
-      >
-        <Text
-          style={{
-            flex: 1,
-            color: danger ? c.danger : c.text,
-            fontSize: 16,
-            fontWeight: danger ? "600" : "400",
-          }}
-        >
-          {label}
-        </Text>
-        {value ? (
-          <Text numberOfLines={1} style={{ color: c.muted, fontSize: 15, maxWidth: "50%", marginLeft: 8 }}>
-            {value}
-          </Text>
-        ) : null}
-        {onPress && chevron && !danger ? (
-          <Ionicons name="chevron-forward" size={18} color={c.muted} style={{ marginLeft: 6 }} />
-        ) : null}
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-function SectionTitle({ text }: { text: string }) {
-  const c = useChatPalette();
-  return (
-    <Text
-      style={{
-        color: c.accent,
-        fontSize: 14,
-        fontWeight: "700",
-        paddingHorizontal: 16,
-        paddingTop: 14,
-        paddingBottom: 6,
-      }}
-    >
-      {text}
-    </Text>
-  );
+  keywords: string;
+  go: () => void;
 }
 
 export default function PreferencesScreen() {
   const router = useRouter();
   const c = useChatPalette();
-  const { themeId, setThemeId } = useTheme();
+  const { themeId } = useTheme();
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const signOut = useSignOut();
 
   const currentUser = useQuery(api.users.currentUser);
-  const setHideLastSeen = useMutation(api.users.setHideLastSeen);
-  const setPhoneVisible = useMutation(api.users.setPhoneVisible);
-  const [phonePrivacyVisible, setPhonePrivacyVisible] = useState(false);
-  const [privacyVisible, setPrivacyVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [focusField, setFocusField] = useState<ProfileField | undefined>();
-  const [notifStatus, setNotifStatus] = useState<Notifications.PermissionStatus | null>(null);
-  const [canAsk, setCanAsk] = useState(true);
-
-  const refreshNotifications = useCallback(async () => {
-    try {
-      const perms = await Notifications.getPermissionsAsync();
-      setNotifStatus(perms.status);
-      setCanAsk(perms.canAskAgain);
-    } catch {
-      setNotifStatus(null);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void refreshNotifications();
-    }, [refreshNotifications]),
-  );
-
-  // Повертаємось із системних налаштувань — оновлюємо стан дозволу.
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void refreshNotifications();
-    });
-    return () => sub.remove();
-  }, [refreshNotifications]);
-
-  const handleNotifications = useCallback(async () => {
-    if (notifStatus === "undetermined" && canAsk) {
-      await Notifications.requestPermissionsAsync();
-      await refreshNotifications();
-      return;
-    }
-    try {
-      await Linking.openSettings();
-    } catch {
-      // нічого: системні налаштування недоступні
-    }
-  }, [canAsk, notifStatus, refreshNotifications]);
+  const [query, setQuery] = useState("");
 
   const openEdit = (field?: ProfileField) => {
     setFocusField(field);
@@ -206,8 +71,6 @@ export default function PreferencesScreen() {
   }));
 
   const barBottom = insets.top + BAR_TOP_GAP + BAR_BUTTON;
-  const appVersion = Constants.expoConfig?.version ?? "1.0.0";
-  const appName = Constants.expoConfig?.name ?? "Modern Chat";
 
   if (currentUser === undefined) {
     return (
@@ -217,14 +80,24 @@ export default function PreferencesScreen() {
     );
   }
 
-  const notifValue =
-    notifStatus === "granted"
-      ? "Увімкнено"
-      : notifStatus === "denied"
-        ? "Вимкнено"
-        : notifStatus === "undetermined"
-          ? "Не налаштовано"
-          : "";
+  const go = (path: string) => router.push(path as any);
+  const catalog: CatalogItem[] = [
+    { key: "edit", label: "Редагувати профіль", icon: "person-circle-outline", tint: "#3B82F6", keywords: "профіль ім'я фото аватар імя", go: () => openEdit() },
+    { key: "username", label: "Ім'я користувача", icon: "at", tint: "#8B5CF6", keywords: "username нік логін", go: () => openEdit("username") },
+    { key: "bio", label: "Про себе", icon: "information-circle-outline", tint: "#F59E0B", keywords: "біо опис статус", go: () => openEdit("bio") },
+    { key: "notif", label: "Сповіщення та звуки", icon: "notifications", tint: "#EF4444", keywords: "push пуш звук банер текст повідомлення групи канали", go: () => go("/(app)/prefs/notifications") },
+    { key: "privacy", label: "Конфіденційність", icon: "lock-closed", tint: "#10B981", keywords: "приватність останній вхід телефон номер друкує набір тексту", go: () => go("/(app)/prefs/privacy") },
+    { key: "data", label: "Дані та пам'ять", icon: "server", tint: "#3B82F6", keywords: "кеш автозавантаження фото відео пам'ять очистити", go: () => go("/(app)/prefs/data") },
+    { key: "appearance", label: "Оформлення", icon: "color-palette", tint: "#EC4899", keywords: "тема темна розмір тексту шрифт кути бульбашки анімації зорі фон", go: () => go("/(app)/prefs/appearance") },
+    { key: "folders", label: "Папки з чатами", icon: "folder", tint: "#F59E0B", keywords: "вкладки групи канали особисті непрочитані", go: () => go("/(app)/prefs/folders") },
+    { key: "language", label: "Мова", icon: "language", tint: "#06B6D4", keywords: "українська english мова", go: () => go("/(app)/prefs/language") },
+    { key: "about", label: "Про застосунок", icon: "information-circle", tint: "#6B7280", keywords: "версія збірка інформація", go: () => go("/(app)/prefs/about") },
+    { key: "logout", label: "Вийти з акаунта", icon: "log-out-outline", tint: c.danger, keywords: "вихід вийти logout", go: signOut },
+  ];
+  const q = query.trim().toLowerCase();
+  const results = q
+    ? catalog.filter((i) => i.label.toLowerCase().includes(q) || i.keywords.toLowerCase().includes(q))
+    : null;
 
   return (
     <GlassProvider>
@@ -233,6 +106,7 @@ export default function PreferencesScreen() {
           <Animated.ScrollView
             onScroll={scrollHandler}
             scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingTop: barBottom + 8, paddingBottom: tabSpace + 24 }}
           >
@@ -245,6 +119,27 @@ export default function PreferencesScreen() {
               Налаштування
             </Animated.Text>
 
+            <SearchField
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Пошук у налаштуваннях"
+              style={{ marginHorizontal: 12, marginBottom: 4 }}
+            />
+
+            {results ? (
+              results.length > 0 ? (
+                <Group title="Результати">
+                  {results.map((i) => (
+                    <NavRow key={i.key} icon={i.icon} tint={i.tint} label={i.label} onPress={i.go} danger={i.key === "logout"} />
+                  ))}
+                </Group>
+              ) : (
+                <Text style={{ color: c.muted, fontSize: 15, textAlign: "center", marginTop: 40 }}>
+                  Нічого не знайдено
+                </Text>
+              )
+            ) : (
+              <>
             {/* Профіль */}
             {currentUser && (
               <TouchableOpacity
@@ -254,6 +149,9 @@ export default function PreferencesScreen() {
                   flexDirection: "row",
                   alignItems: "center",
                   backgroundColor: c.header,
+                  marginHorizontal: 12,
+                  marginTop: 10,
+                  borderRadius: 18,
                   paddingHorizontal: 16,
                   paddingVertical: 14,
                 }}
@@ -275,190 +173,48 @@ export default function PreferencesScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Акаунт */}
-            <View style={{ backgroundColor: c.header, marginTop: 10 }}>
-              <SectionTitle text="Акаунт" />
-              <SettingsRow
-                first
-                icon="person-circle-outline"
-                tint="#3B82F6"
-                label="Редагувати профіль"
-                onPress={() => openEdit()}
-              />
-              <SettingsRow
+            <Group title="Акаунт">
+              <NavRow icon="person-circle-outline" tint="#3B82F6" label="Редагувати профіль" onPress={() => openEdit()} />
+              <NavRow
                 icon="at"
                 tint="#8B5CF6"
                 label="Ім'я користувача"
                 value={currentUser?.username ? `@${currentUser.username}` : "Не вказано"}
                 onPress={() => openEdit("username")}
               />
-              <SettingsRow
+              <NavRow
                 icon="information-circle-outline"
                 tint="#F59E0B"
                 label="Про себе"
                 value={currentUser?.bio ? currentUser.bio : "Не вказано"}
                 onPress={() => openEdit("bio")}
               />
-            </View>
+            </Group>
 
-            {/* Конфіденційність */}
-            <View style={{ backgroundColor: c.header, marginTop: 10 }}>
-              <SectionTitle text="Конфіденційність" />
-              <SettingsRow
-                first
-                icon="time-outline"
-                tint="#10B981"
-                label="Час останнього входу"
-                value={currentUser?.hideLastSeen ? "Ніхто" : "Усі"}
-                onPress={() => setPrivacyVisible(true)}
+            <Group>
+              <NavRow icon="notifications" tint="#EF4444" label="Сповіщення та звуки" onPress={() => go("/(app)/prefs/notifications")} />
+              <NavRow icon="lock-closed" tint="#10B981" label="Конфіденційність" onPress={() => go("/(app)/prefs/privacy")} />
+              <NavRow icon="server" tint="#3B82F6" label="Дані та пам'ять" onPress={() => go("/(app)/prefs/data")} />
+              <NavRow
+                icon="color-palette"
+                tint="#EC4899"
+                label="Оформлення"
+                value={THEMES[themeId].name}
+                onPress={() => go("/(app)/prefs/appearance")}
               />
-              <SettingsRow
-                icon="call-outline"
-                tint="#3B82F6"
-                label="Номер телефону"
-                value={currentUser?.phoneVisible ? "Усі" : "Ніхто"}
-                onPress={() => setPhonePrivacyVisible(true)}
-              />
-            </View>
+              <NavRow icon="folder" tint="#F59E0B" label="Папки з чатами" onPress={() => go("/(app)/prefs/folders")} />
+              <NavRow icon="language" tint="#06B6D4" label="Мова" value="Українська" onPress={() => go("/(app)/prefs/language")} />
+            </Group>
 
-            {/* Тема оформлення */}
-            <View style={{ backgroundColor: c.header, marginTop: 10, paddingBottom: 12 }}>
-              <SectionTitle text="Тема оформлення" />
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  paddingHorizontal: 12,
-                  paddingTop: 4,
-                }}
-              >
-                {THEME_ORDER.map((id) => {
-                  const t = THEMES[id];
-                  const selected = id === themeId;
-                  return (
-                    <TouchableOpacity
-                      key={id}
-                      onPress={() => setThemeId(id)}
-                      activeOpacity={0.85}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Тема: ${t.name}`}
-                      accessibilityState={{ selected }}
-                      style={{ width: "50%", padding: 4 }}
-                    >
-                      <View
-                        style={{
-                          borderRadius: 16,
-                          padding: 8,
-                          borderWidth: 2,
-                          borderColor: selected ? t.colors.accent : withAlpha(c.muted, 0.25),
-                          backgroundColor: c.search,
-                        }}
-                      >
-                        {/* Міні-перегляд чату */}
-                        <View
-                          style={{
-                            borderRadius: 10,
-                            overflow: "hidden",
-                            backgroundColor: t.colors.divider,
-                            height: 78,
-                          }}
-                        >
-                          <View style={{ height: 16, backgroundColor: t.colors.header }} />
-                          <View style={{ padding: 6 }}>
-                            <View
-                              style={{
-                                alignSelf: "flex-start",
-                                width: "62%",
-                                height: 14,
-                                borderRadius: 7,
-                                backgroundColor: t.isDark ? t.colors.search : t.colors.bg,
-                              }}
-                            />
-                            <View
-                              style={{
-                                alignSelf: "flex-end",
-                                width: "52%",
-                                height: 14,
-                                borderRadius: 7,
-                                marginTop: 5,
-                                backgroundColor: t.colors.accent,
-                              }}
-                            />
-                          </View>
-                        </View>
-                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
-                          <Text
-                            numberOfLines={1}
-                            style={{
-                              flex: 1,
-                              color: c.text,
-                              fontSize: 13,
-                              fontWeight: selected ? "700" : "500",
-                            }}
-                          >
-                            {t.name}
-                          </Text>
-                          {selected && (
-                            <Ionicons name="checkmark-circle" size={18} color={t.colors.accent} />
-                          )}
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
+            <Group>
+              <NavRow icon="information-circle" tint="#6B7280" label="Про застосунок" onPress={() => go("/(app)/prefs/about")} />
+            </Group>
 
-            {/* Сповіщення */}
-            <View style={{ backgroundColor: c.header, marginTop: 10 }}>
-              <SectionTitle text="Сповіщення" />
-              <SettingsRow
-                first
-                icon="notifications-outline"
-                tint="#EF4444"
-                label="Push-сповіщення"
-                value={notifValue}
-                onPress={handleNotifications}
-              />
-              <Text
-                style={{
-                  color: c.muted,
-                  fontSize: 13,
-                  lineHeight: 18,
-                  paddingHorizontal: 16,
-                  paddingTop: 2,
-                  paddingBottom: 12,
-                }}
-              >
-                {notifStatus === "granted"
-                  ? "Сповіщення про нові повідомлення приходять на цей пристрій. Вимкнути їх для окремої кімнати можна в інформації про кімнату. Системні налаштування відкриються по натисканню."
-                  : "Дозвольте сповіщення в системних налаштуваннях, щоб отримувати нові повідомлення. Вимкнути їх для окремої кімнати можна в інформації про кімнату."}
-              </Text>
-            </View>
-
-            {/* Про застосунок */}
-            <View style={{ backgroundColor: c.header, marginTop: 10 }}>
-              <SectionTitle text="Про застосунок" />
-              <SettingsRow
-                first
-                icon="chatbubbles-outline"
-                tint="#10B981"
-                label={appName}
-                value={`Версія ${appVersion}`}
-              />
-            </View>
-
-            {/* Вихід */}
-            <View style={{ backgroundColor: c.header, marginTop: 10 }}>
-              <SettingsRow
-                first
-                icon="log-out-outline"
-                tint={c.danger}
-                label="Вийти з акаунта"
-                danger
-                onPress={signOut}
-              />
-            </View>
+            <Group>
+              <NavRow icon="log-out-outline" tint={c.danger} label="Вийти з акаунта" danger onPress={signOut} />
+            </Group>
+              </>
+            )}
           </Animated.ScrollView>
         </GlassTarget>
 
@@ -491,38 +247,6 @@ export default function PreferencesScreen() {
         </View>
 
         <MainTabBar active="preferences" />
-
-        <ActionSheet
-          visible={privacyVisible}
-          onClose={() => setPrivacyVisible(false)}
-          title="Хто бачить мій час останнього входу"
-          subtitle="Якщо вибрати «Ніхто», інші бачитимуть «був(ла) нещодавно»"
-          actions={[false, true].map((hide) => ({
-            key: hide ? "nobody" : "everybody",
-            label: hide ? "Ніхто" : "Усі",
-            icon: (!!currentUser?.hideLastSeen === hide
-              ? "checkmark-circle"
-              : "ellipse-outline") as any,
-            onPress: () => {
-              setHideLastSeen({ hide }).catch(() => {});
-            },
-          }))}
-        />
-
-        <ActionSheet
-          visible={phonePrivacyVisible}
-          onClose={() => setPhonePrivacyVisible(false)}
-          title="Хто бачить мій номер телефону"
-          subtitle="За замовчуванням номер приховано від усіх"
-          actions={[true, false].map((visible) => ({
-            key: visible ? "everybody" : "nobody",
-            label: visible ? "Усі" : "Ніхто",
-            icon: (!!currentUser?.phoneVisible === visible ? "checkmark-circle" : "ellipse-outline") as any,
-            onPress: () => {
-              setPhoneVisible({ visible }).catch(() => {});
-            },
-          }))}
-        />
 
         <EditProfileModal
           visible={editVisible}

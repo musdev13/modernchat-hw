@@ -1,3 +1,4 @@
+import { getSettingsSnapshot } from "@/context/SettingsContext";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@clerk/clerk-expo";
 import { useMutation, useQuery } from "convex/react";
@@ -10,13 +11,17 @@ import { Platform } from "react-native";
 // На вебе expo-notifications не поддерживается — регистрируем хендлер только на нативе
 if (Platform.OS !== "web") {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
+    handleNotification: async () => {
+      // Налаштування «Показувати банери» (локальні).
+      const show = getSettingsSnapshot().notifications.inApp;
+      return {
+        shouldShowAlert: show,
+        shouldPlaySound: show,
+        shouldSetBadge: true,
+        shouldShowBanner: show,
+        shouldShowList: show,
+      };
+    },
   });
 }
 

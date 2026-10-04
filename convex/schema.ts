@@ -20,6 +20,16 @@ export default defineSchema({
     birthday: v.optional(v.string()),
     phone: v.optional(v.string()),
     phoneVisible: v.optional(v.boolean()),
+    // Налаштування push-сповіщень (за замовчуванням усе ввімкнено).
+    notifPrefs: v.optional(
+      v.object({
+        messages: v.boolean(),
+        groups: v.boolean(),
+        channels: v.boolean(),
+        preview: v.boolean(),
+        sound: v.boolean(),
+      }),
+    ),
   })
     .index("by_token", ["tokenIdentifier"])
     .index("by_email", ["email"])

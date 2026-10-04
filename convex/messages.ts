@@ -83,9 +83,19 @@ async function schedulePushForNewMessage(
 
   // ⚠️ Отфильтровываем получателей, которые сейчас сидят в этом же чате
   // Також пропускаємо тих, хто вимкнув сповіщення цієї кімнати.
+  // Тип чату для налаштувань сповіщень одержувача.
+  const kindDoc = await ctx.db.get(roomId);
+  const kind: "messages" | "groups" | "channels" = kindDoc?.isChannel
+    ? "channels"
+    : kindDoc?.isDirect
+      ? "messages"
+      : "groups";
+
   const filtered = await Promise.all(
     recipients.map(async (user: any) => {
       if (!user) return null;
+      // Користувач вимкнув сповіщення цього типу чатів.
+      if (user.notifPrefs && user.notifPrefs[kind] === false) return null;
       const inThisChat = await isUserInRoom(ctx, user._id, roomId);
       if (inThisChat) return null;
       const setting = await ctx.db
@@ -112,7 +122,9 @@ async function schedulePushForNewMessage(
     .map((user: any) => ({
       pushToken: user.pushToken as string,
       title: notificationTitle,
-      body: previewText,
+      // «Показувати текст» вимкнено — без вмісту повідомлення.
+      body: user.notifPrefs?.preview === false ? "Нове повідомлення" : previewText,
+      ...(user.notifPrefs?.sound === false ? { sound: false } : {}),
       data: {
         type: "chat",
         chatRoomId: roomId,
