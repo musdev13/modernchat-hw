@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 export interface PremiumState {
   /** true, поки статус ще завантажується. */
   loading: boolean;
+  /** Сервер уже повернув статус авторизованого користувача (false — завантаження або вихід з акаунта). */
+  known: boolean;
   isPremium: boolean;
   isAdmin: boolean;
   lifetime: boolean;
@@ -35,6 +37,7 @@ export function usePremium(): PremiumState {
   const active = !!status?.isPremium && (lifetime || until === null || until > Date.now());
   return {
     loading: status === undefined,
+    known: status !== undefined && status !== null,
     isPremium: active,
     isAdmin: !!status?.isAdmin,
     lifetime,

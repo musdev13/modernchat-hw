@@ -19,6 +19,7 @@ import { AttachSheet } from "@/components/AttachSheet";
 import { CreatePollModal, NewPoll } from "@/components/CreatePollModal";
 import { ForwardSheet } from "@/components/ForwardSheet";
 import { NameBadges } from "@/components/PremiumBadge";
+import { useTheme } from "@/context/ThemeContext";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { ReactionPickerModal } from "@/components/ReactionPickerModal";
 import { ReactorsSheet } from "@/components/ReactorsSheet";
@@ -182,6 +183,7 @@ export default function ChatRoomScreen() {
   });
   const setTyping = useMutation(api.typing.setTyping);
   const { settings: appSettings } = useSettings();
+  const { premiumUnlocked } = useTheme();
   const sendTypingRef = useRef(appSettings.privacy.sendTyping);
   sendTypingRef.current = appSettings.privacy.sendTyping;
   const clearTyping = useMutation(api.typing.clearTyping);
@@ -1685,7 +1687,7 @@ export default function ChatRoomScreen() {
               backgroundColor: c.wallpaper,
             }}
           >
-          {appSettings.appearance.chatStars ? (
+          {appSettings.appearance.chatStars && premiumUnlocked ? (
             <SpaceBackdrop
               sky={false}
               horizon={false}

@@ -231,6 +231,11 @@ export const THEMES: Record<ThemeId, AppTheme> = {
   },
 };
 
+/** Тема доступна лише з Modesto Premium. */
+export function isPremiumTheme(id: ThemeId): boolean {
+  return THEMES[id].extras.premium;
+}
+
 export const THEME_ORDER: ThemeId[] = [
   "falcon",
   "starship",

@@ -1,7 +1,10 @@
 import { Group, SettingsPage, StepSlider, SwitchRow } from "@/components/SettingsUI";
 import { useSettings } from "@/context/SettingsContext";
-import { THEMES, THEME_ORDER, type ThemeId } from "@/constants/theme";
+import { THEMES, THEME_ORDER, isPremiumTheme, type ThemeId } from "@/constants/theme";
+import { PREMIUM_GOLD } from "@/constants/premium";
+import { usePremiumUi } from "@/context/PremiumContext";
 import { useTheme } from "@/context/ThemeContext";
+import { usePremium } from "@/hooks/usePremium";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
@@ -12,6 +15,8 @@ export default function AppearanceSettings() {
   const { settings, update } = useSettings();
   const [scale, setScale] = useState(settings.appearance.textScale);
   const [radius, setRadius] = useState(settings.appearance.bubbleRadius);
+  const premium = usePremium();
+  const { openUpsell } = usePremiumUi();
 
   return (
     <SettingsPage title="Оформлення">
@@ -65,8 +70,15 @@ export default function AppearanceSettings() {
           icon="star"
           tint="#F59E0B"
           label="Зоряний фон у чатах"
-          value={settings.appearance.chatStars}
-          onChange={(v) => update("appearance", { chatStars: v })}
+          sub={premium.isPremium ? undefined : "Лише з Modesto Premium"}
+          value={premium.isPremium && settings.appearance.chatStars}
+          onChange={(v) => {
+            if (!premium.isPremium) {
+              openUpsell("chatStars");
+              return;
+            }
+            update("appearance", { chatStars: v });
+          }}
         />
       </Group>
     </SettingsPage>
@@ -112,7 +124,7 @@ const MINI_STARS: [number, number][] = [
   [12, 22], [30, 12], [52, 30], [70, 14], [86, 26], [22, 48], [64, 52], [90, 58],
 ];
 
-function ThemePreview({ id, selected }: { id: ThemeId; selected: boolean }) {
+function ThemePreview({ id, selected, locked }: { id: ThemeId; selected: boolean; locked: boolean }) {
   const t = THEMES[id];
   const k = t.colors;
   const ex = t.extras;
@@ -156,6 +168,26 @@ function ThemePreview({ id, selected }: { id: ThemeId; selected: boolean }) {
             ))}
           </>
         ) : null}
+        {locked ? (
+          <View
+            style={{
+              position: "absolute",
+              top: 5,
+              right: 5,
+              zIndex: 3,
+              width: 22,
+              height: 22,
+              borderRadius: 11,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(0,0,0,0.72)",
+              borderWidth: 1,
+              borderColor: PREMIUM_GOLD,
+            }}
+          >
+            <Ionicons name="lock-closed" size={12} color={PREMIUM_GOLD} />
+          </View>
+        ) : null}
         <View style={{ height: 18, backgroundColor: k.header, flexDirection: "row", alignItems: "center", paddingHorizontal: 6 }}>
           <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: k.accent }} />
           <View style={{ width: 34, height: 4, borderRadius: 2, marginLeft: 5, backgroundColor: k.text, opacity: 0.8 }} />
@@ -197,7 +229,8 @@ function ThemePreview({ id, selected }: { id: ThemeId; selected: boolean }) {
 // Секція вибору теми з живими мініатюрами чату.
 function ThemeSection() {
   const c = useChatPalette();
-  const { themeId, setThemeId } = useTheme();
+  const { themeId, setThemeId, premiumUnlocked } = useTheme();
+  const { openUpsell } = usePremiumUi();
   const rows: ThemeId[][] = [];
   for (let i = 0; i < THEME_ORDER.length; i += 2) rows.push(THEME_ORDER.slice(i, i + 2));
   return (
@@ -211,24 +244,34 @@ function ThemeSection() {
             {row.map((id) => {
               const t = THEMES[id];
               const selected = id === themeId;
+              const locked = isPremiumTheme(id) && !premiumUnlocked;
               return (
                 <TouchableOpacity
                   key={id}
-                  onPress={() => setThemeId(id)}
+                  onPress={() => {
+                    if (locked) {
+                      openUpsell("theme");
+                      return;
+                    }
+                    setThemeId(id);
+                  }}
                   activeOpacity={0.85}
                   accessibilityRole="button"
                   accessibilityLabel={`Тема: ${t.name}`}
                   accessibilityState={{ selected }}
                   style={{ flex: 1, padding: 4 }}
                 >
-                  <ThemePreview id={id} selected={selected} />
+                  <ThemePreview id={id} selected={selected} locked={locked} />
                   <View style={{ flexDirection: "row", alignItems: "center", marginTop: 7, paddingHorizontal: 4 }}>
                     <View style={{ flex: 1 }}>
                       <Text numberOfLines={1} style={{ color: c.text, fontSize: 14, fontWeight: selected ? "800" : "600" }}>
                         {t.name}
                       </Text>
-                      <Text numberOfLines={2} style={{ color: c.muted, fontSize: 11.5, lineHeight: 15, marginTop: 1 }}>
-                        {t.extras.tagline}
+                      <Text
+                        numberOfLines={2}
+                        style={{ color: locked ? PREMIUM_GOLD : c.muted, fontSize: 11.5, lineHeight: 15, marginTop: 1 }}
+                      >
+                        {locked ? "Лише Premium" : t.extras.tagline}
                       </Text>
                     </View>
                     {selected ? <Ionicons name="checkmark-circle" size={20} color={c.accent} /> : null}
