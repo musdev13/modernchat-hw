@@ -10,9 +10,12 @@ import {
   VideoThumbnail,
   VideoView,
 } from "expo-video";
+import { useNavigation } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
+  Dimensions,
   Text,
   TouchableOpacity,
   View,
@@ -57,7 +60,9 @@ const THUMB_TIMEOUT_MS = 10_000;
 const THUMB_CACHE_LIMIT = 80;
 
 const thumbCache = new Map<string, VideoThumbnail>();
-const thumbFailed = new Set<string>();
+// Скільки разів уже пробували створити мініатюру (після 3 невдач більше не мучимо плеєр).
+const thumbAttempts = new Map<string, number>();
+const MAX_THUMB_ATTEMPTS = 3;
 const thumbInflight = new Map<string, Promise<VideoThumbnail | null>>();
 const thumbWanted = new Map<string, number>();
 let thumbQueue: Promise<unknown> = Promise.resolve();
@@ -92,10 +97,16 @@ async function generateThumbnail(url: string): Promise<VideoThumbnail | null> {
       });
     });
 
-    const [thumb] = await p.generateThumbnailsAsync(THUMB_TIME_SEC, {
-      maxWidth: THUMB_MAX_SIZE,
-      maxHeight: THUMB_MAX_SIZE,
-    });
+    // Без таймауту зависла генерація блокувала б чергу всіх інших кружечків.
+    const [thumb] = await Promise.race([
+      p.generateThumbnailsAsync(THUMB_TIME_SEC, {
+        maxWidth: THUMB_MAX_SIZE,
+        maxHeight: THUMB_MAX_SIZE,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("thumbnail generate timeout")), THUMB_TIMEOUT_MS),
+      ),
+    ]);
     return thumb ?? null;
   } catch {
     return null;
@@ -109,7 +120,7 @@ async function generateThumbnail(url: string): Promise<VideoThumbnail | null> {
 function requestThumbnail(url: string): Promise<VideoThumbnail | null> {
   const cached = thumbCache.get(url);
   if (cached) return Promise.resolve(cached);
-  if (thumbFailed.has(url)) return Promise.resolve(null);
+  if ((thumbAttempts.get(url) ?? 0) >= MAX_THUMB_ATTEMPTS) return Promise.resolve(null);
   const running = thumbInflight.get(url);
   if (running) return running;
 
@@ -129,7 +140,7 @@ function requestThumbnail(url: string): Promise<VideoThumbnail | null> {
           if (oldest !== undefined) thumbCache.delete(oldest);
         }
       } else {
-        thumbFailed.add(url);
+        thumbAttempts.set(url, (thumbAttempts.get(url) ?? 0) + 1);
       }
       thumbInflight.delete(url);
       resolve(thumb);
@@ -151,12 +162,24 @@ function useVideoNoteThumbnail(url: string): VideoThumbnail | null {
       return;
     }
     let alive = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     thumbWanted.set(url, (thumbWanted.get(url) ?? 0) + 1);
-    void requestThumbnail(url).then((result) => {
-      if (alive && result) setThumb(result);
-    });
+    const attempt = () => {
+      void requestThumbnail(url).then((result) => {
+        if (!alive) return;
+        if (result) {
+          setThumb(result);
+          return;
+        }
+        // Невдача (мережа, таймаут): повторюємо з наростаючою паузою, але не більше MAX_THUMB_ATTEMPTS.
+        const n = thumbAttempts.get(url) ?? 0;
+        if (n > 0 && n < MAX_THUMB_ATTEMPTS) retryTimer = setTimeout(attempt, 2000 * n);
+      });
+    };
+    attempt();
     return () => {
       alive = false;
+      if (retryTimer) clearTimeout(retryTimer);
       thumbWanted.set(url, Math.max(0, (thumbWanted.get(url) ?? 1) - 1));
     };
   }, [url]);
@@ -189,20 +212,19 @@ function releasePlayback(pause: () => void) {
 }
 
 export const VideoNotePlayer: React.FC<VideoNotePlayerProps> = (props) => {
-  const [session, setSession] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
 
   return (
     <View style={{ alignItems: props.isMine ? "flex-end" : "flex-start" }}>
       {hasStarted ? (
-        // key змінюється при повторі: плеєр створюється заново
+        // Після завершення або коли кружечок пішов за межі екрана плеєр звільняється:
+        // знову показується легкий placeholder (із мініатюрою), тап відтворює спочатку.
         <VideoNoteActive
-          key={session}
           videoUrl={props.videoUrl}
           duration={props.duration}
           isMine={props.isMine}
           timeLabel={props.timeLabel}
-          onReplay={() => setSession((s) => s + 1)}
+          onRelease={() => setHasStarted(false)}
         />
       ) : (
         // Легкий placeholder, поки користувач не натиснув: відео не вантажиться
@@ -287,7 +309,7 @@ const VideoNotePlaceholder: React.FC<{
 }> = ({ videoUrl, duration = 0, isMine = false, timeLabel, onPress }) => {
   const c = useChatPalette();
   const thumbnail = useVideoNoteThumbnail(videoUrl);
-  const bgColor = withAlpha(isMine ? c.accent : c.muted, 0.22);
+  const bgColor = c.search;
   const borderColor = withAlpha(isMine ? c.accent : c.muted, 0.5);
 
   return (
@@ -307,6 +329,14 @@ const VideoNotePlaceholder: React.FC<{
           overflow: "hidden",
         }}
       >
+        {!thumbnail && (
+          <Ionicons
+            name="videocam"
+            size={72}
+            color={withAlpha(isMine ? c.accent : c.muted, 0.28)}
+            style={{ position: "absolute" }}
+          />
+        )}
         {thumbnail && (
           <Image
             source={thumbnail}
@@ -347,7 +377,8 @@ interface VideoNoteActiveProps {
   duration?: number;
   isMine?: boolean;
   timeLabel?: string;
-  onReplay: () => void;
+  /** Звільнити плеєр (кінець відео, кружечок поза екраном) і повернутись до placeholder. */
+  onRelease: () => void;
 }
 
 const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
@@ -355,11 +386,14 @@ const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
   duration = 0,
   isMine = false,
   timeLabel,
-  onReplay,
+  onRelease,
 }) => {
   const c = useChatPalette();
+  const navigation = useNavigation();
+  const rootRef = useRef<View>(null);
   const thumbnail = useVideoNoteThumbnail(videoUrl);
   const [firstFrame, setFirstFrame] = useState(false);
+  const releasedRef = useRef(false);
   const coverOpacity = useSharedValue(1);
   const coverStyle = useAnimatedStyle(() => ({ opacity: coverOpacity.value }));
   const [isMuted, setIsMuted] = useState(false);
@@ -411,43 +445,81 @@ const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
     setIsPlaying(false);
     setProgress(1);
     releasePlayback(pauseSelf);
+    // Коротка пауза на «повне коло», далі плеєр звільняється.
+    setTimeout(() => {
+      if (!releasedRef.current) {
+        releasedRef.current = true;
+        onRelease();
+      }
+    }, 450);
   });
+
+  // Пауза (і звільнення плеєра), коли екран чату втрачає фокус або застосунок іде у фон.
+  useEffect(() => {
+    const pauseNow = () => {
+      try {
+        player.pause();
+      } catch {}
+    };
+    const unsubBlur = navigation.addListener("blur", pauseNow);
+    const appSub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") pauseNow();
+    });
+    return () => {
+      unsubBlur();
+      appSub.remove();
+    };
+  }, [navigation, player]);
 
   // Прогрес і готовність опитуємо кожні 100 мс
   useEffect(() => {
+    let tick = 0;
+    const winH = Dimensions.get("window").height;
     const interval = setInterval(() => {
       if (!player) return;
+      tick += 1;
       const current = player.currentTime ?? 0;
       const len =
         player.duration && player.duration > 0 ? player.duration : duration;
 
       if (len > 0) {
-        setTotal(len);
-        setProgress(Math.min(1, current / len));
+        setTotal((t) => (Math.abs(t - len) > 0.01 ? len : t));
+        const next = Math.min(1, current / len);
+        setProgress((p) => (Math.abs(p - next) > 0.002 ? next : p));
       }
       if (player.duration && player.duration > 0) {
         setIsReady((ready) => ready || true);
       }
+
+      // Кружечок прокрутили геть за межі екрана: ставимо на паузу й звільняємо плеєр.
+      if (tick % 4 === 0 && player.playing) {
+        rootRef.current?.measureInWindow((_x, y, _w, h) => {
+          if (releasedRef.current || h <= 0) return;
+          if (y + h < 0 || y > winH) {
+            releasedRef.current = true;
+            try {
+              player.pause();
+            } catch {}
+            onRelease();
+          }
+        });
+      }
     }, 100);
 
     return () => clearInterval(interval);
-  }, [player, duration]);
+  }, [player, duration, onRelease]);
 
   // Плавно прибираємо прев'ю, коли відео віддало перший кадр.
   useEffect(() => {
-    if (firstFrame || isPlaying) {
-      coverOpacity.value = withTiming(0, { duration: 280 });
+    if (firstFrame || (isPlaying && progress > 0)) {
+      coverOpacity.value = withTiming(0, { duration: 220 });
     }
-  }, [firstFrame, isPlaying, coverOpacity]);
+  }, [firstFrame, isPlaying, progress, coverOpacity]);
 
   const handleTap = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    // Після завершення тап = повтор з нуля (remount через key)
-    if (hasEnded) {
-      onReplay();
-      return;
-    }
+    if (hasEnded) return;
 
     if (player.playing) {
       player.pause();
@@ -485,6 +557,8 @@ const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
 
   return (
     <View
+      ref={rootRef}
+      collapsable={false}
       style={{
         position: "relative",
         alignItems: "center",
@@ -531,38 +605,48 @@ const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
             height: CIRCLE_SIZE - 8,
             borderRadius: (CIRCLE_SIZE - 8) / 2,
             overflow: "hidden",
-            backgroundColor: "rgba(255,255,255,0.08)",
+            backgroundColor: c.search,
           }}
         >
+          {/* textureView: коректно обрізається по колу (surfaceView дає чорні кути й чорний кадр у списку
+              з removeClippedSubviews); без exo-shutter немає чорного спалаху перед першим кадром. */}
           <VideoView
             player={player}
-            style={{ width: "100%", height: "100%" }}
+            style={{ width: "100%", height: "100%", borderRadius: (CIRCLE_SIZE - 8) / 2 }}
             contentFit="cover"
             nativeControls={false}
+            surfaceType="textureView"
+            useExoShutter={false}
             onFirstFrameRender={() => setFirstFrame(true)}
           />
 
-          {thumbnail && (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                {
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                },
-                coverStyle,
-              ]}
-            >
+          {/* Обкладинка: мініатюра, а якщо її немає — непрозорий колір теми зі спінером. Зникає з першим кадром. */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              {
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: c.search,
+                alignItems: "center",
+                justifyContent: "center",
+              },
+              coverStyle,
+            ]}
+          >
+            {thumbnail ? (
               <Image
                 source={thumbnail}
                 contentFit="cover"
-                style={{ width: "100%", height: "100%" }}
+                style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
               />
-            </Animated.View>
-          )}
+            ) : (
+              <Ionicons name="videocam" size={72} color={withAlpha(c.muted, 0.28)} />
+            )}
+          </Animated.View>
 
           {!isReady && (
             <View
@@ -574,7 +658,7 @@ const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
                 bottom: 0,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "rgba(0,0,0,0.25)",
+                backgroundColor: "rgba(0,0,0,0.18)",
               }}
               pointerEvents="none"
             >
@@ -606,12 +690,7 @@ const VideoNoteActive: React.FC<VideoNoteActiveProps> = ({
                   justifyContent: "center",
                 }}
               >
-                <Ionicons
-                  name={hasEnded ? "refresh" : "play"}
-                  size={30}
-                  color="#FFFFFF"
-                  style={{ marginLeft: hasEnded ? 0 : 3 }}
-                />
+                <Ionicons name="play" size={30} color="#FFFFFF" style={{ marginLeft: 3 }} />
               </View>
             </View>
           )}
