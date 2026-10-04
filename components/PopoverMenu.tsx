@@ -2,7 +2,7 @@ import type { SheetAction } from "@/components/ActionSheet";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Platform, Pressable, StatusBar, Text, useWindowDimensions, View } from "react-native";
+import { Modal, Platform, Pressable, StatusBar, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
   runOnJS,
@@ -35,6 +35,19 @@ interface Props {
 }
 
 const noop = () => {};
+
+const styles = StyleSheet.create({
+  rowPressable: { height: 52, alignSelf: "stretch" },
+  row: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingHorizontal: 16,
+  },
+  iconBox: { width: 28, height: 28, marginRight: 14, alignItems: "center", justifyContent: "center" },
+  label: { flex: 1, fontSize: 16.5, textAlign: "left" },
+});
 const SPRING = { damping: 19, stiffness: 300, mass: 0.7 } as const;
 const MARGIN = 12;
 
@@ -180,18 +193,25 @@ export function PopoverMenu({
                   pending.current = action.onPress;
                   onClose();
                 }}
-                style={({ pressed }) => ({
-                  height: 52,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingHorizontal: 16,
-                  backgroundColor: pressed ? withAlpha(c.accent, 0.12) : "transparent",
-                })}
+                style={styles.rowPressable}
               >
-                <Ionicons name={action.icon} size={24} color={color} style={{ width: 28 }} />
-                <Text numberOfLines={1} style={{ flex: 1, marginLeft: 14, color, fontSize: 16.5 }}>
-                  {action.label}
-                </Text>
+                {({ pressed }) => (
+                  // Розкладку (рядок: іконка + текст) тримає звичайний View зі StyleSheet:
+                  // стиль-функція Pressable на деяких збірках губила flexDirection.
+                  <View
+                    style={[
+                      styles.row,
+                      { backgroundColor: pressed ? withAlpha(c.accent, 0.12) : "transparent" },
+                    ]}
+                  >
+                    <View style={styles.iconBox}>
+                      <Ionicons name={action.icon} size={24} color={color} />
+                    </View>
+                    <Text numberOfLines={1} style={[styles.label, { color }]}>
+                      {action.label}
+                    </Text>
+                  </View>
+                )}
               </Pressable>
             </View>
           );
