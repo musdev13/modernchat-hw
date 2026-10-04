@@ -11,7 +11,7 @@ import {
 } from "./messageStorage";
 import { deletePollWithVotes, pollView } from "./polls";
 import { clearedAtOf, isMutedNow } from "./roomSettings";
-import { getAuthUser } from "./users";
+import { getAuthUser, premiumFlags } from "./users";
 
 // TTL presence — если heartbeat старше, считаем что юзер ушёл из чата
 const PRESENCE_TTL_MS = 30_000;
@@ -176,6 +176,16 @@ export const getPaginatedMessages = query({
     // «Видалені для мене» повідомлення не показуємо.
     const hidden = await hiddenMessageIds(ctx, userId, args.chatRoomId);
 
+    // Преміум-прапорці авторів (бейдж ⭐ біля імені) — один запит на унікального автора.
+    const senderIds = Array.from(new Set(paginated.page.map((m) => m.senderId as string)));
+    const senderFlags = new Map<string, { isPremium: boolean; emojiStatus?: string }>();
+    await Promise.all(
+      senderIds.map(async (id) => {
+        const sender = await ctx.db.get(id as Id<"users">);
+        senderFlags.set(id, premiumFlags(sender));
+      }),
+    );
+
     const page = await Promise.all(
       paginated.page
         .filter((message) => !hidden.has(message._id))
@@ -205,6 +215,8 @@ export const getPaginatedMessages = query({
 
         return {
           ...message,
+          senderPremium: senderFlags.get(message.senderId as string)?.isPremium ?? false,
+          senderEmojiStatus: senderFlags.get(message.senderId as string)?.emojiStatus,
           poll,
           reactions: Array.from(grouped, ([emoji, reaction]) => ({
             emoji,

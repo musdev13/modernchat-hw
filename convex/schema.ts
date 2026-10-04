@@ -30,6 +30,14 @@ export default defineSchema({
         sound: v.boolean(),
       }),
     ),
+    // Modesto Premium: активний, якщо premiumLifetime або premiumUntil у майбутньому. Порожньо = безкоштовний.
+    premiumUntil: v.optional(v.number()),
+    premiumLifetime: v.optional(v.boolean()),
+    premiumGrantedBy: v.optional(v.id("users")),
+    // Суперадмін: може видавати/відкликати преміум.
+    isAdmin: v.optional(v.boolean()),
+    // Емодзі-статус біля імені (лише для преміум; для інших не показується).
+    emojiStatus: v.optional(v.string()),
   })
     .index("by_token", ["tokenIdentifier"])
     .index("by_email", ["email"])
@@ -225,6 +233,17 @@ export default defineSchema({
     image: v.optional(v.string()),
     fetchedAt: v.number(),
   }).index("by_url", ["url"]),
+
+  // Журнал видачі/відкликання преміуму адміністраторами.
+  premiumGrants: defineTable({
+    userId: v.id("users"),
+    grantedBy: v.id("users"),
+    action: v.union(v.literal("grant"), v.literal("revoke")),
+    duration: v.optional(v.string()),
+    until: v.optional(v.number()),
+    lifetime: v.optional(v.boolean()),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]),
 
   // Історія фото профілю; поточне — те, чий storageId збігається з users.avatarStorageId.
   profilePhotos: defineTable({

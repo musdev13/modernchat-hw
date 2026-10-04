@@ -18,6 +18,7 @@ import {
 import { AttachSheet } from "@/components/AttachSheet";
 import { CreatePollModal, NewPoll } from "@/components/CreatePollModal";
 import { ForwardSheet } from "@/components/ForwardSheet";
+import { NameBadges } from "@/components/PremiumBadge";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { ReactionPickerModal } from "@/components/ReactionPickerModal";
 import { ReactorsSheet } from "@/components/ReactorsSheet";
@@ -2400,12 +2401,17 @@ export default function ChatRoomScreen() {
             <RoomAvatar title={roomTitle} imageUrl={room?.avatarUrl} size={34} saved={isSaved} />
 
             <View style={{ flex: 1, marginLeft: 10, justifyContent: "center" }}>
-              <Text
-                numberOfLines={1}
-                style={{ color: c.text, fontSize: 16, fontWeight: "700" }}
-              >
-                {roomTitle}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text
+                  numberOfLines={1}
+                  style={{ color: c.text, fontSize: 16, fontWeight: "700", flexShrink: 1 }}
+                >
+                  {roomTitle}
+                </Text>
+                {isDirect && !isSaved ? (
+                  <NameBadges premium={room?.otherPremium} emoji={room?.otherEmojiStatus} size={14} />
+                ) : null}
+              </View>
               <Animated.View style={[{ overflow: "hidden" }, islandSubtitleStyle]}>
                 <Text
                   numberOfLines={1}

@@ -16,6 +16,8 @@ import type * as messageStorage from "../messageStorage.js";
 import type * as messages from "../messages.js";
 import type * as photoHelpers from "../photoHelpers.js";
 import type * as polls from "../polls.js";
+import type * as premium from "../premium.js";
+import type * as premiumHelpers from "../premiumHelpers.js";
 import type * as presence from "../presence.js";
 import type * as profilePhotos from "../profilePhotos.js";
 import type * as pushNotifications from "../pushNotifications.js";
@@ -41,6 +43,8 @@ declare const fullApi: ApiFromModules<{
   messages: typeof messages;
   photoHelpers: typeof photoHelpers;
   polls: typeof polls;
+  premium: typeof premium;
+  premiumHelpers: typeof premiumHelpers;
   presence: typeof presence;
   profilePhotos: typeof profilePhotos;
   pushNotifications: typeof pushNotifications;

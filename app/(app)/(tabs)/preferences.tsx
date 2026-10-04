@@ -8,7 +8,10 @@ import { Group, IconName, NavRow } from "@/components/SettingsUI";
 import { THEMES } from "@/constants/theme";
 import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
+import { NameBadges } from "@/components/PremiumBadge";
+import { PREMIUM_GOLD } from "@/constants/premium";
 import { useChatPalette } from "@/hooks/useChatPalette";
+import { formatPremiumUntil, usePremium } from "@/hooks/usePremium";
 import { useSignOut } from "@/hooks/useSignOut";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "convex/react";
@@ -48,6 +51,7 @@ export default function PreferencesScreen() {
   const insets = useSafeAreaInsets();
   const tabSpace = useTabBarSpace();
   const signOut = useSignOut();
+  const premium = usePremium();
 
   const currentUser = useQuery(api.users.currentUser);
   const [editVisible, setEditVisible] = useState(false);
@@ -86,6 +90,10 @@ export default function PreferencesScreen() {
     { key: "edit", label: "Редагувати профіль", icon: "person-circle-outline", tint: "#3B82F6", keywords: "профіль ім'я фото аватар імя", go: () => openEdit() },
     { key: "username", label: "Ім'я користувача", icon: "at", tint: "#8B5CF6", keywords: "username нік логін", go: () => openEdit("username") },
     { key: "bio", label: "Про себе", icon: "information-circle-outline", tint: "#F59E0B", keywords: "біо опис статус", go: () => openEdit("bio") },
+    { key: "premium", label: "Modesto Premium", icon: "star", tint: PREMIUM_GOLD, keywords: "преміум premium підписка зірка історії емодзі статус аватар теми", go: () => go("/(app)/prefs/premium") },
+    ...(premium.isAdmin
+      ? [{ key: "admin", label: "Адмін-панель", icon: "shield-checkmark" as IconName, tint: "#EF4444", keywords: "адмін admin преміум видати відкликати", go: () => go("/(app)/prefs/admin") }]
+      : []),
     { key: "notif", label: "Сповіщення та звуки", icon: "notifications", tint: "#EF4444", keywords: "push пуш звук банер текст повідомлення групи канали", go: () => go("/(app)/prefs/notifications") },
     { key: "privacy", label: "Конфіденційність", icon: "lock-closed", tint: "#10B981", keywords: "приватність останній вхід телефон номер друкує набір тексту", go: () => go("/(app)/prefs/privacy") },
     { key: "data", label: "Дані та пам'ять", icon: "server", tint: "#3B82F6", keywords: "кеш автозавантаження фото відео пам'ять очистити", go: () => go("/(app)/prefs/data") },
@@ -164,9 +172,12 @@ export default function PreferencesScreen() {
                   size={60}
                 />
                 <View style={{ flex: 1, marginLeft: 14 }}>
-                  <Text numberOfLines={1} style={{ color: c.text, fontSize: 18, fontWeight: "700" }}>
-                    {currentUser.name ?? "Користувач"}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text numberOfLines={1} style={{ color: c.text, fontSize: 18, fontWeight: "700", flexShrink: 1 }}>
+                      {currentUser.name ?? "Користувач"}
+                    </Text>
+                    <NameBadges premium={premium.isPremium} emoji={currentUser.emojiStatus} size={16} />
+                  </View>
                   <Text numberOfLines={1} style={{ color: c.muted, fontSize: 14, marginTop: 2 }}>
                     {currentUser.username ? `@${currentUser.username}` : (currentUser.email ?? "")}
                   </Text>
@@ -174,6 +185,19 @@ export default function PreferencesScreen() {
                 <Ionicons name="chevron-forward" size={18} color={c.muted} />
               </TouchableOpacity>
             )}
+
+            <Group>
+              <NavRow
+                icon="star"
+                tint={PREMIUM_GOLD}
+                label="Modesto Premium"
+                value={premium.isPremium ? formatPremiumUntil(premium) : undefined}
+                onPress={() => go("/(app)/prefs/premium")}
+              />
+              {premium.isAdmin ? (
+                <NavRow icon="shield-checkmark" tint="#EF4444" label="Адмін-панель" onPress={() => go("/(app)/prefs/admin")} />
+              ) : null}
+            </Group>
 
             <Group title="Акаунт">
               <NavRow icon="person-circle-outline" tint="#3B82F6" label="Редагувати профіль" onPress={() => openEdit()} />

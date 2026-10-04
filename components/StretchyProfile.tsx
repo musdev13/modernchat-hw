@@ -1,3 +1,4 @@
+import { NameBadges } from "@/components/PremiumBadge";
 import { GlassProvider, GlassTarget } from "@/components/Glass";
 import { PressableScale } from "@/components/PressableScale";
 import { MediaViewer, type ViewerAction, type ViewerItem } from "@/components/MediaViewer";
@@ -276,6 +277,9 @@ function Segment({ i, indexSV }: { i: number; indexSV: SharedValue<number> }) {
 
 interface Props {
   name: string;
+  /** Modesto Premium: золота зірка й емодзі-статус поруч з іменем. */
+  isPremium?: boolean;
+  emojiStatus?: string;
   imageUrl?: string | null;
   /** Усі фото профілю (поточне першим); якщо не задано — використовується imageUrl. */
   photos?: ProfilePhoto[];
@@ -318,6 +322,8 @@ interface Props {
  */
 export function StretchyProfile({
   name,
+  isPremium,
+  emojiStatus,
   imageUrl,
   photos,
   viewerActions,
@@ -890,12 +896,15 @@ export function StretchyProfile({
                   nameBlockStyle,
                 ]}
               >
-                <Text
-                  numberOfLines={1}
-                  style={{ fontSize: 25, fontWeight: "800", textAlign: "center", color: c.text }}
-                >
-                  {name}
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", maxWidth: "100%" }}>
+                  <Text
+                    numberOfLines={1}
+                    style={{ fontSize: 25, fontWeight: "800", textAlign: "center", color: c.text, flexShrink: 1 }}
+                  >
+                    {name}
+                  </Text>
+                  <NameBadges premium={isPremium} emoji={emojiStatus} size={20} />
+                </View>
                 {status ? (
                   <Text
                     numberOfLines={1}
@@ -925,9 +934,12 @@ export function StretchyProfile({
                   expandedNameStyle,
                 ]}
               >
-                <Text numberOfLines={1} style={{ fontSize: 26, fontWeight: "800", color: "#FFFFFF" }}>
-                  {name}
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Text numberOfLines={1} style={{ fontSize: 26, fontWeight: "800", color: "#FFFFFF", flexShrink: 1 }}>
+                    {name}
+                  </Text>
+                  <NameBadges premium={isPremium} emoji={emojiStatus} size={20} />
+                </View>
                 {status ? (
                   <Text
                     numberOfLines={1}
@@ -1024,6 +1036,7 @@ export function StretchyProfile({
                   >
                     {name}
                   </Text>
+                  <NameBadges premium={isPremium} emoji={emojiStatus} size={13} />
                 </View>
               </Animated.View>
 

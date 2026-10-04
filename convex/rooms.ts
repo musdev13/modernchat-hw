@@ -4,7 +4,7 @@ import { MutationCtx, mutation, query } from "./_generated/server";
 import { canPostIn, releaseMessageFiles } from "./messageStorage";
 import { deletePollWithVotes } from "./polls";
 import { isMutedNow, patchRoomSetting } from "./roomSettings";
-import { getAuthUser, getPresenceRow, presenceOf } from "./users";
+import { getAuthUser, getPresenceRow, premiumFlags, presenceOf } from "./users";
 
 const DIRECT_ROOM_TITLE = "Приватний чат";
 
@@ -78,6 +78,7 @@ export const listRooms = query({
       let avatarUrl = room.avatarUrl;
       let otherUserId: Id<"users"> | undefined;
       let otherOnline = false;
+      let otherFlags: { isPremium: boolean; emojiStatus?: string } = { isPremium: false };
       if (isSaved) {
         title = "Збережене";
         avatarUrl = undefined;
@@ -86,6 +87,7 @@ export const listRooms = query({
         const other = otherUserId ? await ctx.db.get(otherUserId) : null;
         title = displayNameOf(other);
         avatarUrl = other?.image;
+        otherFlags = premiumFlags(other);
         if (other) {
           otherOnline = presenceOf(other, await getPresenceRow(ctx, other._id), me._id, now).online;
         }
@@ -105,6 +107,8 @@ export const listRooms = query({
         canPost: canPostIn(room, me._id),
         otherUserId,
         otherOnline,
+        otherPremium: otherFlags.isPremium,
+        otherEmojiStatus: otherFlags.emojiStatus,
         muted: isMutedNow(setting, now),
         mutedUntil: isMutedNow(setting, now) ? setting?.mutedUntil : undefined,
         // «Збережене» завжди закріплене нагорі.
@@ -145,6 +149,7 @@ export const getRoom = query({
           _id: user._id,
           name: nameOf(user),
           image: user.image,
+          ...premiumFlags(user),
           role:
             id === room.creatorId
               ? ("creator" as const)
@@ -190,6 +195,8 @@ export const getRoom = query({
       isDirect,
       isSaved,
       otherUserId,
+      otherPremium: premiumFlags(otherUser).isPremium,
+      otherEmojiStatus: premiumFlags(otherUser).emojiStatus,
       otherPresence,
       participantIds,
       adminIds,

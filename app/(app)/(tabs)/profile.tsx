@@ -183,6 +183,8 @@ export default function ProfileScreen() {
     <>
       <StretchyProfile
         name={profile.name}
+        isPremium={profile.isPremium}
+        emojiStatus={profile.emojiStatus}
         imageUrl={profile.image}
         photos={photos}
         viewerActions={viewerActions}

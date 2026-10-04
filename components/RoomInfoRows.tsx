@@ -1,3 +1,4 @@
+import { NameBadges } from "@/components/PremiumBadge";
 import { avatarColor, initialsOf } from "@/constants/theme";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
@@ -26,6 +27,8 @@ export interface MemberItem {
   name: string;
   image?: string;
   role: "creator" | "admin" | "member";
+  isPremium?: boolean;
+  emojiStatus?: string;
 }
 
 export interface MediaItem {
@@ -364,10 +367,13 @@ export const MemberRow = memo(function MemberRow({
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={{ color: c.text, fontSize: 16, fontWeight: "600" }}>
-          {member.name}
-          {isMe ? <Text style={{ color: c.muted, fontWeight: "400" }}>  (ви)</Text> : null}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Text numberOfLines={1} style={{ color: c.text, fontSize: 16, fontWeight: "600", flexShrink: 1 }}>
+            {member.name}
+            {isMe ? <Text style={{ color: c.muted, fontWeight: "400" }}>  (ви)</Text> : null}
+          </Text>
+          <NameBadges premium={member.isPremium} emoji={member.emojiStatus} size={14} />
+        </View>
         <Text
           numberOfLines={1}
           style={{ color: online ? c.accent : c.muted, fontSize: 13, marginTop: 1 }}

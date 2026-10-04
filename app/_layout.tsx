@@ -3,6 +3,7 @@ import "../global.css";
 
 import InitialLayout from "@/components/InitialLayout";
 import { COLORS } from "@/constants/theme";
+import { PremiumProvider } from "@/context/PremiumContext";
 import { SettingsProvider } from "@/context/SettingsContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
@@ -102,7 +103,9 @@ export default function RootLayout() {
           <ConvexProviderWithClerk client={convex} useAuth={useConvexClerkAuth}>
             <ThemeProvider>
               <SettingsProvider>
-                <AppContent />
+                <PremiumProvider>
+                  <AppContent />
+                </PremiumProvider>
               </SettingsProvider>
             </ThemeProvider>
           </ConvexProviderWithClerk>

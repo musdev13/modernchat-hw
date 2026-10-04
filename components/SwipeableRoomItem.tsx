@@ -1,3 +1,4 @@
+import { NameBadges } from "@/components/PremiumBadge";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { useTheme } from "@/context/ThemeContext";
 import { Id } from "@/convex/_generated/dataModel";
@@ -27,6 +28,9 @@ interface RoomData {
   isChannel?: boolean;
   /** Закріплено нагорі списку. */
   pinned?: boolean;
+  /** Співрозмовник має Modesto Premium (лише для особистих чатів). */
+  otherPremium?: boolean;
+  otherEmojiStatus?: string;
 }
 
 interface SwipeableRoomItemProps {
@@ -271,6 +275,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                   >
                     {room.title}
                   </Text>
+                  {isDirect ? <NameBadges premium={room.otherPremium} emoji={room.otherEmojiStatus} size={14} /> : null}
                   {isCreator && !isDirect && (
                     <Ionicons
                       name="ribbon-outline"

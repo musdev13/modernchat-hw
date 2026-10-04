@@ -129,6 +129,8 @@ export default function UserProfileScreen() {
     <>
     <StretchyProfile
       name={profile.name}
+      isPremium={profile.isPremium}
+      emojiStatus={profile.emojiStatus}
       imageUrl={profile.image}
       status={status}
       statusAccent={profile.online}

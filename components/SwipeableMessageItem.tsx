@@ -22,6 +22,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { firstPreviewUrl } from "@/utils/linkify";
+import { NameBadges } from "./PremiumBadge";
 import { FileBubble, ratioFrom, VideoBubble } from "./AttachmentBubbles";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { MessageText, takeRecentLinkTouch, showLinkMenu } from "./MessageText";
@@ -35,6 +36,9 @@ export interface MessageItemData {
   senderId: Id<"users">;
   senderName: string;
   senderPhoto?: string;
+  /** Автор має Modesto Premium (⭐ біля імені) та його емодзі-статус. */
+  senderPremium?: boolean;
+  senderEmojiStatus?: string;
   content?: string;
   imageUrl?: string;
 
@@ -555,17 +559,20 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
             ) : isSticker ? (
               <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
                 {!isOwn && !isDirect && isFirstInSeries && (
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: avatarColor(item.senderName),
-                      fontWeight: "700",
-                      fontSize: 13,
-                      marginBottom: 2,
-                    }}
-                  >
-                    {item.senderName}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        color: avatarColor(item.senderName),
+                        fontWeight: "700",
+                        fontSize: 13,
+                        flexShrink: 1,
+                      }}
+                    >
+                      {item.senderName}
+                    </Text>
+                    <NameBadges premium={item.senderPremium} emoji={item.senderEmojiStatus} size={12} />
+                  </View>
                 )}
 
                 {item.replyToSender ? (
@@ -640,9 +647,12 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
             ) : isBigEmoji ? (
               <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
                 {!isOwn && !isDirect && isFirstInSeries && (
-                  <Text style={{ color: avatarColor(item.senderName), fontWeight: "700", fontSize: 13, marginBottom: 2 }}>
-                    {item.senderName}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
+                    <Text style={{ color: avatarColor(item.senderName), fontWeight: "700", fontSize: 13, flexShrink: 1 }}>
+                      {item.senderName}
+                    </Text>
+                    <NameBadges premium={item.senderPremium} emoji={item.senderEmojiStatus} size={12} />
+                  </View>
                 )}
                 <Text
                   style={{
@@ -677,12 +687,15 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     activeOpacity={0.7}
                     style={[{ marginBottom: 2 }, innerPad]}
                   >
-                    <Text
-                      numberOfLines={1}
-                      style={{ color: avatarColor(item.senderName), fontWeight: "700", fontSize: 13 }}
-                    >
-                      {item.senderName}
-                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{ color: avatarColor(item.senderName), fontWeight: "700", fontSize: 13, flexShrink: 1 }}
+                      >
+                        {item.senderName}
+                      </Text>
+                      <NameBadges premium={item.senderPremium} emoji={item.senderEmojiStatus} size={12} />
+                    </View>
                   </TouchableOpacity>
                 )}
 
@@ -926,6 +939,8 @@ export const SwipeableMessageItem = memo(
     prev.item.videoUrl === next.item.videoUrl &&
     prev.item.fileUrl === next.item.fileUrl &&
     prev.item.senderName === next.item.senderName &&
+    prev.item.senderPremium === next.item.senderPremium &&
+    prev.item.senderEmojiStatus === next.item.senderEmojiStatus &&
     prev.item.forwardedFrom === next.item.forwardedFrom &&
     prev.item.senderPhoto === next.item.senderPhoto &&
     prev.item.replyToSender === next.item.replyToSender &&

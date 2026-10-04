@@ -111,6 +111,14 @@ export default function AppLayout() {
         options={{ headerShown: false, animation: "slide_from_right" }}
       />
       <Stack.Screen
+        name="prefs/premium"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="prefs/admin"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
         name="prefs/about"
         options={{ headerShown: false, animation: "slide_from_right" }}
       />

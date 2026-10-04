@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { registerProfilePhoto } from "./photoHelpers";
+import { applyBootstrapAdmin, premiumView } from "./premiumHelpers";
 
 /** Онлайн, якщо heartbeat був не пізніше ніж ONLINE_WINDOW_MS тому (клієнт шле його кожні ~40 с). */
 export const ONLINE_WINDOW_MS = 70_000;
@@ -46,6 +47,12 @@ export async function getPresenceRow(ctx: QueryCtx | MutationCtx, userId: Id<"us
 export async function getPresenceMap(ctx: QueryCtx | MutationCtx) {
   const rows = await ctx.db.query("userPresence").collect();
   return new Map(rows.map((row) => [row.userId as string, row]));
+}
+
+/** Публічні преміум-прапорці для відповідей (бейдж ⭐ і емодзі-статус). */
+export function premiumFlags(user: Doc<"users"> | null | undefined) {
+  const view = premiumView(user);
+  return { isPremium: view.isPremium, emojiStatus: view.emojiStatus };
 }
 
 // Допоміжна функція для отримання поточного авторизованого користувача (Clerk)
@@ -114,16 +121,20 @@ export const store = mutation({
           image: newImage,
         });
       }
+      await applyBootstrapAdmin(ctx, user);
       return user._id;
     }
 
     // Створюємо нового користувача
-    return await ctx.db.insert("users", {
+    const createdId = await ctx.db.insert("users", {
       name: identity.name ?? identity.nickname ?? "Користувач",
       email: identity.email,
       image: identity.pictureUrl,
       tokenIdentifier: identity.tokenIdentifier,
     });
+    const created = await ctx.db.get(createdId);
+    if (created) await applyBootstrapAdmin(ctx, created);
+    return createdId;
   },
 });
 
@@ -147,6 +158,7 @@ export const searchUsers = query({
         name: user.name ?? user.email ?? "Користувач",
         username: user.username,
         image: user.image,
+        ...premiumFlags(user),
       }));
   },
 });
@@ -174,6 +186,7 @@ export const listContacts = query({
           name: user.name ?? user.username ?? user.email ?? "Користувач",
           username: user.username,
           image: user.image,
+          ...premiumFlags(user),
           online: presence.online,
           lastSeenAt: presence.lastSeenAt,
           lastSeenHidden: presence.lastSeenHidden,
@@ -288,6 +301,10 @@ export const updateUserProfile = mutation({
 
     await ctx.db.patch(me._id, patchData);
 
+    // Суперадмін за замовчуванням: преміум + адмін застосовуються, щойно @username збігається.
+    const afterPatch = await ctx.db.get(me._id);
+    if (afterPatch) await applyBootstrapAdmin(ctx, afterPatch);
+
     // Нове фото з форми редагування теж потрапляє в історію й стає головним.
     if (args.avatarStorageId) {
       await registerProfilePhoto(ctx, me, args.avatarStorageId);
@@ -329,6 +346,7 @@ export const getUserProfile = query({
       image: user.image,
       username: user.username,
       bio: user.bio,
+      ...premiumFlags(user),
       _creationTime: user._creationTime,
       isSelf,
       inChatNow,
