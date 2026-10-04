@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { MutationCtx, mutation, query } from "./_generated/server";
-import { releaseMessageFiles } from "./messageStorage";
+import { canPostIn, releaseMessageFiles } from "./messageStorage";
 import { deletePollWithVotes } from "./polls";
 import { isMutedNow, patchRoomSetting } from "./roomSettings";
 import { getAuthUser, getPresenceRow, presenceOf } from "./users";
@@ -96,6 +96,7 @@ export const listRooms = query({
         avatarUrl,
         isDirect: !!room.isDirect,
         isSaved,
+        canPost: canPostIn(room, me._id),
         otherUserId,
         otherOnline,
         muted: isMutedNow(setting, now),

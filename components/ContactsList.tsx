@@ -125,6 +125,7 @@ interface ListProps {
   /** Режим вибору кількох контактів. */
   selectedIds?: Set<string>;
   header?: ReactNode;
+  footer?: ReactNode;
   bottomInset?: number;
 }
 
@@ -135,6 +136,7 @@ export function ContactsList({
   busyId,
   selectedIds,
   header,
+  footer,
   bottomInset = 24,
 }: ListProps) {
   const c = useChatPalette();
@@ -148,6 +150,7 @@ export function ContactsList({
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ paddingBottom: bottomInset }}
       ListHeaderComponent={<>{header}</>}
+      ListFooterComponent={footer ? <>{footer}</> : null}
       renderItem={({ item }) => (
         <ContactRow
           contact={item}

@@ -32,6 +32,34 @@ export default function AppLayout() {
         }}
       />
       <Stack.Screen
+        name="new-channel"
+        options={{
+          headerShown: false,
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="subscribers/[id]"
+        options={{
+          headerShown: false,
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="channel-settings/[id]"
+        options={{
+          headerShown: false,
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="c/[slug]"
+        options={{
+          headerShown: false,
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
         name="chat/[id]"
         options={{
           headerShown: false,

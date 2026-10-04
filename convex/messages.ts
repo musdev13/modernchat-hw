@@ -314,6 +314,7 @@ export const togglePin = mutation({
     const message = await ctx.db.get(args.messageId);
     if (!message) throw new Error("Message not found: Повідомлення не знайдено");
     const room = await assertRoomMember(ctx, message.chatRoomId, me._id);
+    assertCanPost(room, me._id);
     if (message.isSystem) {
       throw new Error("Системні повідомлення не можна закріпити");
     }

@@ -1,4 +1,5 @@
 import { ContactsList } from "@/components/ContactsList";
+import { PublicChannelResults } from "@/components/PublicChannelResults";
 import { SearchField } from "@/components/SearchField";
 import { useTheme } from "@/context/ThemeContext";
 import { useOpenDirectChat } from "@/hooks/useOpenDirectChat";
@@ -57,9 +58,11 @@ export default function NewMessageScreen() {
         busyId={busyId}
         onSelect={(contact) => open(contact._id)}
         bottomInset={insets.bottom + 24}
+        footer={<PublicChannelResults query={search} />}
         header={
           <View>
             {!search.trim() && (
+              <>
               <TouchableOpacity
                 activeOpacity={0.6}
                 onPress={() => router.push("/new-room" as any)}
@@ -86,6 +89,33 @@ export default function NewMessageScreen() {
                   Нова група
                 </Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.6}
+                onPress={() => router.push("/new-channel" as any)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                }}
+              >
+                <View
+                  style={{
+                    width: 50,
+                    height: 50,
+                    borderRadius: 25,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "#34C759",
+                  }}
+                >
+                  <Ionicons name="megaphone" size={24} color="#FFFFFF" />
+                </View>
+                <Text style={{ color: c.text, fontSize: 16, fontWeight: "600", marginLeft: 14 }}>
+                  Новий канал
+                </Text>
+              </TouchableOpacity>
+              </>
             )}
             <View
               style={{
