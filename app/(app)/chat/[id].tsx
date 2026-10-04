@@ -28,6 +28,7 @@ import {
 } from "@/components/SwipeableMessageItem";
 import { TypingDots } from "@/components/TypingDots";
 import { VideoNoteRecorderModal } from "@/components/VideoNoteRecorderModal";
+import { SpaceBackdrop } from "@/components/SpaceBackdrop";
 import { useSettings } from "@/context/SettingsContext";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -1683,6 +1684,16 @@ export default function ChatRoomScreen() {
               backgroundColor: c.wallpaper,
             }}
           >
+          {appSettings.appearance.chatStars ? (
+            <SpaceBackdrop
+              sky={false}
+              horizon={false}
+              stars={36}
+              starColor={c.star}
+              ambient={c.premium ? c.glow : undefined}
+              animated={appSettings.appearance.animations}
+            />
+          ) : null}
           <FlatList
             ref={flatListRef}
             data={rows}

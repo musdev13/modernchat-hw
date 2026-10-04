@@ -2,6 +2,7 @@ import { EditProfileModal, ProfileField } from "@/components/EditProfileModal";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
 import { RoomAvatar } from "@/components/RoomAvatar";
+import { ThemeGlow } from "@/components/SpaceBackdrop";
 import { SearchField } from "@/components/SearchField";
 import { Group, IconName, NavRow } from "@/components/SettingsUI";
 import { THEMES } from "@/constants/theme";
@@ -103,6 +104,7 @@ export default function PreferencesScreen() {
     <GlassProvider>
       <View style={{ flex: 1, backgroundColor: c.divider }}>
         <GlassTarget style={{ flex: 1, backgroundColor: c.divider }}>
+          {c.premium ? <ThemeGlow color={c.glow} /> : null}
           <Animated.ScrollView
             onScroll={scrollHandler}
             scrollEventThrottle={16}

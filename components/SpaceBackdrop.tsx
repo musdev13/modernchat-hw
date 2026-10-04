@@ -32,15 +32,19 @@ function rng(seed: number) {
   };
 }
 
-const Star = memo(function Star({ s, tint }: { s: StarSpec; tint: string }) {
-  const v = useSharedValue(0);
+const Star = memo(function Star({ s, tint, animated }: { s: StarSpec; tint: string; animated: boolean }) {
+  const v = useSharedValue(0.5);
   useEffect(() => {
+    if (!animated) {
+      v.value = 0.5;
+      return;
+    }
     v.value = withDelay(
       s.delay,
       withRepeat(withTiming(1, { duration: s.period, easing: Easing.inOut(Easing.sin) }), -1, true),
     );
     return () => cancelAnimation(v);
-  }, [v, s.delay, s.period]);
+  }, [v, s.delay, s.period, animated]);
   const style = useAnimatedStyle(() => ({ opacity: s.base * (0.35 + 0.65 * v.value) }));
   return (
     <Animated.View
@@ -73,7 +77,37 @@ interface Props {
   /** Кольори фону: верх → низ. */
   top?: string;
   bottom?: string;
+  /** false — без власного неба/градієнта: лише зірки (для фону чату поверх кольору теми). */
+  sky?: boolean;
+  /** Колір м'якого світіння в куті (туманність/корона); без значення — не малюється. */
+  ambient?: string;
+  /** false — зірки статичні (налаштування «Анімації» вимкнено). */
+  animated?: boolean;
 }
+
+function rgbOf(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+/** Статичне м'яке світіння зверху (для преміальних тем у налаштуваннях). */
+export const ThemeGlow = memo(function ThemeGlow({ color, height = 260, opacity = 0.2 }: { color: string; height?: number; opacity?: number }) {
+  const { width: W } = useWindowDimensions();
+  const [r, g, b] = rgbOf(color);
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, height }}>
+      <Svg width={W} height={height}>
+        <Defs>
+          <RadialGradient id="themeGlow" cx="0.5" cy="0" rx="0.9" ry="1">
+            <Stop offset="0" stopColor={`rgb(${r},${g},${b})`} stopOpacity={opacity} />
+            <Stop offset="1" stopColor={`rgb(${r},${g},${b})`} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width={W} height={height} fill="url(#themeGlow)" />
+      </Svg>
+    </View>
+  );
+});
 
 /**
  * Космічний фон: градієнт, мерехтливі зірки, світіння горизонту. Усе малюється один раз,
@@ -86,6 +120,9 @@ export const SpaceBackdrop = memo(function SpaceBackdrop({
   starColor = "#FFFFFF",
   top = "#02030A",
   bottom = "#0A1428",
+  sky = true,
+  ambient,
+  animated = true,
 }: Props) {
   const { width: W, height: H } = useWindowDimensions();
   const list = useMemo<StarSpec[]>(() => {
@@ -101,10 +138,8 @@ export const SpaceBackdrop = memo(function SpaceBackdrop({
   }, [stars, W, H]);
 
   const R = Math.max(W, 380) * 1.5;
-  const [gr, gg, gb] = useMemo(() => {
-    const h = glow.replace("#", "");
-    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
-  }, [glow]);
+  const [gr, gg, gb] = useMemo(() => rgbOf(glow), [glow]);
+  const [ar, ag, ab] = useMemo(() => rgbOf(ambient ?? "#000000"), [ambient]);
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -122,11 +157,22 @@ export const SpaceBackdrop = memo(function SpaceBackdrop({
             <Stop offset="1" stopColor={`rgb(${gr},${gg},${gb})`} stopOpacity="0" />
           </RadialGradient>
         </Defs>
-        <Rect x="0" y="0" width={W} height={H} fill="url(#bgSky)" />
-        {horizon ? <Ellipse cx={W / 2} cy={H + R - H * 0.13} rx={R} ry={R} fill="url(#bgLimb)" /> : null}
+        {sky ? <Rect x="0" y="0" width={W} height={H} fill="url(#bgSky)" /> : null}
+        {ambient ? (
+          <>
+            <Defs>
+              <RadialGradient id="bgAmbient" cx="0.85" cy="0.1" rx="0.9" ry="0.6">
+                <Stop offset="0" stopColor={`rgb(${ar},${ag},${ab})`} stopOpacity="0.2" />
+                <Stop offset="1" stopColor={`rgb(${ar},${ag},${ab})`} stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Rect x="0" y="0" width={W} height={H} fill="url(#bgAmbient)" />
+          </>
+        ) : null}
+        {sky && horizon ? <Ellipse cx={W / 2} cy={H + R - H * 0.13} rx={R} ry={R} fill="url(#bgLimb)" /> : null}
       </Svg>
       {list.map((s, i) => (
-        <Star key={i} s={s} tint={starColor} />
+        <Star key={i} s={s} tint={starColor} animated={animated} />
       ))}
     </View>
   );

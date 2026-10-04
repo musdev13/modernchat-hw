@@ -29,6 +29,11 @@ export interface ChatPalette extends ThemeColors {
   /** Тло листів/модальних вікон. */
   sheet: string;
   overlay: string;
+  /** Токени преміальних тем: світіння, зірки, тонка лінія. */
+  glow: string;
+  star: string;
+  line: string;
+  premium: boolean;
 }
 
 /** Палітра для екрана чату, виведена з активної теми (useTheme). */
@@ -48,7 +53,11 @@ export function useChatPalette(): ChatPalette {
       field: c.search,
       sheet: theme.isDark ? c.header : c.bg,
       overlay: "rgba(0, 0, 0, 0.45)",
+      glow: theme.extras.glow,
+      star: theme.extras.star,
+      line: theme.extras.line,
+      premium: theme.extras.premium,
     }),
-    [c, theme.isDark],
+    [c, theme.isDark, theme.extras],
   );
 }

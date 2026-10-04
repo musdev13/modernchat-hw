@@ -1,6 +1,6 @@
 import { Group, SettingsPage, StepSlider, SwitchRow } from "@/components/SettingsUI";
 import { useSettings } from "@/context/SettingsContext";
-import { THEMES, THEME_ORDER } from "@/constants/theme";
+import { THEMES, THEME_ORDER, type ThemeId } from "@/constants/theme";
 import { useTheme } from "@/context/ThemeContext";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +15,7 @@ export default function AppearanceSettings() {
 
   return (
     <SettingsPage title="Оформлення">
+      <ThemeSection />
       <Group title="Розмір тексту" footer="Застосовується до тексту повідомлень у чатах.">
         <View style={{ padding: 16, gap: 14 }}>
           <Preview scale={scale} radius={radius} />
@@ -59,7 +60,15 @@ export default function AppearanceSettings() {
           onChange={(v) => update("appearance", { animations: v })}
         />
       </Group>
-      <ThemeSection />
+      <Group footer="Тихі мерехтливі зорі за повідомленнями, у кольорах теми. Вимкніть, якщо потрібна максимальна економія батареї.">
+        <SwitchRow
+          icon="star"
+          tint="#F59E0B"
+          label="Зоряний фон у чатах"
+          value={settings.appearance.chatStars}
+          onChange={(v) => update("appearance", { chatStars: v })}
+        />
+      </Group>
     </SettingsPage>
   );
 }
@@ -98,69 +107,138 @@ function Preview({ scale, radius }: { scale: number; radius: number }) {
   );
 }
 
+// Статичні «зорі» для мініатюр преміальних тем (координати у відсотках).
+const MINI_STARS: [number, number][] = [
+  [12, 22], [30, 12], [52, 30], [70, 14], [86, 26], [22, 48], [64, 52], [90, 58],
+];
+
+function ThemePreview({ id, selected }: { id: ThemeId; selected: boolean }) {
+  const t = THEMES[id];
+  const k = t.colors;
+  const ex = t.extras;
+  return (
+    <View
+      style={{
+        borderRadius: 16,
+        padding: 6,
+        borderWidth: 2,
+        borderColor: selected ? k.accent : ex.premium ? ex.line : withAlpha(k.muted, 0.25),
+        backgroundColor: k.bg,
+      }}
+    >
+      <View style={{ borderRadius: 10, overflow: "hidden", backgroundColor: k.divider, height: 92 }}>
+        {ex.premium ? (
+          <>
+            <View
+              style={{
+                position: "absolute",
+                top: -34,
+                right: -26,
+                width: 96,
+                height: 96,
+                borderRadius: 48,
+                backgroundColor: withAlpha(ex.glow, 0.22),
+              }}
+            />
+            {MINI_STARS.map(([x, y], i) => (
+              <View
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  width: i % 3 === 0 ? 2.5 : 1.5,
+                  height: i % 3 === 0 ? 2.5 : 1.5,
+                  borderRadius: 2,
+                  backgroundColor: withAlpha(ex.star, 0.8),
+                }}
+              />
+            ))}
+          </>
+        ) : null}
+        <View style={{ height: 18, backgroundColor: k.header, flexDirection: "row", alignItems: "center", paddingHorizontal: 6 }}>
+          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: k.accent }} />
+          <View style={{ width: 34, height: 4, borderRadius: 2, marginLeft: 5, backgroundColor: k.text, opacity: 0.8 }} />
+        </View>
+        <View style={{ padding: 6 }}>
+          <View
+            style={{
+              alignSelf: "flex-start",
+              width: "62%",
+              height: 17,
+              borderRadius: 8,
+              justifyContent: "center",
+              paddingHorizontal: 6,
+              backgroundColor: t.isDark ? k.search : k.bg,
+            }}
+          >
+            <View style={{ width: "70%", height: 3, borderRadius: 2, backgroundColor: k.text, opacity: 0.75 }} />
+          </View>
+          <View
+            style={{
+              alignSelf: "flex-end",
+              width: "54%",
+              height: 17,
+              borderRadius: 8,
+              marginTop: 5,
+              justifyContent: "center",
+              paddingHorizontal: 6,
+              backgroundColor: k.accent,
+            }}
+          >
+            <View style={{ width: "65%", height: 3, borderRadius: 2, backgroundColor: k.onAccent, opacity: 0.85 }} />
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // Секція вибору теми з живими мініатюрами чату.
 function ThemeSection() {
   const c = useChatPalette();
   const { themeId, setThemeId } = useTheme();
+  const rows: ThemeId[][] = [];
+  for (let i = 0; i < THEME_ORDER.length; i += 2) rows.push(THEME_ORDER.slice(i, i + 2));
   return (
-    <Group title="Тема оформлення">
-      <View style={{ flexDirection: "row", flexWrap: "wrap", padding: 8 }}>
-        {THEME_ORDER.map((id) => {
-          const t = THEMES[id];
-          const selected = id === themeId;
-          return (
-            <TouchableOpacity
-              key={id}
-              onPress={() => setThemeId(id)}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={`Тема: ${t.name}`}
-              accessibilityState={{ selected }}
-              style={{ width: "50%", padding: 4 }}
-            >
-              <View
-                style={{
-                  borderRadius: 16,
-                  padding: 8,
-                  borderWidth: 2,
-                  borderColor: selected ? t.colors.accent : withAlpha(c.muted, 0.25),
-                  backgroundColor: c.search,
-                }}
-              >
-                <View style={{ borderRadius: 10, overflow: "hidden", backgroundColor: t.colors.divider, height: 78 }}>
-                  <View style={{ height: 16, backgroundColor: t.colors.header }} />
-                  <View style={{ padding: 6 }}>
-                    <View
-                      style={{
-                        alignSelf: "flex-start",
-                        width: "62%",
-                        height: 14,
-                        borderRadius: 7,
-                        backgroundColor: t.isDark ? t.colors.search : t.colors.bg,
-                      }}
-                    />
-                    <View
-                      style={{
-                        alignSelf: "flex-end",
-                        width: "52%",
-                        height: 14,
-                        borderRadius: 7,
-                        marginTop: 5,
-                        backgroundColor: t.colors.accent,
-                      }}
-                    />
+    <Group
+      title="Тема оформлення"
+      footer="Світла тема — «Світла». Автоперемикання за системою недоступне: застосунок зафіксовано в темному режимі."
+    >
+      <View style={{ padding: 8 }}>
+        {rows.map((row, ri) => (
+          <View key={ri} style={{ flexDirection: "row" }}>
+            {row.map((id) => {
+              const t = THEMES[id];
+              const selected = id === themeId;
+              return (
+                <TouchableOpacity
+                  key={id}
+                  onPress={() => setThemeId(id)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Тема: ${t.name}`}
+                  accessibilityState={{ selected }}
+                  style={{ flex: 1, padding: 4 }}
+                >
+                  <ThemePreview id={id} selected={selected} />
+                  <View style={{ flexDirection: "row", alignItems: "center", marginTop: 7, paddingHorizontal: 4 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={{ color: c.text, fontSize: 14, fontWeight: selected ? "800" : "600" }}>
+                        {t.name}
+                      </Text>
+                      <Text numberOfLines={2} style={{ color: c.muted, fontSize: 11.5, lineHeight: 15, marginTop: 1 }}>
+                        {t.extras.tagline}
+                      </Text>
+                    </View>
+                    {selected ? <Ionicons name="checkmark-circle" size={20} color={c.accent} /> : null}
                   </View>
-                </View>
-                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
-                  <Text numberOfLines={1} style={{ flex: 1, color: c.text, fontSize: 13, fontWeight: selected ? "700" : "500" }}>
-                    {t.name}
-                  </Text>
-                  {selected ? <Ionicons name="checkmark-circle" size={18} color={t.colors.accent} /> : null}
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+                </TouchableOpacity>
+              );
+            })}
+            {row.length === 1 ? <View style={{ flex: 1, padding: 4 }} /> : null}
+          </View>
+        ))}
       </View>
     </Group>
   );

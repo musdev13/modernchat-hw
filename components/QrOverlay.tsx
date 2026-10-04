@@ -126,8 +126,12 @@ export function QrOverlay({ visible, onClose, name, username, avatarUrl }: Props
   const cardW = Math.min(W - 48, 340);
   const tile = cardW - 64;
   const qrSize = tile - 24;
-  const top = c.accent;
-  const bottom = mixHex(c.accent, c.isDark ? "#000000" : "#2B1055", 0.5);
+  // Світлі акценти (Falcon, Starship) затемнюємо, щоб білий текст на картці лишався читабельним.
+  const hex = c.accent.replace("#", "");
+  const lum =
+    (0.299 * parseInt(hex.slice(0, 2), 16) + 0.587 * parseInt(hex.slice(2, 4), 16) + 0.114 * parseInt(hex.slice(4, 6), 16)) / 255;
+  const top = lum > 0.6 ? mixHex(c.accent, "#000000", 0.55) : c.accent;
+  const bottom = mixHex(top, c.isDark ? "#000000" : "#2B1055", 0.5);
 
   const copy = async () => {
     if (!link) return;

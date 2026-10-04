@@ -1,3 +1,4 @@
+import { ThemeGlow } from "@/components/SpaceBackdrop";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -26,6 +27,7 @@ export function SettingsPage({ title, children }: { title: string; children: Rea
   const router = useRouter();
   return (
     <View style={{ flex: 1, backgroundColor: c.divider }}>
+      {c.premium ? <ThemeGlow color={c.glow} /> : null}
       <View
         style={{
           paddingTop: insets.top + 6,
@@ -88,7 +90,15 @@ export function Group({ title, footer, children }: { title?: string; footer?: st
           {title}
         </Text>
       ) : null}
-      <View style={{ backgroundColor: c.header, borderRadius: 18, overflow: "hidden" }}>
+      <View
+        style={{
+          backgroundColor: c.header,
+          borderRadius: 18,
+          overflow: "hidden",
+          borderWidth: c.premium ? 1 : 0,
+          borderColor: c.line,
+        }}
+      >
         {kids.map((k, i) => (isValidElement(k) ? cloneElement(k as ReactElement<any>, { first: i === 0 }) : k))}
       </View>
       {footer ? (
