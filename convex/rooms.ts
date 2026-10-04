@@ -91,8 +91,13 @@ export const listRooms = query({
         }
       }
 
+      // Історію очищено для себе й нових повідомлень відтоді немає — підпис у списку порожній.
+      const clearedPreview =
+        (setting?.clearedAt ?? 0) > 0 && (room.lastMessageAt ?? 0) <= (setting?.clearedAt ?? 0);
+
       return {
         ...room,
+        ...(clearedPreview ? { lastMessage: "" } : {}),
         title,
         avatarUrl,
         isDirect: !!room.isDirect,

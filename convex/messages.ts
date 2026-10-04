@@ -10,7 +10,7 @@ import {
   releaseMessageFiles,
 } from "./messageStorage";
 import { deletePollWithVotes, pollView } from "./polls";
-import { isMutedNow } from "./roomSettings";
+import { clearedAtOf, isMutedNow } from "./roomSettings";
 import { getAuthUser } from "./users";
 
 // TTL presence — если heartbeat старше, считаем что юзер ушёл из чата
@@ -149,9 +149,15 @@ export const getPaginatedMessages = query({
 
     await assertRoomMember(ctx, args.chatRoomId, userId);
 
+    // «Очистити історію» (для себе): показуємо лише новіші повідомлення.
+    const clearedAt = await clearedAtOf(ctx, userId, args.chatRoomId);
     const paginated = await ctx.db
       .query("messages")
-      .withIndex("by_chat_room", (q) => q.eq("chatRoomId", args.chatRoomId))
+      .withIndex("by_chat_room", (q) =>
+        clearedAt > 0
+          ? q.eq("chatRoomId", args.chatRoomId).gt("_creationTime", clearedAt)
+          : q.eq("chatRoomId", args.chatRoomId),
+      )
       .order("desc")
       .paginate(args.paginationOpts);
 
@@ -396,7 +402,9 @@ export const searchMessages = query({
     }[] = [];
 
     const hidden = await hiddenMessageIds(ctx, me._id, args.chatRoomId);
+    const clearedAt = await clearedAtOf(ctx, me._id, args.chatRoomId);
     for (const message of recent) {
+      if (message._creationTime <= clearedAt) break;
       if (message.isSystem || hidden.has(message._id)) continue;
       const text = message.content ?? "";
       if (text.startsWith(STICKER_MARK)) continue;

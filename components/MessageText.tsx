@@ -1,4 +1,5 @@
-import { ActionSheet, type SheetAction } from "@/components/ActionSheet";
+import type { SheetAction } from "@/components/ActionSheet";
+import { PopoverMenu } from "@/components/PopoverMenu";
 import { api } from "@/convex/_generated/api";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import { copyText } from "@/utils/clipboard";
@@ -116,7 +117,15 @@ export function LinkMenuHost() {
       ]
     : [];
 
-  return <ActionSheet visible={!!target} onClose={closeLinkMenu} title={target?.text} actions={actions} />;
+  return (
+    <PopoverMenu
+      visible={!!target}
+      onClose={closeLinkMenu}
+      placement="center"
+      title={target?.text}
+      actions={actions}
+    />
+  );
 }
 
 interface Props {

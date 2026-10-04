@@ -14,7 +14,8 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { ActionSheet, SheetAction } from "@/components/ActionSheet";
+import type { SheetAction } from "@/components/ActionSheet";
+import { PopoverMenu } from "@/components/PopoverMenu";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { membersLabel } from "@/utils/chat";
 
@@ -228,9 +229,10 @@ export function useRowMenu() {
   const [menu, setMenu] = useState<{ title: string; actions: SheetAction[] } | null>(null);
   const open = useCallback((title: string, actions: SheetAction[]) => setMenu({ title, actions }), []);
   const sheet = (
-    <ActionSheet
+    <PopoverMenu
       visible={!!menu}
       onClose={() => setMenu(null)}
+      placement="center"
       title={menu?.title}
       actions={menu?.actions ?? []}
     />

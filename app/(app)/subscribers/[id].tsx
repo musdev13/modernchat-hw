@@ -1,4 +1,5 @@
-import { ActionSheet, SheetAction } from "@/components/ActionSheet";
+import type { SheetAction } from "@/components/ActionSheet";
+import { PopoverMenu } from "@/components/PopoverMenu";
 import { AddMembersModal } from "@/components/AddMembersModal";
 import { MemberItem, MemberRow } from "@/components/RoomInfoRows";
 import { RoomAvatar } from "@/components/RoomAvatar";
@@ -212,9 +213,10 @@ export default function SubscribersScreen() {
         />
       )}
 
-      <ActionSheet
+      <PopoverMenu
         visible={!!sheet}
         onClose={() => setSheet(null)}
+        placement="center"
         title={sheet?.name}
         subtitle={
           sheet
@@ -225,7 +227,7 @@ export default function SubscribersScreen() {
                 : "Підписник"
             : undefined
         }
-        avatar={sheet ? <RoomAvatar title={sheet.name} imageUrl={sheet.image} size={44} /> : undefined}
+        avatar={sheet ? <RoomAvatar title={sheet.name} imageUrl={sheet.image} size={40} /> : undefined}
         actions={actions}
       />
 

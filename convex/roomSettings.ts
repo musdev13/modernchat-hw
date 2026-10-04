@@ -38,6 +38,7 @@ export async function patchRoomSetting(
     pinned?: boolean;
     hidden?: boolean;
     hiddenAt?: number;
+    clearedAt?: number;
   },
 ) {
   const existing = await ctx.db
@@ -56,6 +57,19 @@ export async function patchRoomSetting(
       ...patch,
     });
   }
+}
+
+/** Момент «очищення історії» для користувача (0 — не очищав). */
+export async function clearedAtOf(
+  ctx: { db: any },
+  userId: Id<"users">,
+  chatRoomId: Id<"chatRooms">,
+): Promise<number> {
+  const row = await ctx.db
+    .query("roomSettings")
+    .withIndex("by_user_and_room", (q: any) => q.eq("userId", userId).eq("chatRoomId", chatRoomId))
+    .first();
+  return row?.clearedAt ?? 0;
 }
 
 // Налаштування кімнати для поточного користувача.
@@ -158,5 +172,17 @@ export const hideRoom = mutation({
       pinned: false,
     });
     return { hidden: true };
+  },
+});
+
+// «Очистити історію» лише для себе: старіші повідомлення більше не показуються цьому користувачу.
+export const clearHistory = mutation({
+  args: { chatRoomId: v.id("chatRooms") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    await requireRoomMember(ctx, args.chatRoomId, me._id);
+    await patchRoomSetting(ctx, me._id, args.chatRoomId, { clearedAt: Date.now() });
+    return { cleared: true };
   },
 });

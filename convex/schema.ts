@@ -171,6 +171,8 @@ export default defineSchema({
     // Чат приховано для цього користувача (повертається, коли з'являється нове повідомлення).
     hidden: v.optional(v.boolean()),
     hiddenAt: v.optional(v.number()),
+    // «Очистити історію» лише для себе: повідомлення, створені до цього моменту, не показуються.
+    clearedAt: v.optional(v.number()),
   })
     .index("by_user_and_room", ["userId", "chatRoomId"])
     .index("by_user", ["userId"])

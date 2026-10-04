@@ -1,7 +1,7 @@
 import type { SheetAction } from "@/components/ActionSheet";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Modal, Platform, Pressable, StatusBar, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
@@ -17,32 +17,54 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   actions: SheetAction[];
-  /** З якого боку «виростає» меню (під кнопкою ⋮ — справа). */
-  align?: "right" | "left";
-  /** Відступ від верху екрана; за замовчуванням — одразу під верхньою панеллю профілю. */
+  /**
+   * top-right / top-left — під кнопкою ⋮ у верхній панелі (виростає з її кута);
+   * center — по центру екрана (довге натискання: чат у списку, повідомлення, посилання).
+   */
+  placement?: "top-right" | "top-left" | "center";
+  /** Відступ від верху екрана для top-*; за замовчуванням — одразу під верхньою панеллю. */
   top?: number;
+  /** Довільний блок над карткою (наприклад, швидкі реакції). */
+  header?: ReactNode;
+  /** Компактна шапка картки: аватар + заголовок + підзаголовок. */
+  title?: string;
+  subtitle?: string;
+  avatar?: ReactNode;
+  /** Короткий підпис над діями (фрагмент повідомлення). */
+  caption?: string;
 }
 
 const noop = () => {};
-const MENU_WIDTH = 252;
-const ITEM_H = 50;
-const SPRING = { damping: 20, stiffness: 320, mass: 0.7 } as const;
+const SPRING = { damping: 19, stiffness: 300, mass: 0.7 } as const;
+const MARGIN = 12;
 
 /**
- * Випливаюче меню у стилі Telegram: картка під кнопкою ⋮, що масштабується з кута кнопки (пружина)
- * із затуханням і так само закривається. Один Modal без власної анімації — уся анімація на UI-потоці;
- * змонтоване лише поки меню видиме (або програє закриття). Дія виконується після закриття,
- * щоб не накладати модальні вікна.
+ * Випливаюче меню у стилі Telegram: широка картка з великим радіусом, рядок = іконка зліва + текст,
+ * напівпрозоре тло теми, легка тінь, пружинне масштабування з кута кнопки ⋮ (або з центру) і
+ * затемнення фону. Один Modal без власної анімації — усе рухається на UI-потоці; змонтоване лише
+ * поки меню видиме (або програє закриття). Дія виконується після закриття, щоб модальні вікна
+ * не накладались.
  */
-export function PopoverMenu({ visible, onClose, actions, align = "right", top }: Props) {
+export function PopoverMenu({
+  visible,
+  onClose,
+  actions,
+  placement = "top-right",
+  top,
+  header,
+  title,
+  subtitle,
+  avatar,
+  caption,
+}: Props) {
   const c = useChatPalette();
   const insets = useSafeAreaInsets();
   const { width: W } = useWindowDimensions();
   const [mounted, setMounted] = useState(visible);
   const progress = useSharedValue(0);
   const pending = useRef<(() => void) | null>(null);
-  const lastActions = useRef(actions);
-  if (visible) lastActions.current = actions;
+  const lastProps = useRef({ actions, header, title, subtitle, avatar, caption });
+  if (visible) lastProps.current = { actions, header, title, subtitle, avatar, caption };
 
   const finish = useCallback(() => {
     setMounted(false);
@@ -64,54 +86,93 @@ export function PopoverMenu({ visible, onClose, actions, align = "right", top }:
 
   const statusInset = Math.max(insets.top, Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0);
   const topPos = top ?? statusInset + 6 + 44 + 6;
-  const width = Math.min(MENU_WIDTH, W - 24);
+  const center = placement === "center";
+  const width = center ? Math.min(320, W - 32) : Math.min(264, W - MARGIN * 2);
 
   const cardStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, progress.value * 1.6),
-    transform: [{ scale: 0.55 + 0.45 * progress.value }, { translateY: (1 - progress.value) * -8 }],
+    transform: [
+      { scale: 0.5 + 0.5 * progress.value },
+      { translateY: center ? 0 : (1 - progress.value) * -8 },
+    ],
   }));
   const dimStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
 
   if (!mounted) return null;
-  const items = visible ? actions : lastActions.current;
+  const shown = visible ? { actions, header, title, subtitle, avatar, caption } : lastProps.current;
+  const items = shown.actions;
+  const firstDestructive = items.findIndex((a) => a.destructive);
 
-  return (
-    <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Закрити меню">
-        <Animated.View
-          pointerEvents="none"
-          style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.18)" }, dimStyle]}
-        />
-        <Animated.View
-          style={[
-            {
-              position: "absolute",
-              top: topPos,
-              [align]: 12,
-              width,
-              transformOrigin: align === "right" ? "top right" : "top left",
-              borderRadius: 18,
-              backgroundColor: c.sheet,
-              borderWidth: 1,
-              borderColor: withAlpha(c.muted, 0.2),
-              paddingVertical: 6,
-              overflow: "hidden",
-              shadowColor: "#000",
-              shadowOpacity: 0.28,
-              shadowRadius: 16,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 12,
-            },
-            cardStyle,
-          ]}
-        >
-          {/* Внутрішній Pressable поглинає дотики, щоб тап по полях меню не закривав його як по фону */}
-          <Pressable onPress={noop}>
-          {items.map((action) => {
-            const color = action.destructive ? c.danger : c.text;
-            return (
+  const card = (
+    <Animated.View
+      style={[
+        {
+          width,
+          transformOrigin: center ? "center" : placement === "top-right" ? "top right" : "top left",
+          alignItems: "stretch",
+        },
+        center ? null : { position: "absolute", top: topPos, [placement === "top-right" ? "right" : "left"]: MARGIN },
+        cardStyle,
+      ]}
+    >
+      {shown.header ? <View style={{ marginBottom: 10 }}>{shown.header}</View> : null}
+      <Pressable
+        onPress={noop}
+        style={{
+          borderRadius: 20,
+          backgroundColor: withAlpha(c.sheet, 0.96),
+          borderWidth: 1,
+          borderColor: withAlpha(c.muted, 0.16),
+          paddingVertical: 6,
+          overflow: "hidden",
+          shadowColor: "#000",
+          shadowOpacity: 0.3,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 14,
+        }}
+      >
+        {shown.title ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderBottomWidth: 1,
+              borderBottomColor: withAlpha(c.muted, 0.16),
+              marginBottom: 4,
+            }}
+          >
+            {shown.avatar ? <View style={{ marginRight: 12 }}>{shown.avatar}</View> : null}
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={{ color: c.text, fontSize: 16, fontWeight: "700" }}>
+                {shown.title}
+              </Text>
+              {shown.subtitle ? (
+                <Text numberOfLines={1} style={{ color: c.muted, fontSize: 12.5, marginTop: 1 }}>
+                  {shown.subtitle}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+        {shown.caption ? (
+          <Text
+            numberOfLines={1}
+            style={{ color: c.muted, fontSize: 12.5, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
+          >
+            {shown.caption}
+          </Text>
+        ) : null}
+        {items.map((action, index) => {
+          const color = action.destructive ? c.danger : c.text;
+          return (
+            <View key={action.key}>
+              {index > 0 && index === firstDestructive ? (
+                <View style={{ height: 1, marginVertical: 4, marginHorizontal: 0, backgroundColor: withAlpha(c.muted, 0.16) }} />
+              ) : null}
               <Pressable
-                key={action.key}
                 accessibilityRole="menuitem"
                 accessibilityLabel={action.label}
                 android_ripple={{ color: withAlpha(c.accent, 0.18) }}
@@ -120,23 +181,51 @@ export function PopoverMenu({ visible, onClose, actions, align = "right", top }:
                   onClose();
                 }}
                 style={({ pressed }) => ({
-                  height: ITEM_H,
+                  height: 52,
                   flexDirection: "row",
                   alignItems: "center",
                   paddingHorizontal: 16,
                   backgroundColor: pressed ? withAlpha(c.accent, 0.12) : "transparent",
                 })}
               >
-                <Ionicons name={action.icon} size={22} color={action.destructive ? c.danger : c.muted} />
-                <Text numberOfLines={1} style={{ flex: 1, marginLeft: 16, color, fontSize: 16, fontWeight: "500" }}>
+                <Ionicons name={action.icon} size={24} color={color} style={{ width: 28 }} />
+                <Text numberOfLines={1} style={{ flex: 1, marginLeft: 14, color, fontSize: 16.5 }}>
                   {action.label}
                 </Text>
               </Pressable>
-            );
-          })}
-          </Pressable>
-        </Animated.View>
+            </View>
+          );
+        })}
       </Pressable>
+    </Animated.View>
+  );
+
+  return (
+    <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={onClose}>
+      <View style={{ flex: 1 }}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.28)" },
+            dimStyle,
+          ]}
+        />
+        <Pressable
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+          onPress={onClose}
+          accessibilityLabel="Закрити меню"
+        />
+        {center ? (
+          <View
+            pointerEvents="box-none"
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}
+          >
+            {card}
+          </View>
+        ) : (
+          card
+        )}
+      </View>
     </Modal>
   );
 }

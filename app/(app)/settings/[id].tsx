@@ -1,4 +1,4 @@
-import { ActionSheet, SheetAction } from "@/components/ActionSheet";
+import type { SheetAction } from "@/components/ActionSheet";
 import { PopoverMenu } from "@/components/PopoverMenu";
 import { AddMembersModal } from "@/components/AddMembersModal";
 import { EditRoomModal } from "@/components/EditRoomModal";
@@ -1278,9 +1278,10 @@ export default function RoomInfoScreen() {
 
         <PopoverMenu visible={menuVisible} onClose={() => setMenuVisible(false)} actions={menuActions} />
 
-        <ActionSheet
+        <PopoverMenu
           visible={!!memberSheet}
           onClose={() => setMemberSheet(null)}
+          placement="center"
           title={memberSheet?.name}
           subtitle={
             memberSheet
@@ -1293,15 +1294,16 @@ export default function RoomInfoScreen() {
           }
           avatar={
             memberSheet ? (
-              <RoomAvatar title={memberSheet.name} imageUrl={memberSheet.image} size={44} />
+              <RoomAvatar title={memberSheet.name} imageUrl={memberSheet.image} size={40} />
             ) : undefined
           }
           actions={memberActions}
         />
 
-        <ActionSheet
+        <PopoverMenu
           visible={discussionMenu}
           onClose={() => setDiscussionMenu(false)}
+          placement="center"
           title="Обговорення"
           subtitle="Група для коментарів до публікацій"
           actions={[

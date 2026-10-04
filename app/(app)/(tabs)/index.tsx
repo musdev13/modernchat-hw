@@ -1,4 +1,5 @@
-import { ActionSheet, SheetAction } from "@/components/ActionSheet";
+import type { SheetAction } from "@/components/ActionSheet";
+import { PopoverMenu } from "@/components/PopoverMenu";
 import { ChatFolder, ChatFolderTabs } from "@/components/ChatFolderTabs";
 import { PublicChannelResults } from "@/components/PublicChannelResults";
 import { GlassProvider, GlassTarget } from "@/components/Glass";
@@ -432,9 +433,10 @@ export default function ChatsTab() {
           }}
         />
 
-        <ActionSheet
+        <PopoverMenu
           visible={!!menuRoom}
           onClose={() => setMenuRoomId(null)}
+          placement="center"
           title={menuRoom?.title}
           subtitle={menuRoom?.isDirect ? "Особистий чат" : menuRoom?.isChannel ? "Канал" : "Група"}
           avatar={
@@ -442,7 +444,7 @@ export default function ChatsTab() {
               <RoomAvatar
                 title={menuRoom.title}
                 imageUrl={menuRoom.avatarUrl}
-                size={44}
+                size={40}
                 saved={menuRoom.isSaved}
               />
             ) : undefined

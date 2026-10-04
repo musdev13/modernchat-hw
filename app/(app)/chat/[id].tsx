@@ -59,6 +59,8 @@ import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/reac
 import { File, Paths } from "expo-file-system";
 import * as Haptics from "expo-haptics";
 import { MuteSheet } from "@/components/MuteSheet";
+import { PopoverMenu } from "@/components/PopoverMenu";
+import type { SheetAction } from "@/components/ActionSheet";
 import { subscribersLabel } from "@/utils/channel";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -164,6 +166,11 @@ export default function ChatRoomScreen() {
   const setRoomMuted = useMutation(api.roomSettings.setMuted);
   const mySettings = useQuery(api.roomSettings.getMyRoomSettings, { chatRoomId });
   const [muteSheetOpen, setMuteSheetOpen] = useState(false);
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const clearHistoryMutation = useMutation(api.roomSettings.clearHistory);
+  const hideRoomMutation = useMutation(api.roomSettings.hideRoom);
+  const removeParticipantMutation = useMutation(api.rooms.removeParticipant);
+  const deleteRoomMutation = useMutation(api.rooms.deleteRoom);
   const markRead = useMutation(api.reads.markRead);
   const readState = useQuery(api.reads.getReadState, { chatRoomId });
   const othersLastReadAt = readState?.othersLastReadAt ?? 0;
@@ -1359,6 +1366,124 @@ export default function ChatRoomScreen() {
         ? `/user/${otherUserId}`
         : `/settings/${chatRoomId}`) as any,
     );
+
+  // ⋮ у шапці: меню чату у стилі Telegram.
+  const chatMenuActions: SheetAction[] = [];
+  if (!isSaved) {
+    chatMenuActions.push({
+      key: "info",
+      label: isDirect ? "Профіль" : isChannel ? "Інформація про канал" : "Інформація про групу",
+      icon: isDirect ? "person-circle-outline" : "information-circle-outline",
+      onPress: openInfo,
+    });
+  }
+  chatMenuActions.push({ key: "search", label: "Пошук", icon: "search-outline", onPress: openSearch });
+  if (!isSaved) {
+    chatMenuActions.push({
+      key: "mute",
+      label: mySettings?.muted ? "Увімкнути звук" : "Вимкнути звук",
+      icon: mySettings?.muted ? "notifications-outline" : "notifications-off-outline",
+      onPress: () => {
+        if (mySettings?.muted) void setRoomMuted({ chatRoomId, muted: false }).catch(() => {});
+        else setMuteSheetOpen(true);
+      },
+    });
+  }
+  if (!readOnlyChannel) {
+    chatMenuActions.push({
+      key: "clear",
+      label: "Очистити історію",
+      icon: "trash-bin-outline",
+      onPress: () =>
+        Alert.alert(
+          "Очистити історію?",
+          "Усі повідомлення зникнуть лише у вас. В інших учасників історія залишиться.",
+          [
+            { text: "Скасувати", style: "cancel" },
+            {
+              text: "Очистити",
+              style: "destructive",
+              onPress: () =>
+                void clearHistoryMutation({ chatRoomId }).catch((e: any) =>
+                  Alert.alert("Помилка", e?.message ?? "Не вдалося очистити історію"),
+                ),
+            },
+          ],
+        ),
+    });
+  }
+  if (!isSaved) {
+    const leave = (fn: () => Promise<unknown>, failure: string) =>
+      void fn()
+        .then(() => router.back())
+        .catch((e: any) => Alert.alert("Помилка", e?.message ?? failure));
+    if (isDirect) {
+      chatMenuActions.push({
+        key: "delete",
+        label: "Видалити чат",
+        icon: "trash-outline",
+        destructive: true,
+        onPress: () =>
+          Alert.alert(
+            "Видалити чат?",
+            `Чат із «${roomTitle}» зникне зі списку. Історія збережеться, а чат повернеться, щойно з'явиться нове повідомлення.`,
+            [
+              { text: "Скасувати", style: "cancel" },
+              {
+                text: "Видалити",
+                style: "destructive",
+                onPress: () => leave(() => hideRoomMutation({ chatRoomId }), "Не вдалося видалити чат"),
+              },
+            ],
+          ),
+      });
+    } else if (room?.canDeleteRoom) {
+      chatMenuActions.push({
+        key: "delete",
+        label: isChannel ? "Видалити канал" : "Видалити кімнату",
+        icon: "trash-outline",
+        destructive: true,
+        onPress: () =>
+          Alert.alert(
+            isChannel ? "Видалити канал?" : "Видалити кімнату?",
+            `Ви впевнені, що хочете видалити «${roomTitle}» та всі повідомлення? Цю дію неможливо скасувати.`,
+            [
+              { text: "Скасувати", style: "cancel" },
+              {
+                text: "Видалити",
+                style: "destructive",
+                onPress: () => leave(() => deleteRoomMutation({ roomId: chatRoomId }), "Не вдалося видалити"),
+              },
+            ],
+          ),
+      });
+    } else if (currentUser) {
+      chatMenuActions.push({
+        key: "leave",
+        label: isChannel ? "Покинути канал" : "Покинути кімнату",
+        icon: "exit-outline",
+        destructive: true,
+        onPress: () =>
+          Alert.alert(
+            isChannel ? "Покинути канал?" : "Покинути кімнату?",
+            `Ви впевнені, що хочете покинути «${roomTitle}»?`,
+            [
+              { text: "Скасувати", style: "cancel" },
+              {
+                text: "Покинути",
+                style: "destructive",
+                onPress: () =>
+                  leave(
+                    () => removeParticipantMutation({ roomId: chatRoomId, targetUserId: currentUser._id }),
+                    "Не вдалося покинути",
+                  ),
+              },
+            ],
+          ),
+      });
+    }
+  }
+
   const typingText =
     typingUsers && typingUsers.length > 0
       ? isDirect
@@ -2291,10 +2416,10 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={openInfo}
+            onPress={() => setChatMenuOpen(true)}
             style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
             accessibilityRole="button"
-            accessibilityLabel={isDirect ? "Профіль користувача" : "Налаштування кімнати"}
+            accessibilityLabel="Меню чату"
           >
             <Ionicons name="ellipsis-vertical" size={20} color={c.muted} />
           </TouchableOpacity>
@@ -2353,6 +2478,13 @@ export default function ChatRoomScreen() {
         onFile={() => void runPicker(pickDocuments)}
         onCamera={() => void runPicker(captureWithCamera)}
         onPoll={() => setPollModalOpen(true)}
+      />
+
+      <PopoverMenu
+        visible={chatMenuOpen}
+        onClose={() => setChatMenuOpen(false)}
+        actions={chatMenuActions}
+        top={islandBlock - 2}
       />
 
       <MuteSheet
