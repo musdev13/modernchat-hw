@@ -8,6 +8,15 @@ import { getAuthUser } from "./users";
 // TTL presence — если heartbeat старше, считаем что юзер ушёл из чата
 const PRESENCE_TTL_MS = 30_000;
 
+// Рядок для списку чатів: у групах з іменем відправника, в особистих чатах — без нього.
+function previewLine(
+  room: { isDirect?: boolean } | null | undefined,
+  senderName: string,
+  text: string,
+): string {
+  return room?.isDirect ? text : `${senderName}: ${text}`;
+}
+
 async function assertRoomMember(
   ctx: any,
   roomId: Id<"chatRooms">,
@@ -400,7 +409,7 @@ export const sendMessage = mutation({
     });
 
     await ctx.db.patch(args.chatRoomId, {
-      lastMessage: `${user.name ?? "Користувач"}: ${trimmedContent}`,
+      lastMessage: previewLine(room, user.name ?? "Користувач", trimmedContent),
       lastMessageAt: Date.now(),
     });
 
@@ -447,7 +456,7 @@ export const editMessage = mutation({
     const room = await ctx.db.get(message.chatRoomId);
     if (room && room.lastMessageAt === message._creationTime) {
       await ctx.db.patch(message.chatRoomId, {
-        lastMessage: `${message.senderName}: ${trimmedContent}`,
+        lastMessage: previewLine(room, message.senderName, trimmedContent),
       });
     }
   },
@@ -499,7 +508,11 @@ export const deleteMessage = mutation({
 
     await ctx.db.patch(message.chatRoomId, {
       lastMessage: lastRemainingMessage
-        ? `${lastRemainingMessage.senderName}: ${lastRemainingMessage.content ?? ""}`
+        ? previewLine(
+            roomOfMessage,
+            lastRemainingMessage.senderName,
+            lastRemainingMessage.content ?? "",
+          )
         : "Повідомлень немає",
       lastMessageAt: lastRemainingMessage?._creationTime ?? Date.now(),
     });
@@ -546,7 +559,7 @@ export const sendMediaMessage = mutation({
     });
 
     await ctx.db.patch(args.chatRoomId, {
-      lastMessage: `${user.name ?? "Користувач"}: 📷 Фотографія`,
+      lastMessage: previewLine(room, user.name ?? "Користувач", "📷 Фотографія"),
       lastMessageAt: Date.now(),
     });
 
@@ -609,7 +622,7 @@ export const sendVoiceMessage = mutation({
     const previewText = `🎤 Голосове повідомлення (${durationSeconds}с)`;
 
     await ctx.db.patch(args.chatRoomId, {
-      lastMessage: `${user.name ?? "Користувач"}: ${previewText}`,
+      lastMessage: previewLine(room, user.name ?? "Користувач", previewText),
       lastMessageAt: Date.now(),
     });
 
@@ -665,7 +678,7 @@ export const sendVideoNote = mutation({
     const previewText = `📹 Відеоповідомлення (${durationSeconds}с)`;
 
     await ctx.db.patch(args.chatRoomId, {
-      lastMessage: `${user.name ?? "Користувач"}: ${previewText}`,
+      lastMessage: previewLine(room, user.name ?? "Користувач", previewText),
       lastMessageAt: Date.now(),
     });
 

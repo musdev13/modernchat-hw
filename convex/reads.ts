@@ -79,19 +79,33 @@ export const ensureReads = mutation({
   },
 });
 
-// Лічильники непрочитаних для списку чатів.
+// Лічильники непрочитаних для списку чатів (+ загальна кількість для значка на вкладці «Чати»).
 export const getUnreadCounts = query({
   args: {},
   handler: async (ctx) => {
     const me = await getAuthUser(ctx);
-    if (!me) return { counts: {} as Record<string, number>, missing: false };
+    if (!me) {
+      return { counts: {} as Record<string, number>, missing: false, total: 0 };
+    }
 
     const rooms = await ctx.db.query("chatRooms").collect();
+    const settings = await ctx.db
+      .query("roomSettings")
+      .withIndex("by_user", (q) => q.eq("userId", me._id))
+      .collect();
+    const settingOf = new Map(settings.map((s) => [s.chatRoomId as string, s]));
+
     const counts: Record<string, number> = {};
     let missing = false;
+    let total = 0;
 
     for (const room of rooms) {
       if (!participantIdsOf(room).includes(me._id)) continue;
+      const setting = settingOf.get(room._id);
+      // Прихований чат без нових повідомлень у лічильниках не бере участі.
+      if (setting?.hidden && (room.lastMessageAt ?? 0) <= (setting.hiddenAt ?? 0)) {
+        continue;
+      }
       const read = await ctx.db
         .query("roomReads")
         .withIndex("by_user_and_room", (q) =>
@@ -113,9 +127,13 @@ export const getUnreadCounts = query({
       const count = newer.filter(
         (m) => m.senderId !== me._id && !m.isSystem,
       ).length;
-      if (count > 0) counts[room._id] = Math.min(count, UNREAD_CAP);
+      if (count > 0) {
+        const capped = Math.min(count, UNREAD_CAP);
+        counts[room._id] = capped;
+        if (!setting?.muted) total += capped;
+      }
     }
-    return { counts, missing };
+    return { counts, missing, total };
   },
 });
 

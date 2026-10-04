@@ -27,11 +27,17 @@ export default defineSchema({
     // Фото кімнати (файл у storage + готове посилання).
     avatarStorageId: v.optional(v.id("_storage")),
     avatarUrl: v.optional(v.string()),
+    // Особистий (1:1) чат: рівно двоє учасників, назва й фото беруться від співрозмовника.
+    isDirect: v.optional(v.boolean()),
+    // Відсортована пара id користувачів («idA_idB») для пошуку існуючого особистого чату.
+    directKey: v.optional(v.string()),
     lastMessage: v.optional(v.string()),
     lastMessageAt: v.optional(v.number()),
     // Закріплені повідомлення (порядок закріплення: останнє — найновіше).
     pinnedMessageIds: v.optional(v.array(v.id("messages"))),
-  }).index("by_creator", ["creatorId"]),
+  })
+    .index("by_creator", ["creatorId"])
+    .index("by_direct_key", ["directKey"]),
 
   messages: defineTable({
     chatRoomId: v.id("chatRooms"),
@@ -83,6 +89,11 @@ export default defineSchema({
     userId: v.id("users"),
     chatRoomId: v.id("chatRooms"),
     muted: v.boolean(),
+    // Закріплено нагорі списку чатів.
+    pinned: v.optional(v.boolean()),
+    // Чат приховано для цього користувача (повертається, коли з'являється нове повідомлення).
+    hidden: v.optional(v.boolean()),
+    hiddenAt: v.optional(v.number()),
   })
     .index("by_user_and_room", ["userId", "chatRoomId"])
     .index("by_user", ["userId"])

@@ -1,7 +1,26 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { patchRoomSetting } from "./roomSettings";
 import { getAuthUser } from "./users";
+
+const DIRECT_ROOM_TITLE = "Приватний чат";
+
+// Як показувати співрозмовника в особистому чаті (так само, як у «Контактах»).
+const displayNameOf = (
+  user: { name?: string; username?: string; email?: string } | null,
+) => user?.name ?? user?.username ?? user?.email ?? "Користувач";
+
+const makeDirectKey = (a: Id<"users">, b: Id<"users">) =>
+  [a as string, b as string].sort().join("_");
+
+function assertGroupRoom(room: { isDirect?: boolean }) {
+  if (room.isDirect) {
+    throw new Error(
+      "Це особистий чат: його можна лише приховати зі списку, групові дії недоступні",
+    );
+  }
+}
 
 const nameOf = (user: { name?: string; username?: string; email?: string } | null) =>
   user?.username ?? user?.name ?? user?.email ?? "Користувач";
@@ -30,8 +49,54 @@ export const listRooms = query({
   handler: async (ctx) => {
     const me = await getAuthUser(ctx);
     if (!me) return [];
-    const rooms = await ctx.db.query("chatRooms").order("desc").collect();
-    return rooms.filter((room) => participantIdsOf(room).includes(me._id));
+    const rooms = await ctx.db.query("chatRooms").collect();
+    const settings = await ctx.db
+      .query("roomSettings")
+      .withIndex("by_user", (q) => q.eq("userId", me._id))
+      .collect();
+    const settingOf = new Map(settings.map((row) => [row.chatRoomId as string, row]));
+
+    const result = [];
+    for (const room of rooms) {
+      const members = participantIdsOf(room);
+      if (!members.includes(me._id)) continue;
+      const setting = settingOf.get(room._id);
+
+      // Порожні особисті чати (ще без повідомлень) у списку не показуємо.
+      if (room.isDirect && !room.lastMessageAt) continue;
+      // Прихований чат повертається, коли в ньому з'явилося нове повідомлення.
+      if (setting?.hidden && (room.lastMessageAt ?? 0) <= (setting.hiddenAt ?? 0)) {
+        continue;
+      }
+
+      let title = room.title;
+      let avatarUrl = room.avatarUrl;
+      let otherUserId: Id<"users"> | undefined;
+      if (room.isDirect) {
+        otherUserId = members.find((id) => id !== me._id);
+        const other = otherUserId ? await ctx.db.get(otherUserId) : null;
+        title = displayNameOf(other);
+        avatarUrl = other?.image;
+      }
+
+      result.push({
+        ...room,
+        title,
+        avatarUrl,
+        isDirect: !!room.isDirect,
+        otherUserId,
+        muted: !!setting?.muted,
+        pinned: !!setting?.pinned,
+      });
+    }
+
+    const stamp = (room: { lastMessageAt?: number; _creationTime: number }) =>
+      room.lastMessageAt ?? room._creationTime;
+    result.sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return stamp(b) - stamp(a);
+    });
+    return result;
   },
 });
 
@@ -63,10 +128,20 @@ export const getRoom = query({
         };
       }),
     );
-    const isCreator = room.creatorId === userId;
-    const isAdmin = isCreator || adminIds.includes(userId);
+    const isDirect = !!room.isDirect;
+    const otherUserId = isDirect
+      ? participantIds.find((id) => id !== userId)
+      : undefined;
+    const otherUser = otherUserId ? await ctx.db.get(otherUserId) : null;
+    const isCreator = !isDirect && room.creatorId === userId;
+    const isAdmin = !isDirect && (isCreator || adminIds.includes(userId));
     return {
       ...room,
+      ...(isDirect
+        ? { title: displayNameOf(otherUser), avatarUrl: otherUser?.image }
+        : {}),
+      isDirect,
+      otherUserId,
       participantIds,
       adminIds,
       participants: participants.filter(
@@ -84,6 +159,7 @@ export const createRoom = mutation({
     title: v.string(),
     description: v.optional(v.string()),
     participantIds: v.optional(v.array(v.id("users"))),
+    avatarStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     const me = await getAuthUser(ctx);
@@ -92,6 +168,12 @@ export const createRoom = mutation({
 
     const title = args.title.trim();
     if (!title) throw new Error("Введіть назву кімнати");
+    if (title.length > 64) throw new Error("Назва задовга (максимум 64 символи)");
+
+    let avatarUrl: string | undefined;
+    if (args.avatarStorageId) {
+      avatarUrl = (await ctx.storage.getUrl(args.avatarStorageId)) ?? undefined;
+    }
 
     const participantIds = Array.from(new Set([userId, ...(args.participantIds ?? [])]));
     const now = Date.now();
@@ -101,6 +183,8 @@ export const createRoom = mutation({
       creatorId: userId,
       participantIds,
       adminIds: [userId],
+      avatarStorageId: avatarUrl ? args.avatarStorageId : undefined,
+      avatarUrl,
       lastMessage: "🎉 Груповий чат створено",
       lastMessageAt: now,
     });
@@ -122,6 +206,92 @@ export const createRoom = mutation({
   },
 });
 
+// Особистий (1:1) чат із користувачем: повертає існуючий або створює новий.
+export const getOrCreateDirectRoom = mutation({
+  args: { otherUserId: v.id("users") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    if (args.otherUserId === me._id) {
+      throw new Error("Не можна почати особистий чат із самим собою");
+    }
+    const other = await ctx.db.get(args.otherUserId);
+    if (!other) throw new Error("Користувача не знайдено");
+
+    const directKey = makeDirectKey(me._id, args.otherUserId);
+    const existing = await ctx.db
+      .query("chatRooms")
+      .withIndex("by_direct_key", (q) => q.eq("directKey", directKey))
+      .first();
+
+    let roomId: Id<"chatRooms">;
+    if (existing) {
+      roomId = existing._id;
+    } else {
+      roomId = await ctx.db.insert("chatRooms", {
+        title: DIRECT_ROOM_TITLE,
+        creatorId: me._id,
+        participantIds: [me._id, args.otherUserId],
+        adminIds: [],
+        isDirect: true,
+        directKey,
+      });
+    }
+
+    // Гарантуємо запис про прочитання для обох учасників.
+    for (const userId of [me._id, args.otherUserId]) {
+      const read = await ctx.db
+        .query("roomReads")
+        .withIndex("by_user_and_room", (q) =>
+          q.eq("userId", userId).eq("chatRoomId", roomId),
+        )
+        .first();
+      if (!read) {
+        await ctx.db.insert("roomReads", {
+          userId,
+          chatRoomId: roomId,
+          lastReadAt: Date.now(),
+        });
+      }
+    }
+
+    // Якщо чат був прихований — показуємо його знову.
+    const mySetting = await ctx.db
+      .query("roomSettings")
+      .withIndex("by_user_and_room", (q) =>
+        q.eq("userId", me._id).eq("chatRoomId", roomId),
+      )
+      .first();
+    if (mySetting?.hidden) {
+      await patchRoomSetting(ctx, me._id, roomId, { hidden: false });
+    }
+    return roomId;
+  },
+});
+
+// Існуючий особистий чат (без створення) — для кнопок на профілі.
+export const findDirectRoom = query({
+  args: { otherUserId: v.id("users") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me || args.otherUserId === me._id) return null;
+    const room = await ctx.db
+      .query("chatRooms")
+      .withIndex("by_direct_key", (q) =>
+        q.eq("directKey", makeDirectKey(me._id, args.otherUserId)),
+      )
+      .first();
+    if (!room) return null;
+    const setting = await ctx.db
+      .query("roomSettings")
+      .withIndex("by_user_and_room", (q) =>
+        q.eq("userId", me._id).eq("chatRoomId", room._id),
+      )
+      .first();
+    return { roomId: room._id, muted: !!setting?.muted };
+  },
+});
+
 export const addParticipants = mutation({
   args: { roomId: v.id("chatRooms"), participantIds: v.array(v.id("users")) },
   handler: async (ctx, args) => {
@@ -130,6 +300,7 @@ export const addParticipants = mutation({
     const userId = me._id;
 
     const room = await requireMember(ctx, args.roomId, userId);
+    assertGroupRoom(room);
     if (!adminIdsOf(room).includes(userId) && room.creatorId !== userId) {
       throw new Error("Лише адміністратори можуть додавати учасників");
     }
@@ -180,6 +351,7 @@ export const updateParticipantRole = mutation({
     const userId = me._id;
 
     const room = await requireMember(ctx, args.roomId, userId);
+    assertGroupRoom(room);
     if (room.creatorId !== userId)
       throw new Error("Лише творець кімнати може змінювати ролі");
     if (args.targetUserId === room.creatorId)
@@ -231,6 +403,7 @@ export const updateRoom = mutation({
     const userId = me._id;
 
     const room = await requireMember(ctx, args.roomId, userId);
+    assertGroupRoom(room);
     if (room.creatorId !== userId && !adminIdsOf(room).includes(userId)) {
       throw new Error("Лише адміністратор може змінювати кімнату");
     }
@@ -303,6 +476,7 @@ export const removeParticipant = mutation({
     const userId = me._id;
 
     const room = await requireMember(ctx, args.roomId, userId);
+    assertGroupRoom(room);
     const participants = participantIdsOf(room);
     if (!participants.includes(args.targetUserId))
       throw new Error("Користувач не є учасником кімнати");
@@ -366,6 +540,7 @@ export const deleteRoom = mutation({
     const userId = me._id;
 
     const room = await requireMember(ctx, args.roomId, userId);
+    assertGroupRoom(room);
     if (room.creatorId !== userId)
       throw new Error("Видалити кімнату може лише її творець");
 

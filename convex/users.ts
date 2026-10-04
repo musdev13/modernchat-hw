@@ -104,6 +104,67 @@ export const searchUsers = query({
   },
 });
 
+// Усі користувачі застосунку (крім поточного) як «контакти», найактивніші зверху.
+export const listContacts = query({
+  args: { query: v.optional(v.string()), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) return [];
+
+    const term = (args.query ?? "").trim().toLowerCase().replace(/^@/, "");
+    const limit = Math.min(Math.max(Math.floor(args.limit ?? 200), 1), 200);
+
+    const users = await ctx.db.query("users").collect();
+    const presence = await ctx.db.query("chatPresence").collect();
+    const now = Date.now();
+    const online = new Set<string>(
+      presence
+        .filter((p) => p.lastSeenAt > now - PRESENCE_TTL_MS)
+        .map((p) => p.userId as string),
+    );
+
+    return users
+      .filter((user) => user._id !== me._id)
+      .map((user) => ({
+        _id: user._id,
+        name: user.name ?? user.username ?? user.email ?? "Користувач",
+        username: user.username,
+        image: user.image,
+        inChatNow: online.has(user._id),
+        lastActiveAt: user.lastActiveAt,
+      }))
+      .filter((user) => {
+        if (!term) return true;
+        return `${user.name} ${user.username ?? ""}`.toLowerCase().includes(term);
+      })
+      .sort((a, b) => {
+        if (a.inChatNow !== b.inChatNow) return a.inChatNow ? -1 : 1;
+        const diff = (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0);
+        return diff !== 0 ? diff : a.name.localeCompare(b.name, "uk");
+      })
+      .slice(0, limit);
+  },
+});
+
+// Легкий статус користувача (для шапки особистого чату).
+export const getUserStatus = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) return null;
+    const user = await ctx.db.get(args.userId);
+    if (!user) return null;
+    const presence = await ctx.db
+      .query("chatPresence")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+    return {
+      inChatNow: !!presence && presence.lastSeenAt > Date.now() - PRESENCE_TTL_MS,
+      lastActiveAt: user.lastActiveAt,
+    };
+  },
+});
+
 export const generateAvatarUploadUrl = mutation(async (ctx) => {
   const me = await getAuthUser(ctx);
 
