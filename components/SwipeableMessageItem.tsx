@@ -20,7 +20,10 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { firstPreviewUrl } from "@/utils/linkify";
 import { FileBubble, ratioFrom, VideoBubble } from "./AttachmentBubbles";
+import { LinkPreviewCard } from "./LinkPreviewCard";
+import { MessageText, takeRecentLinkTouch, showLinkMenu } from "./MessageText";
 import { MessageReactions, ReactionItem } from "./MessageReactions";
 import { PollBubble, PollData } from "./PollBubble";
 import { VideoNotePlayer } from "./VideoNotePlayer";
@@ -258,6 +261,12 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   };
 
   const openActions = () => {
+    // Дотик почався на посиланні — показуємо меню посилання замість меню повідомлення.
+    const link = takeRecentLinkTouch();
+    if (link) {
+      showLinkMenu(link);
+      return;
+    }
     onLongPress(item);
   };
 
@@ -349,8 +358,9 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   const metaColor = isOwn ? c.outgoingMeta : c.incomingMeta;
   const time = formatTime(item._creationTime);
 
+  const previewUrl = hasText && !isBigEmoji ? firstPreviewUrl(content) : null;
   const inlineMeta =
-    hasText && !hasVisual && !hasVideoNote && !hasVoice && !hasReactions;
+    hasText && !hasVisual && !hasVideoNote && !hasVoice && !hasReactions && !previewUrl;
   const overlayMeta =
     hasVisual && !hasText && !hasReactions && !item.replyToSender;
 
@@ -766,8 +776,11 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                 {hasText ? (
                   inlineMeta ? (
                     <View>
-                      <Text style={{ color: textColor, fontSize: 16, lineHeight: 22 }}>
-                        {content}
+                      <MessageText
+                        text={content}
+                        isOwn={isOwn}
+                        style={{ color: textColor, fontSize: 16, lineHeight: 22 }}
+                      >
                         {/* Місце під час у правому нижньому куті: переноситься разом
                             з останнім словом, а якщо рядок повний — на новий рядок. */}
                         {"\u00A0"}
@@ -777,22 +790,28 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                             height: 1,
                           }}
                         />
-                      </Text>
+                      </MessageText>
                       <View style={{ position: "absolute", right: 0, bottom: 0 }}>
                         {meta}
                       </View>
                     </View>
                   ) : (
-                    <Text
+                    <MessageText
+                      text={content}
+                      isOwn={isOwn}
                       style={[
                         { color: textColor, fontSize: 16, lineHeight: 22 },
                         innerPad,
                         hasVisual ? { paddingTop: 5 } : null,
                       ]}
-                    >
-                      {content}
-                    </Text>
+                    />
                   )
+                ) : null}
+
+                {previewUrl ? (
+                  <View style={[innerPad, { marginBottom: 2 }]}>
+                    <LinkPreviewCard url={previewUrl} isOwn={isOwn} />
+                  </View>
                 ) : null}
 
                 {hasReactions && (

@@ -4,6 +4,7 @@ import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import type { GifItem } from "@/components/GifPicker";
 import { EdgeScrim } from "@/components/EdgeScrim";
 import { getCachedVideoThumb } from "@/components/AttachmentBubbles";
+import { LinkMenuHost } from "@/components/MessageText";
 import { MediaViewer, type ViewerItem } from "@/components/MediaViewer";
 import { saveMedia } from "@/utils/mediaSave";
 import {
@@ -2329,6 +2330,7 @@ export default function ChatRoomScreen() {
         </Animated.View>
       )}
 
+      <LinkMenuHost />
       <MediaViewer
         visible={!!viewer}
         items={viewer?.items ?? []}
