@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-/** Перегляд каналу за посиланням `modernchat://c/<slug>`: «Підписатись» або відкрити чат. */
+/** Перегляд каналу за посиланням `modesto://c/<slug> (and legacy modernchat://c/<slug>)`: «Підписатись» або відкрити чат. */
 export default function ChannelPreviewScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();

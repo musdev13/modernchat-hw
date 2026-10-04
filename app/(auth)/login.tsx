@@ -236,7 +236,7 @@ export default function LoginScreen() {
             <Animated.View style={[{ alignItems: "center" }, logoStyle]}>
               <Logo size={88} glow="#B8D0E8" animated delay={200} />
               <View style={{ marginTop: 26 }}>
-                <Logo variant="wordmark" size={216} animated delay={650} />
+                <Logo variant="wordmark" size={190} animated delay={650} />
               </View>
               <Text style={styles.tagline}>
                 {isSignUp ? "Приєднуйтесь до нового способу спілкування" : "Зв'язок без меж. Увійдіть, щоб продовжити"}

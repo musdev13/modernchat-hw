@@ -77,7 +77,7 @@ export function AuthIntro({ onDone }: { onDone: () => void }) {
         pointerEvents="none"
         style={{ position: "absolute", top: insets.top + 20, left: 0, right: 0, alignItems: "center" }}
       >
-        <Logo variant="wordmark" size={132} color="rgba(255,255,255,0.7)" animated delay={300} />
+        <Logo variant="wordmark" size={112} color="rgba(255,255,255,0.7)" animated delay={300} />
       </View>
 
       <Animated.FlatList

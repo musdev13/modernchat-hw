@@ -1,5 +1,5 @@
-/** Посилання на канал: modernchat://c/<slug> (схема застосунку, обробляється expo-router). */
-export const channelLink = (slug: string) => `modernchat://c/${slug}`;
+/** Посилання на канал: modesto://c/<slug> (схема застосунку, обробляється expo-router). */
+export const channelLink = (slug: string) => `modesto://c/${slug}`;
 
 /** «1 підписник», «2 підписники», «5 підписників». */
 export function subscribersLabel(n: number): string {

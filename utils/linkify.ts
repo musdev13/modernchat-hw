@@ -1,4 +1,4 @@
-/** Розбір тексту повідомлення на звичайні фрагменти й посилання (URL, e-mail, телефон, @згадки, modernchat://). */
+/** Розбір тексту повідомлення на звичайні фрагменти й посилання (URL, e-mail, телефон, @згадки, modesto://). */
 
 export type LinkKind = "url" | "app" | "email" | "phone" | "mention";
 
@@ -13,7 +13,7 @@ const TLDS =
   "com|org|net|io|ua|me|app|dev|co|ru|info|biz|tv|gg|ly|to|xyz|online|site|tech|ai|eu|de|uk|fr|pl|by|kz|cc|fm|sh|us|ca|edu|gov|gl|be|it|es|nl|cz|su|pro|store|shop|blog|cloud|link|live|news|page|space|top|wiki|team|chat|media|studio|ink|vip|gd|im|is|so|ws|ch|se|no|fi|at|jp|cn|in|br";
 
 const TAIL = String.raw`[^\s<>"«»]*`;
-const SCHEME = String.raw`(?:https?:\/\/|modernchat:\/\/)[^\s<>"«»]+`;
+const SCHEME = String.raw`(?:https?:\/\/|(?:modesto|modernchat):\/\/)[^\s<>"«»]+`;
 const EMAIL = String.raw`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`;
 const WWW = String.raw`www\.[^\s<>"«»]+`;
 const BARE = String.raw`(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:${TLDS})(?![a-z0-9-])(?::\d{2,5})?(?:[/?#]${TAIL})?`;
@@ -49,7 +49,7 @@ function trimTrail(raw: string): string {
 }
 
 function classify(text: string): { kind: LinkKind; href: string } | null {
-  if (/^modernchat:\/\//i.test(text)) return { kind: "app", href: text };
+  if (/^(?:modesto|modernchat):\/\//i.test(text)) return { kind: "app", href: text };
   if (/^https?:\/\//i.test(text)) return { kind: "url", href: text };
   if (text.startsWith("@")) return { kind: "mention", href: text };
   if (text.startsWith("+")) {
@@ -87,7 +87,7 @@ export function tokenize(text: string): TextToken[] {
     const start = m.index;
     // Межа слова: «foo.bar.com» усередині слова/шляху не чіпаємо.
     const prev = start > 0 ? text[start - 1] : "";
-    const startsWithScheme = /^(?:https?|modernchat):\/\//i.test(match);
+    const startsWithScheme = /^(?:https?|modesto|modernchat):\/\//i.test(match);
     const isEmail = !startsWithScheme && /^[A-Za-z0-9._%+-]+@/.test(match);
     if (!startsWithScheme && !isEmail && prev && /[\w@/.:%+-]/.test(prev)) {
       re.lastIndex = start + 1;
@@ -121,14 +121,14 @@ export function firstPreviewUrl(text: string | undefined): string | null {
   return null;
 }
 
-/** Slug каналу з modernchat://c/<slug>. */
+/** Slug каналу з modesto://c/<slug>. */
 export function channelSlugOf(href: string): string | null {
-  const m = href.match(/^modernchat:\/\/c\/([A-Za-z0-9_]+)/i);
+  const m = href.match(/^(?:modesto|modernchat):\/\/c\/([A-Za-z0-9_]+)/i);
   return m ? m[1].toLowerCase() : null;
 }
 
-/** Нік з modernchat://u/<username>. */
+/** Нік з modesto://u/<username>. */
 export function userNameOf(href: string): string | null {
-  const m = href.match(/^modernchat:\/\/u\/([A-Za-z0-9_]+)/i);
+  const m = href.match(/^(?:modesto|modernchat):\/\/u\/([A-Za-z0-9_]+)/i);
   return m ? m[1] : null;
 }

@@ -223,7 +223,7 @@ export default function ChannelSettingsScreen() {
           <View style={{ backgroundColor: c.header, paddingHorizontal: 16, paddingVertical: 8 }}>
             {isPublic ? (
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Text style={{ color: c.muted, fontSize: 16 }}>modernchat://c/</Text>
+                <Text style={{ color: c.muted, fontSize: 16 }}>modesto://c/</Text>
                 <TextInput
                   value={slug}
                   editable={isCreator}

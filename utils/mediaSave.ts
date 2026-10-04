@@ -5,7 +5,7 @@ import { Platform, Share } from "react-native";
 
 export type SaveKind = "image" | "video" | "file";
 
-const ALBUM = "ModernChat";
+const ALBUM = "Modesto";
 
 const MIME_EXT: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -60,14 +60,14 @@ export async function downloadToCache(
     .trim()
     .toLowerCase();
   const ext = extOf(fileName) ?? MIME_EXT[mime] ?? DEFAULT_EXT[kind];
-  const base = fileName ? safeName(fileName.replace(/\.[A-Za-z0-9]{2,5}$/, "")) : `ModernChat_${Date.now()}`;
+  const base = fileName ? safeName(fileName.replace(/\.[A-Za-z0-9]{2,5}$/, "")) : `Modesto_${Date.now()}`;
   const finalUri = `${dir}${base}_${Date.now() % 100000}.${ext}`;
   await FileSystem.moveAsync({ from: tmp, to: finalUri });
   onProgress?.(1);
   return finalUri;
 }
 
-/** Зберігає фото/відео в галерею (альбом «ModernChat»). Для інших файлів відкриває системне меню збереження. */
+/** Зберігає фото/відео в галерею (альбом «Modesto»). Для інших файлів відкриває системне меню збереження. */
 export async function saveMedia(
   url: string,
   kind: SaveKind,

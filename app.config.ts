@@ -6,10 +6,12 @@ const EAS_PROJECT_ID = "f82645fd-9092-483c-9b48-d445b0a4a071";
 const PROJECT_SLUG = "moderntalking-chat";
 const OWNER = "meduster";
 
-const APP_NAME = "Modern Talking Chat";
+const APP_NAME = "Modesto";
 const BUNDLE_IDENTIFIER = `com.${OWNER}.modernchat`;
 const PACKAGE_NAME = `com.${OWNER}.modernchat`;
+// URL schemes: old links modernchat:// keep working, new links use modesto://
 const SCHEME = "modernchat";
+const NEW_SCHEME = "modesto";
 
 const ICON = "./assets/images/icon.png";
 const ADAPTIVE_ICON_FOREGROUND = "./assets/images/android-icon-foreground.png";
@@ -39,7 +41,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     (process.env.APP_ENV as "development" | "preview" | "production") ||
     "development";
 
-  console.log("⚙️ Сборка Modern Chat для среды:", environment);
+  console.log("⚙️ Сборка Modesto для среды:", environment);
   console.log("📦 Convex URL:", process.env.EXPO_PUBLIC_CONVEX_URL);
 
   const dynamicConfig = getDynamicAppConfig(environment);
@@ -65,13 +67,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
       infoPlist: {
         NSCameraUsageDescription:
-          "Додатку Modern Chat потрібен доступ до камери для запису відеокружечків та фотографій.",
+          "Додатку Modesto потрібен доступ до камери для запису відеокружечків та фотографій.",
         NSPhotoLibraryUsageDescription:
-          "Додатку Modern Chat потрібен доступ до медіатеки для вибору та надсилання фотографій.",
+          "Додатку Modesto потрібен доступ до медіатеки для вибору та надсилання фотографій.",
         NSPhotoLibraryAddUsageDescription:
-          "Додатку Modern Chat потрібен доступ для збереження фотографій у вашу галерею.",
+          "Додатку Modesto потрібен доступ для збереження фотографій у вашу галерею.",
         NSMicrophoneUsageDescription:
-          "Додатку Modern Chat потрібен доступ до мікрофона для запису голосових повідомлень та відеокружечків.",
+          "Додатку Modesto потрібен доступ до мікрофона для запису голосових повідомлень та відеокружечків.",
       },
     },
 
@@ -128,8 +130,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-image-picker",
         {
           photosPermission:
-            "Додатку Modern Chat потрібен доступ до ваших фотографій.",
-          cameraPermission: "Додатку Modern Chat потрібен доступ до камери.",
+            "Додатку Modesto потрібен доступ до ваших фотографій.",
+          cameraPermission: "Додатку Modesto потрібен доступ до камери.",
         },
       ],
 
@@ -139,8 +141,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         "expo-media-library",
         {
-          photosPermission: "Додатку Modern Chat потрібен доступ до ваших фотографій.",
-          savePhotosPermission: "Додатку Modern Chat потрібен дозвіл, щоб зберігати фото й відео в галерею.",
+          photosPermission: "Додатку Modesto потрібен доступ до ваших фотографій.",
+          savePhotosPermission: "Додатку Modesto потрібен дозвіл, щоб зберігати фото й відео в галерею.",
           isAccessMediaLocationEnabled: false,
         },
       ],
@@ -151,9 +153,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-camera",
         {
           cameraPermission:
-            "Додатку Modern Chat потрібен доступ до камери для запису відеокружечків.",
+            "Додатку Modesto потрібен доступ до камери для запису відеокружечків.",
           microphonePermission:
-            "Додатку Modern Chat потрібен доступ до мікрофона для запису звуку у відеокружечках.",
+            "Додатку Modesto потрібен доступ до мікрофона для запису звуку у відеокружечках.",
           recordAudioAndroid: true,
         },
       ],
@@ -172,7 +174,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-audio",
         {
           microphonePermission:
-            "Додатку Modern Chat потрібен доступ до мікрофона для запису голосових повідомлень.",
+            "Додатку Modesto потрібен доступ до мікрофона для запису голосових повідомлень.",
         },
       ],
 
@@ -229,7 +231,7 @@ export const getDynamicAppConfig = (
         "./assets/images/icons/android-icon-foreground-dev.png",
       adaptiveIconBackground: ADAPTIVE_ICON_BACKGROUND,
       adaptiveIconMonochrome: ADAPTIVE_ICON_MONOCHROME,
-      scheme: `${SCHEME}-dev`,
+      scheme: [`${SCHEME}-dev`, `${NEW_SCHEME}-dev`],
     };
   }
 
@@ -243,7 +245,7 @@ export const getDynamicAppConfig = (
         "./assets/images/icons/android-icon-foreground-preview.png",
       adaptiveIconBackground: ADAPTIVE_ICON_BACKGROUND,
       adaptiveIconMonochrome: ADAPTIVE_ICON_MONOCHROME,
-      scheme: `${SCHEME}-preview`,
+      scheme: [`${SCHEME}-preview`, `${NEW_SCHEME}-preview`],
     };
   }
 
@@ -255,6 +257,6 @@ export const getDynamicAppConfig = (
     adaptiveIconForeground: ADAPTIVE_ICON_FOREGROUND,
     adaptiveIconBackground: ADAPTIVE_ICON_BACKGROUND,
     adaptiveIconMonochrome: ADAPTIVE_ICON_MONOCHROME,
-    scheme: SCHEME,
+    scheme: [SCHEME, NEW_SCHEME],
   };
 };

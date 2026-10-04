@@ -41,5 +41,5 @@ export function formatBirthday(iso?: string | null): string | undefined {
   return `${base}${tail}${isBirthdayToday(iso) ? " 🎂" : ""}`;
 }
 
-/** Посилання на профіль за ніком: modernchat://u/<username>. */
-export const userLink = (username: string) => `modernchat://u/${username}`;
+/** Посилання на профіль за ніком: modesto://u/<username>. */
+export const userLink = (username: string) => `modesto://u/${username}`;

@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
-/** Глибоке посилання modernchat://u/<username>: знаходимо користувача й відкриваємо його профіль. */
+/** Глибоке посилання modesto://u/<username> (and legacy modernchat://u/<username>): знаходимо користувача й відкриваємо його профіль. */
 export default function UserByUsernameScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
   const router = useRouter();

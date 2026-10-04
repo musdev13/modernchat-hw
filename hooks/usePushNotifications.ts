@@ -112,7 +112,7 @@ function usePushNotificationsNative() {
 async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
+      name: "Modesto",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: "#FFFFFF",

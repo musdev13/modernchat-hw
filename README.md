@@ -1,6 +1,6 @@
-# Modern Chat
+# Modesto
 
-Modern Chat — сучасний мобільний застосунок для обміну повідомленнями, створений на базі **React Native + Expo** з використанням **Expo Router**, **Convex** та **Convex Auth**.
+Modesto — сучасний мобільний застосунок для обміну повідомленнями, створений на базі **React Native + Expo** з використанням **Expo Router**, **Convex** та **Convex Auth**.
 
 ## Технологічний стек
 
@@ -78,7 +78,7 @@ com.musdev13.modernchat.dev
 Назва застосунку:
 
 ```text
-Modern Chat Dev
+Modesto Dev
 ```
 
 Scheme:
@@ -98,7 +98,7 @@ com.musdev13.modernchat.preview
 Назва:
 
 ```text
-Modern Chat Preview
+Modesto Preview
 ```
 
 Scheme:
@@ -118,7 +118,7 @@ com.musdev13.modernchat
 Назва:
 
 ```text
-Modern Chat
+Modesto
 ```
 
 Scheme:

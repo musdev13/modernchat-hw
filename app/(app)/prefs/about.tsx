@@ -8,7 +8,7 @@ import { Alert, Platform, View } from "react-native";
 export default function AboutSettings() {
   const c = useChatPalette();
   const cfg = Constants.expoConfig;
-  const name = cfg?.name ?? "Modern Chat";
+  const name = cfg?.name ?? "Modesto";
   const version = cfg?.version ?? "1.0.0";
   const build =
     Platform.OS === "android"
@@ -22,7 +22,7 @@ export default function AboutSettings() {
       <View style={{ alignItems: "center", paddingTop: 28, paddingBottom: 6 }}>
         <Logo size={84} tone="text" glow={c.glow} animated />
         <View style={{ marginTop: 22 }}>
-          <Logo variant="wordmark" size={200} tone="text" animated delay={400} />
+          <Logo variant="wordmark" size={170} tone="text" animated delay={400} />
         </View>
       </View>
       <Group>
