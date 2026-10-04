@@ -4,11 +4,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage, type ImageProps } from "expo-image";
 import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import * as Haptics from "expo-haptics";
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type MutableRefObject } from "react";
 import {
   ActivityIndicator,
   Modal,
   Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -43,11 +44,27 @@ export interface ViewerItem {
   fileName?: string;
 }
 
+export interface ViewerAction {
+  key: string;
+  label: string;
+  icon: ComponentProps<typeof Ionicons>["name"];
+  destructive?: boolean;
+  /** Закрити переглядач перед виконанням (щоб діалоги/модалки не накладались на нього). */
+  closeFirst?: boolean;
+  onPress: (item: ViewerItem, index: number) => void;
+}
+
 interface Props {
   visible: boolean;
   items: ViewerItem[];
   initialIndex?: number;
   onClose: () => void;
+  /** Фото профілю: стрічка мініатюр знизу й перехід тапом по краях екрана. */
+  variant?: "default" | "profile";
+  /** Викликається при зміні поточного елемента (профіль синхронізує своє фото в шапці). */
+  onIndexChange?: (index: number) => void;
+  /** Додаткові пункти меню ⋮ (наприклад, «Зробити головним», «Видалити»). */
+  extraActions?: ViewerAction[];
 }
 
 const MAX_SCALE = 5;
@@ -243,22 +260,84 @@ function Scrim({ height, from }: { height: number; from: "top" | "bottom" }) {
   );
 }
 
+const THUMB = 46;
+const THUMB_GAP = 6;
+
+/** Стрічка мініатюр знизу: активна підсвічується й автоматично центрується. */
+function ThumbStrip({
+  items,
+  index,
+  width,
+  bottom,
+  onSelect,
+}: {
+  items: ViewerItem[];
+  index: number;
+  width: number;
+  bottom: number;
+  onSelect: (i: number) => void;
+}) {
+  const ref = useRef<ScrollView>(null);
+  useEffect(() => {
+    const x = index * (THUMB + THUMB_GAP) - width / 2 + THUMB / 2 + 12;
+    ref.current?.scrollTo({ x: Math.max(0, x), animated: true });
+  }, [index, width]);
+  return (
+    <View style={{ position: "absolute", left: 0, right: 0, bottom }} pointerEvents="box-none">
+      <ScrollView
+        ref={ref}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 12, gap: THUMB_GAP, alignItems: "center" }}
+        style={{ height: THUMB + 10 }}
+      >
+        {items.map((it, i) => (
+          <TouchableOpacity key={it.id} activeOpacity={0.8} onPress={() => onSelect(i)}>
+            <ExpoImage
+              source={{ uri: it.url }}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              recyclingKey={it.id}
+              style={{
+                width: THUMB,
+                height: THUMB,
+                borderRadius: 8,
+                opacity: i === index ? 1 : 0.55,
+                borderWidth: i === index ? 2 : 0,
+                borderColor: "#FFFFFF",
+                backgroundColor: "rgba(255,255,255,0.12)",
+              }}
+            />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
 function Viewer({
   items,
   initialIndex,
   onClose,
   closeRef,
+  variant,
+  onIndexChange,
+  extraActions,
 }: {
   items: ViewerItem[];
   initialIndex: number;
   onClose: () => void;
   closeRef: MutableRefObject<(() => void) | null>;
+  variant: "default" | "profile";
+  onIndexChange?: (index: number) => void;
+  extraActions?: ViewerAction[];
 }) {
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0);
   const bottomInset = Math.max(insets.bottom, 8);
   const count = items.length;
+  const isProfile = variant === "profile";
 
   const [index, setIndex] = useState(Math.min(Math.max(initialIndex, 0), count - 1));
   const item = items[index];
@@ -375,7 +454,10 @@ function Viewer({
   );
 
   // Нова сторінка: скидаємо зум і стан меню
+  const onIndexChangeRef = useRef(onIndexChange);
+  onIndexChangeRef.current = onIndexChange;
   const commitIndex = useCallback((next: number) => {
+    onIndexChangeRef.current?.(next);
     setIndex(next);
     setSpeedMenu(false);
     setMenu(false);
@@ -406,6 +488,38 @@ function Viewer({
       runOnJS(finishClose)();
     });
   }, [appear, finishClose, player]);
+
+  // Перехід на сусіднє фото тапом по краю екрана.
+  const stepBy = useCallback(
+    (dir: number) => {
+      const next = indexSV.value + dir;
+      if (next < 0 || next >= count) return;
+      pagerX.value = withTiming(-dir * W, { duration: 220, easing: Easing.out(Easing.cubic) }, (done) => {
+        if (done) {
+          indexSV.value = next;
+          pagerX.value = 0;
+          runOnJS(commitIndex)(next);
+        }
+      });
+    },
+    [W, commitIndex, count, indexSV, pagerX],
+  );
+  // Стрибок на довільне фото з мініатюр (без анімації прокрутки).
+  const goTo = useCallback(
+    (i: number) => {
+      if (i === indexSV.value) return;
+      scale.value = 1;
+      tx.value = 0;
+      ty.value = 0;
+      savedScale.value = 1;
+      savedTx.value = 0;
+      savedTy.value = 0;
+      pagerX.value = 0;
+      indexSV.value = i;
+      commitIndex(i);
+    },
+    [commitIndex, indexSV, pagerX, savedScale, savedTx, savedTy, scale, tx, ty],
+  );
 
   useEffect(() => {
     appear.value = withTiming(1, { duration: 230, easing: Easing.out(Easing.cubic) });
@@ -450,6 +564,22 @@ function Viewer({
   );
 
   const onFirstFrame = useCallback(() => setFrameReady(true), []);
+
+  const runExtra = useCallback(
+    (a: ViewerAction) => {
+      setMenu(false);
+      const target = items[index];
+      if (!target) return;
+      if (a.closeFirst) {
+        requestClose();
+        // Після того як переглядач зник — виконуємо дію (діалог не накладається на модалку).
+        setTimeout(() => a.onPress(target, index), 260);
+      } else {
+        a.onPress(target, index);
+      }
+    },
+    [index, items, requestClose],
+  );
 
   const retry = useCallback(() => {
     if (!item || item.kind !== "video") return;
@@ -583,8 +713,13 @@ function Viewer({
 
     const singleTap = Gesture.Tap()
       .maxDuration(250)
-      .onEnd((_e, success) => {
-        if (success) runOnJS(toggleChrome)();
+      .onEnd((e, success) => {
+        if (!success) return;
+        if (isProfile && scale.value <= 1.02 && !isVideo && (e.x < W * 0.22 || e.x > W * 0.78)) {
+          runOnJS(stepBy)(e.x < W * 0.5 ? -1 : 1);
+          return;
+        }
+        runOnJS(toggleChrome)();
       });
 
     return Gesture.Race(
@@ -596,6 +731,8 @@ function Viewer({
     H,
     count,
     isVideo,
+    isProfile,
+    stepBy,
     finishClose,
     commitIndex,
     doubleTapSeek,
@@ -852,6 +989,10 @@ function Viewer({
           </View>
         ) : null}
 
+        {isProfile && count > 1 && !isVideo ? (
+          <ThumbStrip items={items} index={index} width={W} bottom={bottomInset + 10} onSelect={goTo} />
+        ) : null}
+
         {menu ? (
           <Animated.View
             entering={FadeIn.duration(130)}
@@ -878,6 +1019,19 @@ function Viewer({
               >
                 <Ionicons name={m.icon} size={22} color="#FFF" />
                 <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "500" }}>{m.label}</Text>
+              </TouchableOpacity>
+            ))}
+            {(extraActions ?? []).map((a) => (
+              <TouchableOpacity
+                key={a.key}
+                onPress={() => runExtra(a)}
+                accessibilityRole="button"
+                style={{ height: 48, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 14 }}
+              >
+                <Ionicons name={a.icon} size={22} color={a.destructive ? "#FF6B6B" : "#FFF"} />
+                <Text style={{ color: a.destructive ? "#FF6B6B" : "#FFF", fontSize: 16, fontWeight: "500" }}>
+                  {a.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </Animated.View>
@@ -1146,7 +1300,15 @@ const styles = StyleSheet.create({
  * лічильник «N із M», зум щипком і подвійним тапом, закриття свайпом вниз,
  * для відео — власні елементи керування (перемотка, швидкість, звук).
  */
-export function MediaViewer({ visible, items, initialIndex = 0, onClose }: Props) {
+export function MediaViewer({
+  visible,
+  items,
+  initialIndex = 0,
+  onClose,
+  variant = "default",
+  onIndexChange,
+  extraActions,
+}: Props) {
   const closeRef = useRef<(() => void) | null>(null);
   const open = visible && items.length > 0;
   // Модалка монтується лише поки переглядач відкритий і повністю знімається після закриття
@@ -1163,7 +1325,15 @@ export function MediaViewer({ visible, items, initialIndex = 0, onClose }: Props
     >
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: "transparent" }}>
-        <Viewer items={items} initialIndex={initialIndex} onClose={onClose} closeRef={closeRef} />
+        <Viewer
+          items={items}
+          initialIndex={initialIndex}
+          onClose={onClose}
+          closeRef={closeRef}
+          variant={variant}
+          onIndexChange={onIndexChange}
+          extraActions={extraActions}
+        />
       </GestureHandlerRootView>
     </Modal>
   );

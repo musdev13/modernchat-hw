@@ -1,13 +1,13 @@
 import { GlassProvider, GlassTarget } from "@/components/Glass";
 import { PressableScale } from "@/components/PressableScale";
-import { ImageViewerModal } from "@/components/ImageViewerModal";
+import { MediaViewer, type ViewerAction, type ViewerItem } from "@/components/MediaViewer";
 import { Image as ExpoImage } from "expo-image";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { avatarColor, initialsOf } from "@/constants/theme";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { Children, ComponentProps, ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { Children, ComponentProps, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Text,
@@ -203,9 +203,75 @@ function BarIconButton({
   );
 }
 
+export interface ProfilePhoto {
+  id: string;
+  url: string;
+  createdAt?: number;
+}
+
+/** Одна сторінка каруселі фото в шапці: позиція за індексом, зсув пальцем, паралакс при прокрутці. */
+function HeroPage({
+  url,
+  i,
+  W,
+  indexSV,
+  pageDrag,
+  expand,
+  scrollY,
+  collapseDistance,
+}: {
+  url: string;
+  i: number;
+  W: number;
+  indexSV: SharedValue<number>;
+  pageDrag: SharedValue<number>;
+  expand: SharedValue<number>;
+  scrollY: SharedValue<number>;
+  collapseDistance: number;
+}) {
+  const style = useAnimatedStyle(() => {
+    const size = AVATAR + (W - AVATAR) * expand.value;
+    return {
+      transform: [
+        { translateX: (i - indexSV.value) * size + pageDrag.value },
+        { scale: 1.14 - 0.14 * expand.value },
+        { translateY: -Math.min(scrollY.value, collapseDistance) * 0.12 },
+      ],
+    };
+  });
+  return (
+    <AnimatedExpoImage
+      source={{ uri: url }}
+      contentFit="cover"
+      transition={180}
+      cachePolicy="memory-disk"
+      recyclingKey={url}
+      style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, style]}
+    />
+  );
+}
+
+/** Сегменти зверху розкритого фото (як у Telegram): активний яскравий, решта приглушені. */
+function Segment({ i, indexSV }: { i: number; indexSV: SharedValue<number> }) {
+  const style = useAnimatedStyle(() => ({ opacity: Math.round(indexSV.value) === i ? 1 : 0.38 }));
+  return (
+    <Animated.View
+      style={[{ flex: 1, height: 3, borderRadius: 2, backgroundColor: "#FFFFFF", marginHorizontal: 2 }, style]}
+    />
+  );
+}
+
 interface Props {
   name: string;
   imageUrl?: string | null;
+  /** Усі фото профілю (поточне першим); якщо не задано — використовується imageUrl. */
+  photos?: ProfilePhoto[];
+  /** Додаткові пункти меню ⋮ у повноекранному перегляді (для власного профілю). */
+  viewerActions?: ViewerAction[];
+  /** Ліва кнопка шапки, коли немає «Назад» (на вкладці). */
+  leftIcon?: IconName;
+  leftLabel?: string;
+  onLeftPress?: () => void;
   /** Рядок під іменем («у мережі», «остання активність…»). */
   status?: string;
   /** Підсвітити статус акцентним кольором (онлайн). */
@@ -234,6 +300,11 @@ interface Props {
 export function StretchyProfile({
   name,
   imageUrl,
+  photos,
+  viewerActions,
+  leftIcon,
+  leftLabel,
+  onLeftPress,
   status,
   statusAccent,
   busy,
@@ -268,10 +339,43 @@ export function StretchyProfile({
   const shift = Math.max(0, fullHeight + 8 - (baseHeight + spacerH));
   const expandedNameTop = hasActions ? pillsTopExpanded - 12 - 58 : fullHeight - 84;
 
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
-  const [imageFailed, setImageFailed] = useState(false);
-  useEffect(() => setImageFailed(false), [imageUrl]);
-  const hasImage = !!imageUrl && !imageFailed;
+  // Список фото: історія профілю або єдине поточне.
+  const list = useMemo<ProfilePhoto[]>(() => {
+    if (photos && photos.length > 0) return photos;
+    return imageUrl ? [{ id: "main", url: imageUrl }] : [];
+  }, [photos, imageUrl]);
+  const count = list.length;
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const indexSV = useSharedValue(0);
+  const pageDrag = useSharedValue(0);
+  const paging = useSharedValue(false);
+
+  // Нове головне фото (або змінився склад) — починаємо з першого.
+  const firstId = list[0]?.id;
+  useEffect(() => {
+    setPhotoIndex(0);
+    indexSV.value = 0;
+    pageDrag.value = 0;
+  }, [firstId, indexSV, pageDrag]);
+  const safeIndex = Math.min(photoIndex, Math.max(0, count - 1));
+  useEffect(() => {
+    indexSV.value = safeIndex;
+  }, [safeIndex, indexSV]);
+
+  // Підвантажуємо сусідні фото наперед, щоб гортання не блимало.
+  useEffect(() => {
+    const urls = [list[safeIndex - 1]?.url, list[safeIndex + 1]?.url, list[0]?.url].filter(
+      (u): u is string => !!u,
+    );
+    if (urls.length) void ExpoImage.prefetch(urls, "memory-disk");
+  }, [list, safeIndex]);
+
+  const viewerItems = useMemo<ViewerItem[]>(
+    () => list.map((p) => ({ id: p.id, kind: "image", url: p.url, senderName: name, createdAt: p.createdAt })),
+    [list, name],
+  );
+  const hasImage = count > 0;
 
   const scrollY = useSharedValue(0);
   const expand = useSharedValue(0);
@@ -308,22 +412,22 @@ export function StretchyProfile({
     return () => {
       lastActionAt.current = Date.now();
       if (viewerTimer.current) clearTimeout(viewerTimer.current);
-      setViewerUrl(null);
+      setViewerOpen(false);
       fn();
     };
   }, []);
 
   const openViewer = useCallback(() => {
-    if (!imageUrl || imageFailed) return;
+    if (count === 0) return;
     const at = Date.now();
     if (viewerTimer.current) clearTimeout(viewerTimer.current);
     // Невелика затримка: якщо в цей самий момент спрацює кнопка, перегляд не відкриваємо.
     viewerTimer.current = setTimeout(() => {
       viewerTimer.current = null;
       if (lastActionAt.current > at - 400) return;
-      setViewerUrl(imageUrl);
+      setViewerOpen(true);
     }, 90);
-  }, [imageFailed, imageUrl]);
+  }, [count]);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
@@ -343,14 +447,37 @@ export function StretchyProfile({
       startE.value = expand.value;
       crossed.value = expand.value > 0.45;
       pulling.value = false;
+      paging.value = false;
+      pageDrag.value = 0;
     })
     .onTouchesMove((e, manager) => {
       const t = e.allTouches[0];
       if (!t) return;
       const dy = t.y - startY.value;
       const dx = Math.abs(t.x - startX.value);
+      if (paging.value) {
+        // Гортання фото в розкритій шапці: рух пальця напряму, на краях — з опором.
+        const raw = t.x - startX.value;
+        const atEdge =
+          (indexSV.value <= 0 && raw > 0) || (indexSV.value >= count - 1 && raw < 0);
+        pageDrag.value = atEdge ? raw * 0.3 : raw;
+        return;
+      }
       if (!pulling.value) {
         const vertical = Math.abs(dy) > dx;
+        if (
+          count > 1 &&
+          startE.value > 0.9 &&
+          expand.value > 0.9 &&
+          startY.value < fullHeight &&
+          dx > 12 &&
+          !vertical
+        ) {
+          paging.value = true;
+          pulling.value = true;
+          manager.activate();
+          return;
+        }
         if (scrollY.value <= 0 && dy > 8 && vertical) {
           // Тягнемо вниз від верху — розкриваємо.
           pulling.value = true;
@@ -395,6 +522,23 @@ export function StretchyProfile({
       }
     })
     .onEnd((e) => {
+      if (paging.value) {
+        const drag = pageDrag.value;
+        const dir = drag < -W * 0.2 || e.velocityX < -600 ? 1 : drag > W * 0.2 || e.velocityX > 600 ? -1 : 0;
+        const next = indexSV.value + dir;
+        if (dir !== 0 && next >= 0 && next < count) {
+          pageDrag.value = withTiming(-dir * W, { duration: 200, easing: Easing.out(Easing.cubic) }, (done) => {
+            if (done) {
+              indexSV.value = next;
+              pageDrag.value = 0;
+              runOnJS(setPhotoIndex)(next);
+            }
+          });
+        } else {
+          pageDrag.value = withSpring(0, SPRING);
+        }
+        return;
+      }
       // Швидкий порух вирішує напрямок, інакше — за положенням (пів шляху).
       const open =
         e.velocityY > 600 ? true : e.velocityY < -600 ? false : expand.value > 0.45;
@@ -402,6 +546,7 @@ export function StretchyProfile({
     })
     .onFinalize(() => {
       pulling.value = false;
+      paging.value = false;
     });
 
   const headerStyle = useAnimatedStyle(() => {
@@ -419,7 +564,10 @@ export function StretchyProfile({
     return {
       width: size,
       height: AVATAR + (fullHeight - AVATAR) * e,
-      borderRadius: (AVATAR / 2) * (1 - e),
+      borderTopLeftRadius: (AVATAR / 2) * (1 - e),
+      borderTopRightRadius: (AVATAR / 2) * (1 - e),
+      borderBottomLeftRadius: (AVATAR / 2) * (1 - e) + 28 * e,
+      borderBottomRightRadius: (AVATAR / 2) * (1 - e) + 28 * e,
       top: avatarTop * (1 - e),
       left: (W - size) / 2,
       opacity: 1 - interpolate(p, [0.75, 1], [0, 1], Extrapolation.CLAMP),
@@ -467,13 +615,7 @@ export function StretchyProfile({
     transform: [{ translateY: pillsDelta * expand.value - scrollY.value }],
   }));
 
-  // «Паралакс»: фото всередині кола повільніше за рамку, обкладинка зсувається вдвічі повільніше.
-  const photoStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: 1.14 - 0.14 * expand.value },
-      { translateY: -Math.min(scrollY.value, collapseDistance) * 0.12 },
-    ],
-  }));
+  // Обкладинка зсувається вдвічі повільніше за прокрутку (паралакс).
   const coverStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -Math.min(scrollY.value, collapseDistance) * 0.25 }],
   }));
@@ -581,15 +723,23 @@ export function StretchyProfile({
                 ]}
               >
                 {hasImage ? (
-                  <AnimatedExpoImage
-                    source={{ uri: imageUrl! }}
-                    contentFit="cover"
-                    transition={220}
-                    cachePolicy="memory-disk"
-                    recyclingKey={imageUrl!}
-                    onError={() => setImageFailed(true)}
-                    style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, photoStyle]}
-                  />
+                  <>
+                    {[safeIndex - 1, safeIndex, safeIndex + 1]
+                      .filter((i) => i >= 0 && i < count)
+                      .map((i) => (
+                        <HeroPage
+                          key={list[i].id}
+                          url={list[i].url}
+                          i={i}
+                          W={W}
+                          indexSV={indexSV}
+                          pageDrag={pageDrag}
+                          expand={expand}
+                          scrollY={scrollY}
+                          collapseDistance={collapseDistance}
+                        />
+                      ))}
+                  </>
                 ) : (
                   <>
                     {/* Запасний градієнт, коли немає фото (колір з імені) */}
@@ -649,6 +799,27 @@ export function StretchyProfile({
                   <Rect x="0" y="0" width="1" height="1" fill="url(#profileFade)" />
                 </Svg>
               </Animated.View>
+
+              {/* Сегменти-індикатор фото зверху розкритого фото */}
+              {count > 1 ? (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    {
+                      position: "absolute",
+                      top: insets.top + 1,
+                      left: 10,
+                      right: 10,
+                      flexDirection: "row",
+                    },
+                    gradientStyle,
+                  ]}
+                >
+                  {list.map((p, i) => (
+                    <Segment key={p.id} i={i} indexSV={indexSV} />
+                  ))}
+                </Animated.View>
+              ) : null}
 
               {/* Ім'я та статус під круглим аватаром (згорнутий стан) */}
               <Animated.View
@@ -757,7 +928,13 @@ export function StretchyProfile({
                 justifyContent: "space-between",
               }}
             >
-              {onBack ? barButton("arrow-back", "Назад", onBack) : <View style={{ width: BAR_BUTTON }} />}
+              {onBack ? (
+                barButton("arrow-back", "Назад", onBack)
+              ) : leftIcon && onLeftPress ? (
+                barButton(leftIcon, leftLabel ?? "Дія", onLeftPress)
+              ) : (
+                <View style={{ width: BAR_BUTTON }} />
+              )}
 
               <Animated.View
                 pointerEvents="none"
@@ -805,10 +982,14 @@ export function StretchyProfile({
 
           {bottomOverlay}
 
-          <ImageViewerModal
-            visible={!!viewerUrl}
-            imageUrl={viewerUrl}
-            onClose={() => setViewerUrl(null)}
+          <MediaViewer
+            visible={viewerOpen}
+            items={viewerItems}
+            initialIndex={safeIndex}
+            variant="profile"
+            onIndexChange={setPhotoIndex}
+            extraActions={viewerActions}
+            onClose={() => setViewerOpen(false)}
           />
         </View>
       </GestureDetector>
