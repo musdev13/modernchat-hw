@@ -152,3 +152,20 @@ export const STICKER_CAPTION = STICKER_MARK + STICKER_LABEL;
 export function isStickerContent(content?: string | null): boolean {
   return !!content && content.startsWith(STICKER_MARK);
 }
+
+
+/** Статус активності користувача: «зараз у чаті» або «був(ла) сьогодні о 14:05». */
+export function activityLabel(
+  lastActiveAt?: number | null,
+  inChatNow?: boolean,
+  now: number = Date.now(),
+): string {
+  if (inChatNow) return "зараз у чаті";
+  if (!lastActiveAt) return "давно не заходив(ла)";
+  const key = dayKey(lastActiveAt);
+  if (key === dayKey(now)) return `був(ла) сьогодні о ${formatTime(lastActiveAt)}`;
+  if (key === dayKey(now - 24 * 60 * 60 * 1000)) {
+    return `був(ла) вчора о ${formatTime(lastActiveAt)}`;
+  }
+  return `був(ла) ${dayLabel(lastActiveAt, now)}`;
+}

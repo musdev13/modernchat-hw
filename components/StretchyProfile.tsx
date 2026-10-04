@@ -50,7 +50,12 @@ interface Props {
   rightIcon?: IconName;
   rightLabel?: string;
   onRightPress?: () => void;
-  onBack: () => void;
+  /** Без onBack кнопку «Назад» не показуємо (екран-вкладка). */
+  onBack?: () => void;
+  /** Накладка внизу екрана (панель вкладок) — рендериться всередині скляного контексту. */
+  bottomOverlay?: ReactNode;
+  /** Додатковий відступ знизу під панель вкладок. */
+  bottomInset?: number;
   /** Вміст під шапкою (кнопки, картки). */
   children: ReactNode;
 }
@@ -69,6 +74,8 @@ export function StretchyProfile({
   rightLabel,
   onRightPress,
   onBack,
+  bottomOverlay,
+  bottomInset = 0,
   children,
 }: Props) {
   const c = useChatPalette();
@@ -256,7 +263,7 @@ export function StretchyProfile({
               style={scrollViewStyle}
               contentContainerStyle={{
                 paddingTop: baseHeight,
-                paddingBottom: extra + insets.bottom + 28,
+                paddingBottom: extra + insets.bottom + 28 + bottomInset,
               }}
             >
               {children}
@@ -380,7 +387,7 @@ export function StretchyProfile({
                 justifyContent: "space-between",
               }}
             >
-              {barButton("arrow-back", "Назад", onBack)}
+              {onBack ? barButton("arrow-back", "Назад", onBack) : <View style={{ width: BAR_BUTTON }} />}
 
               <Animated.View
                 pointerEvents="none"
@@ -424,6 +431,8 @@ export function StretchyProfile({
               )}
             </View>
           </View>
+
+          {bottomOverlay}
 
           <ImageViewerModal
             visible={!!viewerUrl}

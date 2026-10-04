@@ -19,6 +19,10 @@ interface RoomData {
   creatorId: Id<"users">;
   lastMessage?: string;
   lastMessageAt?: number;
+  /** Особистий (1:1) чат. */
+  isDirect?: boolean;
+  /** Закріплено нагорі списку. */
+  pinned?: boolean;
 }
 
 interface SwipeableRoomItemProps {
@@ -29,7 +33,10 @@ interface SwipeableRoomItemProps {
   /** Сповіщення цієї кімнати вимкнені. */
   muted?: boolean;
   onPress: () => void;
+  /** Свайп вліво: видалити / покинути (для особистого чату — приховати). */
   onDelete: (roomId: Id<"chatRooms">) => void;
+  /** Довге натискання (меню дій). Без нього довге натискання викликає onDelete. */
+  onLongPress?: (roomId: Id<"chatRooms">) => void;
 }
 
 const ACTION_WIDTH = 88;
@@ -54,7 +61,9 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   muted = false,
   onPress,
   onDelete,
+  onLongPress,
 }) => {
+  const isDirect = !!room.isDirect;
   const hasUnread = unreadCount > 0;
   const { colors: c } = useTheme();
   const translateX = useSharedValue(0);
@@ -119,7 +128,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
           bottom: 0,
           right: 0,
           left: 0,
-          backgroundColor: c.danger,
+          backgroundColor: isDirect ? c.muted : c.danger,
           flexDirection: "row",
           justifyContent: "flex-end",
           alignItems: "center",
@@ -137,7 +146,9 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
         >
           <Animated.View style={[{ alignItems: "center" }, animatedIconStyle]}>
             <Ionicons
-              name={isCreator ? "trash-outline" : "exit-outline"}
+              name={
+                isDirect ? "eye-off-outline" : isCreator ? "trash-outline" : "exit-outline"
+              }
               size={24}
               color={c.onAccent}
             />
@@ -149,7 +160,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                 marginTop: 2,
               }}
             >
-              {isCreator ? "Видалити" : "Покинути"}
+              {isDirect ? "Приховати" : isCreator ? "Видалити" : "Покинути"}
             </Text>
           </Animated.View>
         </TouchableOpacity>
@@ -165,7 +176,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                 onPress();
               }
             }}
-            onLongPress={() => onDelete(room._id)}
+            onLongPress={() => (onLongPress ?? onDelete)(room._id)}
             delayLongPress={450}
             activeOpacity={0.7}
             style={{
@@ -209,7 +220,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                   >
                     {room.title}
                   </Text>
-                  {isCreator && (
+                  {isCreator && !isDirect && (
                     <Ionicons
                       name="ribbon-outline"
                       size={14}
@@ -251,8 +262,16 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                     fontStyle: room.lastMessage ? "normal" : "italic",
                   }}
                 >
-                  {room.lastMessage || room.description || "Повідомлень ще немає"}
+                  {room.lastMessage || (isDirect ? "Повідомлень ще немає" : room.description) || "Повідомлень ще немає"}
                 </Text>
+                {!hasUnread && room.pinned && (
+                  <Ionicons
+                    name="pin"
+                    size={16}
+                    color={c.muted}
+                    style={{ marginLeft: 8, transform: [{ rotate: "45deg" }] }}
+                  />
+                )}
                 {hasUnread && (
                   <View
                     accessibilityLabel={`Непрочитаних: ${unreadCount}`}
