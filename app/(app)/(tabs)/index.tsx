@@ -1,6 +1,7 @@
 import { ActionSheet, SheetAction } from "@/components/ActionSheet";
 import { GlassProvider, GlassTarget } from "@/components/Glass";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
+import { MuteSheet } from "@/components/MuteSheet";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { SearchField } from "@/components/SearchField";
 import { SwipeableRoomItem } from "@/components/SwipeableRoomItem";
@@ -11,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -32,7 +33,9 @@ export default function ChatsTab() {
   const rooms = useQuery(api.rooms.listRooms);
   const currentUser = useQuery(api.users.currentUser);
   const unread = useQuery(api.reads.getUnreadCounts);
-  const listExtra = useMemo(() => ({ unread }), [unread]);
+  const typing = useQuery(api.typing.getTypingInMyRooms);
+  const listExtra = useMemo(() => ({ unread, typing }), [unread, typing]);
+  const getOrCreateSaved = useMutation(api.rooms.getOrCreateSavedRoom);
   const ensureReads = useMutation(api.reads.ensureReads);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
   const removeParticipant = useMutation(api.rooms.removeParticipant);
@@ -43,6 +46,25 @@ export default function ChatsTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [menuRoomId, setMenuRoomId] = useState<Id<"chatRooms"> | null>(null);
+  const [muteRoomId, setMuteRoomId] = useState<Id<"chatRooms"> | null>(null);
+
+  // «Збережене» створюється при першому відкритті списку й завжди стоїть нагорі.
+  const savedRequested = useRef(false);
+  const hasSaved = rooms?.some((r) => r.isSaved) ?? true;
+  useEffect(() => {
+    if (hasSaved || savedRequested.current) return;
+    savedRequested.current = true;
+    getOrCreateSaved().catch(() => {
+      savedRequested.current = false;
+    });
+  }, [getOrCreateSaved, hasSaved]);
+
+  const typingTextOf = (roomId: string, isDirect: boolean) => {
+    const names = typing?.[roomId];
+    if (!names || names.length === 0) return undefined;
+    if (isDirect) return "друкує…";
+    return names.length === 1 ? `${names[0]} друкує…` : "кілька людей друкують…";
+  };
 
   const filteredRooms = useMemo(() => {
     if (!rooms) return rooms;
@@ -146,9 +168,13 @@ export default function ChatsTab() {
           label: menuRoom.muted ? "Увімкнути сповіщення" : "Вимкнути сповіщення",
           icon: menuRoom.muted ? "notifications-outline" : "notifications-off-outline",
           onPress: () => {
-            setMuted({ chatRoomId: menuRoom._id, muted: !menuRoom.muted }).catch((e) =>
-              showError(e, "Не вдалося змінити сповіщення"),
-            );
+            if (menuRoom.muted) {
+              setMuted({ chatRoomId: menuRoom._id, muted: false }).catch((e) =>
+                showError(e, "Не вдалося змінити сповіщення"),
+              );
+            } else {
+              setMuteRoomId(menuRoom._id);
+            }
           },
         },
         menuRoom.isDirect
@@ -170,6 +196,8 @@ export default function ChatsTab() {
     : [];
 
   const profileName = currentUser?.name ?? currentUser?.username ?? "";
+  // Окрім «Збереженого» чатів немає.
+  const onlySaved = rooms !== undefined && rooms.every((r) => r.isSaved);
   const isEmpty = rooms !== undefined && rooms.length === 0;
 
   return (
@@ -275,6 +303,19 @@ export default function ChatsTab() {
               refreshControl={
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />
               }
+              ListFooterComponent={
+                onlySaved && !search.trim() ? (
+                  <View style={{ alignItems: "center", paddingTop: 40, paddingHorizontal: 32 }}>
+                    <Ionicons name="chatbubbles-outline" size={44} color={c.muted} />
+                    <Text style={{ color: c.text, fontSize: 17, fontWeight: "700", marginTop: 12 }}>
+                      Поки немає чатів
+                    </Text>
+                    <Text style={{ color: c.muted, fontSize: 14, textAlign: "center", marginTop: 4 }}>
+                      Напишіть комусь із вкладки «Контакти» або створіть групу кнопкою внизу праворуч
+                    </Text>
+                  </View>
+                ) : null
+              }
               ListEmptyComponent={
                 <View style={{ alignItems: "center", paddingTop: 48 }}>
                   <Ionicons name="search-outline" size={40} color={c.muted} />
@@ -289,9 +330,12 @@ export default function ChatsTab() {
                   isCreator={!item.isDirect && item.creatorId === currentUser?._id}
                   unreadCount={unread?.counts[item._id] ?? 0}
                   muted={item.muted}
+                  online={item.otherOnline}
+                  typingText={typingTextOf(item._id, item.isDirect)}
                   onPress={() => router.push(`/chat/${item._id}`)}
                   onDelete={handleDeleteRoom}
                   onLongPress={(id) => {
+                    if (item.isSaved) return;
                     void Haptics.selectionAsync();
                     setMenuRoomId(id);
                   }}
@@ -329,6 +373,20 @@ export default function ChatsTab() {
 
         <MainTabBar active="chats" />
 
+        <MuteSheet
+          visible={!!muteRoomId}
+          title={rooms?.find((r) => r._id === muteRoomId)?.title}
+          onClose={() => setMuteRoomId(null)}
+          onPick={(durationMs) => {
+            const roomId = muteRoomId;
+            setMuteRoomId(null);
+            if (!roomId) return;
+            setMuted({ chatRoomId: roomId, muted: true, durationMs }).catch((e) =>
+              showError(e, "Не вдалося вимкнути сповіщення"),
+            );
+          }}
+        />
+
         <ActionSheet
           visible={!!menuRoom}
           onClose={() => setMenuRoomId(null)}
@@ -336,7 +394,12 @@ export default function ChatsTab() {
           subtitle={menuRoom?.isDirect ? "Особистий чат" : "Група"}
           avatar={
             menuRoom ? (
-              <RoomAvatar title={menuRoom.title} imageUrl={menuRoom.avatarUrl} size={44} />
+              <RoomAvatar
+                title={menuRoom.title}
+                imageUrl={menuRoom.avatarUrl}
+                size={44}
+                saved={menuRoom.isSaved}
+              />
             ) : undefined
           }
           actions={menuActions}

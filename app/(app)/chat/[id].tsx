@@ -11,6 +11,7 @@ import {
   PIN_BAR_HEIGHT,
   PinnedMessageBar,
 } from "@/components/PinnedMessageBar";
+import { ForwardSheet } from "@/components/ForwardSheet";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { ReactionPickerModal } from "@/components/ReactionPickerModal";
 import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
@@ -26,7 +27,7 @@ import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { copyText } from "@/utils/clipboard";
 import {
-  activityLabel,
+  formatLastSeen,
   dayKey,
   dayLabel,
   deleteLastGrapheme,
@@ -111,10 +112,8 @@ export default function ChatRoomScreen() {
   // Особистий чат: заголовок і статус беремо від співрозмовника.
   const isDirect = room?.isDirect === true;
   const otherUserId = room?.otherUserId;
-  const otherStatus = useQuery(
-    api.users.getUserStatus,
-    isDirect && otherUserId ? { userId: otherUserId } : "skip",
-  );
+  const isSaved = room?.isSaved === true;
+  const otherStatus = room?.otherPresence;
 
   const { results: messages, status, loadMore } = usePaginatedQuery(
     api.messages.getPaginatedMessages,
@@ -126,6 +125,7 @@ export default function ChatRoomScreen() {
   const typingUsers = useQuery(api.typing.getTypingUsers, { chatRoomId });
 
   const sendMessage = useMutation(api.messages.sendMessage);
+  const forwardMessage = useMutation(api.messages.forwardMessage);
   const sendMediaMessage = useMutation(api.messages.sendMediaMessage);
   const sendVoiceMessage = useMutation(api.messages.sendVoiceMessage);
   const sendVideoNote = useMutation(api.messages.sendVideoNote);
@@ -469,6 +469,27 @@ export default function ChatRoomScreen() {
       }
     },
     [toggleReaction],
+  );
+
+  // Пересилання текстового повідомлення в інший чат.
+  const [forwardTarget, setForwardTarget] = useState<MessageItemData | null>(null);
+  const handleForwardTo = useCallback(
+    async (targetChatRoomId: Id<"chatRooms">) => {
+      const message = forwardTarget;
+      setForwardTarget(null);
+      if (!message) return;
+      try {
+        await forwardMessage({
+          messageId: message._id as Id<"messages">,
+          targetChatRoomId,
+        });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast("Переслано");
+      } catch (error: any) {
+        Alert.alert("Помилка", error?.message ?? "Не вдалося переслати повідомлення");
+      }
+    },
+    [forwardMessage, forwardTarget, showToast],
   );
 
   const handleCopy = useCallback(
@@ -1141,13 +1162,16 @@ export default function ChatRoomScreen() {
   const memberCount = room?.participants?.length ?? 0;
   const subtitleText = !room
     ? " "
-    : isDirect
-      ? otherStatus
-        ? activityLabel(otherStatus.lastActiveAt, otherStatus.inChatNow)
-        : " "
-      : membersLabel(memberCount);
-  const subtitleAccent = isDirect && otherStatus?.inChatNow === true;
+    : isSaved
+      ? "особисті нотатки"
+      : isDirect
+        ? otherStatus
+          ? formatLastSeen(otherStatus.lastSeenAt, otherStatus.online, otherStatus.lastSeenHidden)
+          : " "
+        : membersLabel(memberCount);
+  const subtitleAccent = isDirect && !isSaved && otherStatus?.online === true;
   const openInfo = () =>
+    isSaved ||
     router.push(
       (isDirect && otherUserId
         ? `/user/${otherUserId}`
@@ -1188,6 +1212,16 @@ export default function ChatRoomScreen() {
         label: "Копіювати",
         icon: "copy-outline",
         onPress: () => void handleCopy(m),
+      });
+    }
+    const isPlainText =
+      hasContent && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.isSystem;
+    if (isPlainText) {
+      list.push({
+        key: "forward",
+        label: "Переслати",
+        icon: "arrow-redo-outline",
+        onPress: () => setForwardTarget(m),
       });
     }
     if (own && hasContent) {
@@ -1895,7 +1929,7 @@ export default function ChatRoomScreen() {
             accessibilityRole="button"
             accessibilityLabel={isDirect ? "Профіль користувача" : "Інформація про кімнату"}
           >
-            <RoomAvatar title={roomTitle} imageUrl={room?.avatarUrl} size={34} />
+            <RoomAvatar title={roomTitle} imageUrl={room?.avatarUrl} size={34} saved={isSaved} />
 
             <View style={{ flex: 1, marginLeft: 10, justifyContent: "center" }}>
               <Text
@@ -1972,6 +2006,12 @@ export default function ChatRoomScreen() {
         visible={!!fullscreenImage}
         imageUrl={fullscreenImage}
         onClose={() => setFullscreenImage(null)}
+      />
+
+      <ForwardSheet
+        visible={!!forwardTarget}
+        onClose={() => setForwardTarget(null)}
+        onPick={handleForwardTo}
       />
 
       <MessageActionSheet

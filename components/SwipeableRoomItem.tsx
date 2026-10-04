@@ -21,6 +21,8 @@ interface RoomData {
   lastMessageAt?: number;
   /** Особистий (1:1) чат. */
   isDirect?: boolean;
+  /** «Збережене» (чат із собою). */
+  isSaved?: boolean;
   /** Закріплено нагорі списку. */
   pinned?: boolean;
 }
@@ -32,6 +34,10 @@ interface SwipeableRoomItemProps {
   unreadCount?: number;
   /** Сповіщення цієї кімнати вимкнені. */
   muted?: boolean;
+  /** Співрозмовник у мережі (зелена крапка на аватарі, лише особисті чати). */
+  online?: boolean;
+  /** «друкує…» — показується замість останнього повідомлення. */
+  typingText?: string;
   onPress: () => void;
   /** Свайп вліво: видалити / покинути (для особистого чату — приховати). */
   onDelete: (roomId: Id<"chatRooms">) => void;
@@ -59,6 +65,8 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   isCreator,
   unreadCount = 0,
   muted = false,
+  online = false,
+  typingText,
   onPress,
   onDelete,
   onLongPress,
@@ -83,6 +91,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   };
 
   const panGesture = Gesture.Pan()
+    .enabled(!room.isSaved)
     .activeOffsetX([-10, 10])
     .failOffsetY([-10, 10])
     .onUpdate((event) => {
@@ -186,12 +195,29 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
               paddingVertical: 9,
             }}
           >
-            <RoomAvatar
-              title={room.title}
-              imageUrl={room.avatarUrl}
-              size={54}
-              style={{ marginRight: 12 }}
-            />
+            <View style={{ marginRight: 12 }}>
+              <RoomAvatar
+                title={room.title}
+                imageUrl={room.avatarUrl}
+                size={54}
+                saved={room.isSaved}
+              />
+              {isDirect && online ? (
+                <View
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    bottom: 0,
+                    width: 15,
+                    height: 15,
+                    borderRadius: 8,
+                    backgroundColor: "#4CD964",
+                    borderWidth: 2.5,
+                    borderColor: c.bg,
+                  }}
+                />
+              ) : null}
+            </View>
 
             <View style={{ flex: 1 }}>
               <View
@@ -256,15 +282,22 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                   numberOfLines={1}
                   style={{
                     flex: 1,
-                    color: hasUnread ? c.text : c.muted,
+                    color: typingText ? c.accent : hasUnread ? c.text : c.muted,
                     fontSize: 14,
                     fontWeight: hasUnread ? "600" : "400",
-                    fontStyle: room.lastMessage ? "normal" : "italic",
+                    fontStyle: room.lastMessage || typingText ? "normal" : "italic",
                   }}
                 >
-                  {room.lastMessage || (isDirect ? "Повідомлень ще немає" : room.description) || "Повідомлень ще немає"}
+                  {typingText ||
+                    room.lastMessage ||
+                    (room.isSaved
+                      ? "Нотатки та переслані повідомлення"
+                      : isDirect
+                        ? undefined
+                        : room.description) ||
+                    "Повідомлень ще немає"}
                 </Text>
-                {!hasUnread && room.pinned && (
+                {!hasUnread && room.pinned && !room.isSaved && (
                   <Ionicons
                     name="pin"
                     size={16}

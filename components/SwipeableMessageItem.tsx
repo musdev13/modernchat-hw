@@ -49,6 +49,8 @@ export interface MessageItemData {
   _creationTime: number;
   reactions?: ReactionItem[];
   isSystem?: boolean;
+  /** Ім'я першого автора, якщо повідомлення переслане. */
+  forwardedFrom?: string;
 }
 
 interface SwipeableMessageItemProps {
@@ -578,6 +580,24 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   </TouchableOpacity>
                 )}
 
+                {item.forwardedFrom ? (
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      {
+                        color: isOwn ? c.onAccent : c.accent,
+                        fontSize: 13,
+                        fontWeight: "600",
+                        fontStyle: "italic",
+                        marginBottom: 3,
+                      },
+                      innerPad,
+                    ]}
+                  >
+                    Переслано від {item.forwardedFrom}
+                  </Text>
+                ) : null}
+
                 {item.replyToSender ? (
                   <TouchableOpacity
                     activeOpacity={0.7}
@@ -737,6 +757,7 @@ export const SwipeableMessageItem = memo(
     prev.item.audioUrl === next.item.audioUrl &&
     prev.item.videoUrl === next.item.videoUrl &&
     prev.item.senderName === next.item.senderName &&
+    prev.item.forwardedFrom === next.item.forwardedFrom &&
     prev.item.senderPhoto === next.item.senderPhoto &&
     prev.item.replyToSender === next.item.replyToSender &&
     prev.item.replyToText === next.item.replyToText &&

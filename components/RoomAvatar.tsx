@@ -1,4 +1,6 @@
 import { avatarColor, initialsOf } from "@/constants/theme";
+import { useTheme } from "@/context/ThemeContext";
+import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Image, StyleProp, Text, View, ViewStyle } from "react-native";
 
@@ -7,15 +9,38 @@ interface Props {
   imageUrl?: string | null;
   size: number;
   style?: StyleProp<ViewStyle>;
+  /** «Збережене»: акцентне коло із закладкою замість літери. */
+  saved?: boolean;
 }
 
 /** Аватар кімнати: фото, а якщо його немає (або воно не завантажилось) — кольорова літера. */
-export function RoomAvatar({ title, imageUrl, size, style }: Props) {
+export function RoomAvatar({ title, imageUrl, size, style, saved }: Props) {
   const [failed, setFailed] = useState(false);
+  const { colors } = useTheme();
 
   useEffect(() => {
     setFailed(false);
   }, [imageUrl]);
+
+  if (saved) {
+    return (
+      <View
+        style={[
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: colors.accent,
+            alignItems: "center",
+            justifyContent: "center",
+          },
+          style,
+        ]}
+      >
+        <Ionicons name="bookmark" size={Math.round(size * 0.5)} color={colors.onAccent} />
+      </View>
+    );
+  }
 
   if (imageUrl && !failed) {
     return (

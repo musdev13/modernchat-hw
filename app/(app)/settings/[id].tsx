@@ -3,6 +3,7 @@ import { AddMembersModal } from "@/components/AddMembersModal";
 import { EditRoomModal } from "@/components/EditRoomModal";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
+import { MuteSheet } from "@/components/MuteSheet";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import {
   ActionRow,
@@ -103,6 +104,7 @@ export default function RoomInfoScreen() {
   const [tab, setTab] = useState<TabKey>("members");
   const [memberQuery, setMemberQuery] = useState("");
   const [addVisible, setAddVisible] = useState(false);
+  const [muteVisible, setMuteVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [memberSheet, setMemberSheet] = useState<MemberItem | null>(null);
@@ -183,14 +185,22 @@ export default function RoomInfoScreen() {
   );
 
   // ── Дії ──
-  const handleToggleMute = useCallback(async () => {
-    try {
-      void Haptics.selectionAsync();
-      await setMuted({ chatRoomId: roomId, muted: !muted });
-    } catch (error: any) {
-      Alert.alert("Помилка", error?.message ?? "Не вдалося змінити сповіщення");
-    }
-  }, [muted, roomId, setMuted]);
+  // Увімкнути — одразу; вимкнути — спершу вибір тривалості (1 год / 8 год / 2 дні / назавжди).
+  const applyMute = useCallback(
+    async (nextMuted: boolean, durationMs?: number) => {
+      try {
+        void Haptics.selectionAsync();
+        await setMuted({ chatRoomId: roomId, muted: nextMuted, durationMs });
+      } catch (error: any) {
+        Alert.alert("Помилка", error?.message ?? "Не вдалося змінити сповіщення");
+      }
+    },
+    [roomId, setMuted],
+  );
+  const handleToggleMute = useCallback(() => {
+    if (muted) void applyMute(false);
+    else setMuteVisible(true);
+  }, [applyMute, muted]);
 
   const handleLeave = useCallback(() => {
     if (!room || !currentUser) return;
@@ -1010,6 +1020,16 @@ export default function RoomInfoScreen() {
             ) : undefined
           }
           actions={memberActions}
+        />
+
+        <MuteSheet
+          visible={muteVisible}
+          title={room?.title}
+          onClose={() => setMuteVisible(false)}
+          onPick={(durationMs) => {
+            setMuteVisible(false);
+            void applyMute(true, durationMs);
+          }}
         />
 
         <EditRoomModal
