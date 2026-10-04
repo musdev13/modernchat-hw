@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { internalMutation, mutation, MutationCtx, query } from "./_generated/server";
+import { mutation, MutationCtx, query } from "./_generated/server";
 import { registerProfilePhoto } from "./photoHelpers";
 import { isPremiumNow } from "./premiumHelpers";
 import { getAuthUser } from "./users";
@@ -58,12 +58,7 @@ export const list = query({
       /** Анімований файл; лише поки у власника діє преміум (інакше — тільки постер). */
       animUrl?: string;
     }[] = [];
-    // Постер поточного анімованого аватара — це те саме зображення, що й звичайне фото: дубль у списку ховаємо.
-    const posterOfAnim = new Set(
-      rows.filter((r) => r.animStorageId && isCurrentRow(user, r)).map((r) => r.storageId as string),
-    );
     for (const row of rows) {
-      if (!row.animStorageId && posterOfAnim.has(row.storageId as string)) continue;
       const url = await ctx.storage.getUrl(row.storageId);
       if (!url) continue;
       const animUrl =
@@ -114,7 +109,8 @@ const MAX_ANIM_VIDEO_MS = 10_500;
 
 /**
  * Анімований аватар (лише Modesto Premium): відео ≤10 с або GIF/анімований WebP.
- * Кадр-постер — окреме зображення (або поточне фото профілю); він і є запасним варіантом без преміуму.
+ * Це окремий запис поряд зі звичайними фото (лічиться як ще одне фото) і не замінює їх. Кадр-постер —
+ * окреме зображення або поточне статичне фото; він і є запасним варіантом без преміуму.
  */
 export const addAnimated = mutation({
   args: {
@@ -142,9 +138,12 @@ export const addAnimated = mutation({
       if (meta.size > MAX_ANIM_GIF_BYTES) throw new Error("Файл завеликий: максимум 15 МБ");
     }
 
-    const posterId = args.posterStorageId ?? me.avatarStorageId;
+    // Постер (статичний кадр): явний, інакше поточне статичне фото профілю (воно НЕ видаляється й не ховається).
+    // Кадр із відео без нативного модуля не зберегти як файл, тому для відео беремо наявне фото;
+    // для GIF/WebP без жодного фото постером слугує сам файл.
+    const posterId = args.posterStorageId ?? me.avatarStorageId ?? (args.kind === "gif" ? args.animStorageId : undefined);
     if (!posterId) {
-      throw new Error("Спершу встановіть звичайне фото профілю: воно показується, поки анімація завантажується, і після завершення Premium");
+      throw new Error("Спершу встановіть звичайне фото профілю: воно показується в списках і після завершення Premium");
     }
     const posterUrl = await ctx.storage.getUrl(posterId);
     if (!posterUrl) throw new Error("Постер недоступний");
@@ -158,20 +157,15 @@ export const addAnimated = mutation({
       .withIndex("by_user", (q) => q.eq("userId", me._id))
       .collect();
 
-    // Анімований аватар ЗАМІНЮЄ головне фото: запис, з якого взято постер (звичайне поточне фото),
-    // і попередній поточний анімований запис прибираємо — у списку лишається один запис (анімований).
-    const replaced = rows.filter((r) =>
-      r.animStorageId ? isCurrentRow(me, r) : r.storageId === posterId,
-    );
-    // Інше поточне фото (якщо постер власний) без запису в історії зберігаємо.
-    if (me.avatarStorageId && me.avatarStorageId !== posterId && !rows.some((p) => p.storageId === me.avatarStorageId)) {
+    // Анімований аватар — НОВИЙ окремий запис поряд із фото. Якщо поточне статичне фото ще не має
+    // власного запису в історії (старі дані), створюємо його, щоб воно лишилось у списку.
+    if (me.avatarStorageId && !rows.some((r) => !r.animStorageId && r.storageId === me.avatarStorageId)) {
       await ctx.db.insert("profilePhotos", {
         userId: me._id,
         storageId: me.avatarStorageId,
         createdAt: Date.now() - 1,
       });
     }
-    for (const r of replaced) await ctx.db.delete(r._id);
 
     const photoId = await ctx.db.insert("profilePhotos", {
       userId: me._id,
@@ -181,32 +175,13 @@ export const addAnimated = mutation({
       durationMs: args.durationMs,
       createdAt: Date.now(),
     });
+    // users.image / avatarStorageId — статичний кадр поточного елемента (для списків).
     await ctx.db.patch(me._id, {
       image: posterUrl,
       avatarStorageId: posterId,
       avatarAnimStorageId: args.animStorageId,
       avatarAnimKind: args.kind,
     });
-
-    // Файли замінених записів, на які більше ніхто не посилається, видаляємо.
-    const kept = rows.filter((r) => !replaced.some((x) => x._id === r._id));
-    const used = new Set<string>([posterId, args.animStorageId]);
-    for (const r of kept) {
-      used.add(r.storageId);
-      if (r.animStorageId) used.add(r.animStorageId);
-    }
-    if (me.avatarStorageId === posterId) used.add(posterId);
-    for (const r of replaced) {
-      for (const id of [r.storageId, r.animStorageId]) {
-        if (!id || used.has(id)) continue;
-        used.add(id);
-        try {
-          await ctx.storage.delete(id);
-        } catch {
-          // файл міг бути вже видалений
-        }
-      }
-    }
     return { photoId };
   },
 });
@@ -264,50 +239,5 @@ export const remove = mutation({
       }
     }
     return { success: true };
-  },
-});
-
-/**
- * Одноразова міграція (запуск: `npx convex run profilePhotos:dedupeAnimated`): для кожного поточного
- * анімованого запису прибирає окремий звичайний запис із тим самим зображенням (постер) та дублікати
- * анімованих записів з однаковим файлом. Файли не видаляє — постер лишається в анімованому записі.
- */
-export const dedupeAnimated = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const all = await ctx.db.query("profilePhotos").collect();
-    const byUser = new Map<string, Doc<"profilePhotos">[]>();
-    for (const row of all) {
-      const list = byUser.get(row.userId as string) ?? [];
-      list.push(row);
-      byUser.set(row.userId as string, list);
-    }
-    let removedStatic = 0;
-    let removedAnim = 0;
-    for (const [userId, rows] of byUser) {
-      const user = await ctx.db.get(userId as Id<"users">);
-      if (!user) continue;
-      const seenAnim = new Set<string>();
-      const animRows = rows
-        .filter((r) => r.animStorageId)
-        .sort((a, b) => b.createdAt - a.createdAt);
-      for (const r of animRows) {
-        const key = r.animStorageId as string;
-        if (seenAnim.has(key)) {
-          await ctx.db.delete(r._id);
-          removedAnim++;
-        } else {
-          seenAnim.add(key);
-        }
-      }
-      const currentAnim = animRows.find((r) => isCurrentRow(user, r));
-      if (!currentAnim) continue;
-      for (const r of rows) {
-        if (r.animStorageId || r.storageId !== currentAnim.storageId) continue;
-        await ctx.db.delete(r._id);
-        removedStatic++;
-      }
-    }
-    return { removedStatic, removedAnim };
   },
 });
