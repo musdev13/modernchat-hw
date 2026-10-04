@@ -1,9 +1,8 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { MutationCtx, mutation, query } from "./_generated/server";
+import { limitError, limitsFor } from "./limitHelpers";
 import { getAuthUser } from "./users";
-
-const MAX_PINNED_CHATS = 5;
 
 /** Чи вимкнено сповіщення зараз (з урахуванням терміну «вимкнути на…»). */
 export function isMutedNow(
@@ -147,8 +146,11 @@ export const setPinned = mutation({
       const pinnedCount = rows.filter(
         (row) => row.pinned && row.chatRoomId !== args.chatRoomId,
       ).length;
-      if (pinnedCount >= MAX_PINNED_CHATS) {
-        throw new Error(`Можна закріпити не більше ${MAX_PINNED_CHATS} чатів`);
+      const max = limitsFor(me).pinnedChats;
+      if (pinnedCount >= max) {
+        throw limitError(
+          `Можна закріпити не більше ${max} чатів${max < 10 ? ". З Modesto Premium — до 10" : ""}.`,
+        );
       }
     }
     await patchRoomSetting(ctx, me._id, args.chatRoomId, { pinned: args.pinned });

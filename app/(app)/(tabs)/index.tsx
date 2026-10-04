@@ -1,7 +1,7 @@
 import type { SheetAction } from "@/components/ActionSheet";
 import { PopoverMenu } from "@/components/PopoverMenu";
 import { useSettings } from "@/context/SettingsContext";
-import { ChatFolder, ChatFolderTabs } from "@/components/ChatFolderTabs";
+import { CUSTOM_PREFIX, ChatFolder, ChatFolderTabs } from "@/components/ChatFolderTabs";
 import { PublicChannelResults } from "@/components/PublicChannelResults";
 import { GlassProvider, GlassTarget } from "@/components/Glass";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
@@ -11,7 +11,9 @@ import { SearchField } from "@/components/SearchField";
 import { StoryRow } from "@/components/StoryRow";
 import { SwipeableRoomItem } from "@/components/SwipeableRoomItem";
 import { useTheme } from "@/context/ThemeContext";
+import { usePremiumUi } from "@/context/PremiumContext";
 import { api } from "@/convex/_generated/api";
+import { convexErrorText, isLimitError } from "@/utils/convexError";
 import { Id } from "@/convex/_generated/dataModel";
 import { useDrafts } from "@/utils/drafts";
 import { Ionicons } from "@expo/vector-icons";
@@ -85,16 +87,28 @@ export default function ChatsTab() {
 
   // Папки — клієнтський фільтр списку; лічильник = кількість чатів із непрочитаними
   // (у «Усі»/«Особисті»/«Групи» вимкнені чати не рахуються, у «Непрочитані» — усі).
+  const foldersData = useQuery(api.folders.list);
+  const customFolders = useMemo(
+    () =>
+      (foldersData?.folders ?? []).map((f) => ({
+        key: `${CUSTOM_PREFIX}${f._id}`,
+        label: `${f.emoji ? `${f.emoji} ` : ""}${f.name}`,
+        roomIds: new Set<string>(f.roomIds),
+      })),
+    [foldersData],
+  );
   const folderCounts = useMemo(() => {
-    const counts: Record<ChatFolder, number> = {
+    const counts: Record<string, number> = {
       all: 0,
       direct: 0,
       groups: 0,
       channels: 0,
       unread: 0,
     };
+    for (const f of customFolders) counts[f.key] = 0;
     for (const r of rooms ?? []) {
       if ((unread?.counts[r._id] ?? 0) <= 0) continue;
+      for (const f of customFolders) if (!r.muted && f.roomIds.has(r._id)) counts[f.key] += 1;
       counts.unread += 1;
       if (r.muted) continue;
       counts.all += 1;
@@ -103,19 +117,21 @@ export default function ChatsTab() {
       else counts.groups += 1;
     }
     return counts;
-  }, [rooms, unread]);
+  }, [rooms, unread, customFolders]);
 
   const filteredRooms = useMemo(() => {
     if (!rooms) return rooms;
     const q = search.trim().toLowerCase();
+    const custom = customFolders.find((f) => f.key === folder);
     return rooms.filter((r) => {
+      if (custom && !custom.roomIds.has(r._id)) return false;
       if (folder === "direct" && !r.isDirect) return false;
       if (folder === "groups" && (r.isDirect || r.isChannel)) return false;
       if (folder === "channels" && !r.isChannel) return false;
       if (folder === "unread" && !((unread?.counts[r._id] ?? 0) > 0)) return false;
       return !q || r.title.toLowerCase().includes(q);
     });
-  }, [rooms, search, folder, unread]);
+  }, [rooms, search, folder, unread, customFolders]);
 
   // Для кімнат без запису про прочитання (старі дані) починаємо відлік з поточного моменту.
   const readsMissing = unread?.missing ?? false;
@@ -128,8 +144,11 @@ export default function ChatsTab() {
     setTimeout(() => setRefreshing(false), 500);
   };
 
-  const showError = (error: any, fallback: string) =>
-    Alert.alert("Помилка", error?.message ?? fallback);
+  const { openUpsell } = usePremiumUi();
+  const showError = (error: any, fallback: string) => {
+    if (isLimitError(error)) openUpsell("limits", convexErrorText(error));
+    else Alert.alert("Помилка", convexErrorText(error, fallback));
+  };
 
   // Видалити / покинути (група) або приховати (особистий чат).
   const handleDeleteRoom = (roomId: Id<"chatRooms">) => {
@@ -299,7 +318,7 @@ export default function ChatsTab() {
           </View>
 
           <SearchField value={search} onChangeText={setSearch} placeholder="Пошук чатів" />
-          <ChatFolderTabs active={folder} onChange={setFolder} counts={folderCounts} />
+          <ChatFolderTabs active={folder} onChange={setFolder} counts={folderCounts} custom={customFolders} />
         </View>
 
         <GlassTarget style={{ flex: 1, backgroundColor: c.bg }}>

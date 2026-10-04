@@ -2,13 +2,14 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { MutationCtx, mutation, query } from "./_generated/server";
 import {
   assertCanPost,
   attachmentLabel,
   hiddenMessageIds,
   releaseMessageFiles,
 } from "./messageStorage";
+import { limitError, limitsFor } from "./limitHelpers";
 import { deletePollWithVotes, pollView } from "./polls";
 import { clearedAtOf, isMutedNow } from "./roomSettings";
 import { getAuthUser, premiumFlags } from "./users";
@@ -465,6 +466,50 @@ export const getMessageMeta = query({
   },
 });
 
+/** Довжина тексту повідомлення / підпису під медіа за лімітами користувача. */
+function assertTextLength(user: Parameters<typeof limitsFor>[0], text: string | undefined, kind: "message" | "caption") {
+  const limits = limitsFor(user);
+  const max = kind === "message" ? limits.message : limits.caption;
+  if ((text?.length ?? 0) > max) {
+    const premiumMax = kind === "message" ? 8192 : 4096;
+    throw limitError(
+      `${kind === "message" ? "Повідомлення" : "Підпис"} не може бути довшим за ${max} символів${
+        max < premiumMax ? `. З Modesto Premium — до ${premiumMax}` : ""
+      }.`,
+    );
+  }
+}
+
+/** Розмір завантаженого файлу порівнюємо з лімітом (100 МБ / 2 ГБ з Premium). */
+async function assertFileSize(
+  ctx: MutationCtx,
+  user: Parameters<typeof limitsFor>[0],
+  storageId: Id<"_storage">,
+) {
+  const meta = await ctx.db.system.get(storageId);
+  const maxMB = limitsFor(user).fileMB;
+  if (meta && meta.size > maxMB * 1024 * 1024) {
+    throw limitError(
+      `Файл більший за ${maxMB >= 1024 ? `${maxMB / 1024} ГБ` : `${maxMB} МБ`}${
+        maxMB < 2048 ? ". З Modesto Premium можна надсилати файли до 2 ГБ" : ""
+      }.`,
+    );
+  }
+}
+
+/** Клієнт викликає після відмови за розміром: прибирає завантажений понад ліміт файл-сироту. */
+export const discardOversizedUpload = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    const meta = await ctx.db.system.get(args.storageId);
+    if (meta && meta.size > limitsFor(me).fileMB * 1024 * 1024) {
+      await ctx.storage.delete(args.storageId);
+    }
+  },
+});
+
 export const sendMessage = mutation({
   args: {
     chatRoomId: v.id("chatRooms"),
@@ -483,6 +528,7 @@ export const sendMessage = mutation({
 
     const trimmedContent = args.content.trim();
     if (!trimmedContent) throw new Error("Message content cannot be empty");
+    assertTextLength(user, trimmedContent, "message");
 
     const messageId = await ctx.db.insert("messages", {
       chatRoomId: args.chatRoomId,
@@ -600,6 +646,7 @@ export const editMessage = mutation({
 
     const trimmedContent = args.content.trim();
     if (!trimmedContent) throw new Error("Повідомлення не може бути порожнім");
+    assertTextLength(me, trimmedContent, message.imageUrl || message.videoUrl || message.fileUrl ? "caption" : "message");
 
     await ctx.db.patch(args.messageId, {
       content: trimmedContent,
@@ -732,6 +779,8 @@ export const sendMediaMessage = mutation({
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
     assertCanPost(room, userId);
 
+    assertTextLength(user, args.caption?.trim(), "caption");
+    await assertFileSize(ctx, user, args.storageId);
     const imageUrl = await ctx.storage.getUrl(args.storageId);
     if (!imageUrl) throw new Error("Не вдалося отримати посилання на збережений файл");
 
@@ -857,6 +906,8 @@ export const sendAttachment = mutation({
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
     assertCanPost(room, userId);
 
+    assertTextLength(user, args.caption?.trim(), "caption");
+    await assertFileSize(ctx, user, args.storageId);
     const url = await ctx.storage.getUrl(args.storageId);
     if (!url) throw new Error("Не вдалося отримати посилання на збережений файл");
 

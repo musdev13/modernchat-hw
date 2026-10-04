@@ -18,3 +18,9 @@ export function convexErrorText(e: unknown, fallback = "Щось пішло не
   const text = (m ? m[1] : raw.replace(/\[CONVEX[^\]]*\]\s*/g, "").replace(/\[Request ID:[^\]]*\]\s*/g, "")).trim();
   return text || fallback;
 }
+
+/** Сервер відхилив дію через ліміт безкоштовного тарифу (ConvexError з code === "LIMIT"). */
+export function isLimitError(e: unknown): boolean {
+  const code = convexErrorData(e)?.code;
+  return code === "LIMIT" || code === "PREMIUM";
+}

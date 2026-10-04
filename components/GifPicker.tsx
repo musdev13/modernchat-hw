@@ -1,9 +1,15 @@
-import { useChatPalette } from "@/hooks/useChatPalette";
+import { usePremiumUi } from "@/context/PremiumContext";
+import { api } from "@/convex/_generated/api";
+import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
+import { convexErrorText, isLimitError } from "@/utils/convexError";
+import { useMutation, useQuery } from "convex/react";
+import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Text,
   TouchableOpacity,
@@ -97,6 +103,24 @@ export function GifPicker({
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
 
+  // Улюблені GIF/наліпки: довге натискання додає/прибирає (ліміт 5 / 200 Premium — на сервері).
+  const favs = useQuery(api.gifs.favorites);
+  const toggleFav = useMutation(api.gifs.toggleFavorite);
+  const { openUpsell } = usePremiumUi();
+  const [showFav, setShowFav] = useState(false);
+  const favItems: GifItem[] = (favs?.items ?? []).filter((g) => g.kind === kind);
+  const favIds = new Set((favs?.items ?? []).map((g) => g.id));
+  const onToggleFav = (g: GifItem) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    toggleFav({ gifId: g.id, kind: g.kind, previewUrl: g.previewUrl, url: g.url, width: g.width, height: g.height }).catch(
+      (e) => {
+        if (isLimitError(e)) openUpsell("limits", convexErrorText(e));
+        else Alert.alert("Помилка", convexErrorText(e));
+      },
+    );
+  };
+  const shown = showFav ? favItems : items;
+
   const columns = kind === "sticker" ? 4 : 3;
   const rowHeight = kind === "sticker" ? 84 : 100;
   const label = kind === "sticker" ? "наліпки" : "GIF";
@@ -156,7 +180,7 @@ export function GifPicker({
     return () => controller.abort();
   }, [apiKey, debounced, kind, label]);
 
-  if (!apiKey) {
+  if (!apiKey && !showFav) {
     return (
       <View
         style={{
@@ -193,7 +217,7 @@ export function GifPicker({
     );
   }
 
-  if (error) {
+  if (error && !showFav) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <Text
@@ -210,7 +234,7 @@ export function GifPicker({
     );
   }
 
-  if (loading && items.length === 0) {
+  if (loading && items.length === 0 && !showFav) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator color={c.accent} />
@@ -218,10 +242,34 @@ export function GifPicker({
     );
   }
 
-  if (items.length === 0) {
+  const favHeader = (
+    <View style={{ flexDirection: "row", paddingHorizontal: 4, paddingBottom: 6, columnGap: 8 }}>
+      {[
+        { on: false, label: "Тренди" },
+        { on: true, label: `★ Улюблені ${favs ? `${favs.items.length}/${favs.max}` : ""}`.trim() },
+      ].map((chip) => (
+        <TouchableOpacity
+          key={chip.label}
+          onPress={() => setShowFav(chip.on)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          style={{ paddingHorizontal: 12, height: 30, borderRadius: 15, justifyContent: "center", backgroundColor: showFav === chip.on ? c.accent : withAlpha(c.muted, 0.2) }}
+        >
+          <Text style={{ color: showFav === chip.on ? c.onAccent : c.text, fontSize: 13, fontWeight: "600" }}>{chip.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  if (shown.length === 0) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: c.muted, fontSize: 13 }}>Нічого не знайдено</Text>
+      <View style={{ flex: 1 }}>
+        {favHeader}
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
+          <Text style={{ color: c.muted, fontSize: 13, textAlign: "center" }}>
+            {showFav ? "Утримуйте GIF чи наліпку, щоб додати її в улюблені." : "Нічого не знайдено"}
+          </Text>
+        </View>
       </View>
     );
   }
@@ -229,8 +277,9 @@ export function GifPicker({
   return (
     <FlatList
       key={kind}
-      data={items}
+      data={shown}
       keyExtractor={(g) => g.id}
+      ListHeaderComponent={favHeader}
       numColumns={columns}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
@@ -239,6 +288,8 @@ export function GifPicker({
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => onSelect(item)}
+          onLongPress={() => onToggleFav(item)}
+          delayLongPress={350}
           style={{ flex: 1 / columns, padding: 2 }}
           accessibilityRole="button"
           accessibilityLabel={kind === "sticker" ? "Надіслати наліпку" : "Надіслати GIF"}
@@ -253,6 +304,9 @@ export function GifPicker({
             }}
             contentFit={kind === "sticker" ? "contain" : "cover"}
           />
+          {favIds.has(item.id) ? (
+            <Text style={{ position: "absolute", right: 8, top: 6, fontSize: 13, color: "#FBBF24" }}>★</Text>
+          ) : null}
         </TouchableOpacity>
       )}
       ListFooterComponent={

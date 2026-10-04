@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { MutationCtx, mutation, query } from "./_generated/server";
+import { assertCanJoinMore } from "./limitHelpers";
 import { patchRoomSetting } from "./roomSettings";
 import { getAuthUser } from "./users";
 
@@ -83,6 +84,7 @@ export const createChannel = mutation({
     const me = await getAuthUser(ctx);
     if (!me) throw new Error("Unauthorized: Потрібна авторизація");
 
+    await assertCanJoinMore(ctx, me);
     const title = args.title.trim();
     if (!title) throw new Error("Введіть назву каналу");
     if (title.length > TITLE_MAX) throw new Error("Назва задовга (максимум 64 символи)");
@@ -204,6 +206,7 @@ export const joinChannel = mutation({
     if (!room || !room.isChannel) throw new Error("Канал не знайдено або посилання недійсне");
 
     if (!membersOf(room).includes(me._id)) {
+      await assertCanJoinMore(ctx, me);
       await ctx.db.patch(room._id, { participantIds: [...membersOf(room), me._id] });
     }
     await ensureRead(ctx, me._id, room._id);
@@ -355,6 +358,7 @@ export const openDiscussion = mutation({
     const group = groupId ? await ctx.db.get(groupId) : null;
     if (!groupId || !group) throw new Error("Для цього каналу немає обговорення");
     if (!membersOf(group).includes(me._id)) {
+      await assertCanJoinMore(ctx, me);
       await ctx.db.patch(groupId, { participantIds: [...membersOf(group), me._id] });
     }
     await ensureRead(ctx, me._id, groupId);

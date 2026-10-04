@@ -1,6 +1,8 @@
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { api } from "@/convex/_generated/api";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
+import { useLimits } from "@/hooks/useLimits";
+import { convexErrorText } from "@/utils/convexError";
 import { PickedImage, pickSquareImage, uploadImageToStorage } from "@/utils/upload";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation } from "convex/react";
@@ -37,7 +39,6 @@ interface EditProfileModalProps {
   onSaved: () => void;
 }
 
-const BIO_MAX = 140;
 const USERNAME_RE = /^[A-Za-z0-9_]{3,32}$/;
 
 /** Редагування профілю: фото, ім'я, ім'я користувача та «про себе». */
@@ -54,6 +55,8 @@ export function EditProfileModal({
   onSaved,
 }: EditProfileModalProps) {
   const c = useChatPalette();
+  const { limits } = useLimits();
+  const BIO_MAX = limits.bio;
   const insets = useSafeAreaInsets();
   const updateProfile = useMutation(api.users.updateUserProfile);
   const generateUploadUrl = useMutation(api.users.generateAvatarUploadUrl);
@@ -160,10 +163,7 @@ export function EditProfileModal({
       onClose();
     } catch (error) {
       console.error("Profile save error:", error);
-      Alert.alert(
-        "Помилка",
-        error instanceof Error ? error.message : "Не вдалося зберегти профіль.",
-      );
+      Alert.alert("Помилка", convexErrorText(error, "Не вдалося зберегти профіль."));
     } finally {
       setSaving(false);
     }
@@ -322,7 +322,7 @@ export function EditProfileModal({
                 style={[field, { minHeight: 96 }]}
               />
               <Text style={{ color: c.muted, fontSize: 12, marginTop: 6, textAlign: "right" }}>
-                {bio.length}/{BIO_MAX}
+                {bio.length}/{BIO_MAX}{BIO_MAX < 140 ? " · з Premium — до 140" : ""}
               </Text>
 
               {label("Телефон", { marginTop: 10 })}

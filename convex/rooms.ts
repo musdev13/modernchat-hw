@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { MutationCtx, mutation, query } from "./_generated/server";
+import { assertCanJoinMore } from "./limitHelpers";
 import { canPostIn, releaseMessageFiles } from "./messageStorage";
 import { deletePollWithVotes } from "./polls";
 import { isMutedNow, patchRoomSetting } from "./roomSettings";
@@ -227,6 +228,7 @@ export const createRoom = mutation({
     if (!me) throw new Error("Unauthorized: Потрібна авторизація");
     const userId = me._id;
 
+    await assertCanJoinMore(ctx, me);
     const title = args.title.trim();
     if (!title) throw new Error("Введіть назву кімнати");
     if (title.length > 64) throw new Error("Назва задовга (максимум 64 символи)");

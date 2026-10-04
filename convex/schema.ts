@@ -213,6 +213,28 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_room", ["chatRoomId"]),
 
+  // Власні папки чатів (Premium розширює кількість папок і чатів у папці).
+  chatFolders: defineTable({
+    userId: v.id("users"),
+    name: v.string(),
+    emoji: v.optional(v.string()),
+    roomIds: v.array(v.id("chatRooms")),
+    order: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // Улюблені GIF і наліпки користувача (5 безкоштовно, 200 з Premium).
+  favoriteGifs: defineTable({
+    userId: v.id("users"),
+    gifId: v.string(),
+    kind: v.union(v.literal("gif"), v.literal("sticker")),
+    previewUrl: v.string(),
+    url: v.string(),
+    width: v.number(),
+    height: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_and_gif", ["userId", "gifId"]),
+
   typingIndicators: defineTable({
     chatRoomId: v.id("chatRooms"),
     userId: v.id("users"),

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
+import { limitError, limitsFor } from "./limitHelpers";
 import { registerProfilePhoto } from "./photoHelpers";
 import { animAvatarFields, applyBootstrapAdmin, premiumView } from "./premiumHelpers";
 
@@ -277,6 +278,13 @@ export const updateUserProfile = mutation({
 
     if (!trimmedName) {
       throw new Error("Ім'я користувача не може бути порожнім");
+    }
+
+    const bioMax = limitsFor(me).bio;
+    if ((args.bio?.trim().length ?? 0) > bioMax) {
+      throw limitError(
+        `Опис не довший за ${bioMax} символів${bioMax < 140 ? ". З Modesto Premium — до 140" : ""}.`,
+      );
     }
 
     const patchData: Record<string, any> = {

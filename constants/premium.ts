@@ -7,7 +7,21 @@ type IconName = ComponentProps<typeof Ionicons>["name"];
 export const PREMIUM_GOLD = "#F5C451";
 export const PREMIUM_GOLD_SOFT = "#FFE29A";
 
-export type PremiumFeature = "general" | "theme" | "chatStars" | "avatar" | "emoji" | "stories";
+export type PremiumFeature =
+  | "general"
+  | "theme"
+  | "chatStars"
+  | "avatar"
+  | "emoji"
+  | "stories"
+  | "limits"
+  | "files"
+  | "profile"
+  | "reactions"
+  | "effects"
+  | "translate"
+  | "privacy"
+  | "tags";
 
 export interface PremiumPerk {
   icon: IconName;
@@ -50,6 +64,14 @@ export const PREMIUM_REASONS: Record<PremiumFeature, string> = {
   avatar: "Анімований аватар доступний лише з Modesto Premium.",
   emoji: "Емодзі-статус доступний лише з Modesto Premium.",
   stories: "Розширені можливості історій доступні лише з Modesto Premium.",
+  limits: "Підвищені ліміти доступні з Modesto Premium.",
+  files: "Файли до 2 ГБ можна надсилати з Modesto Premium.",
+  profile: "Кольори профілю доступні лише з Modesto Premium.",
+  reactions: "Додаткові реакції та до 3 реакцій на повідомлення — з Modesto Premium.",
+  effects: "Ефекти повідомлень доступні лише з Modesto Premium.",
+  translate: "Переклад повідомлень доступний лише з Modesto Premium.",
+  privacy: "Розширена приватність доступна лише з Modesto Premium.",
+  tags: "Теги збережених повідомлень доступні лише з Modesto Premium.",
 };
 
 /** Ліміти історій (дзеркало серверних значень у convex/stories.ts (STORY_LIMITS)). */

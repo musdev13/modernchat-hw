@@ -32,7 +32,10 @@ import { TypingDots } from "@/components/TypingDots";
 import { VideoNoteRecorderModal } from "@/components/VideoNoteRecorderModal";
 import { SpaceBackdrop } from "@/components/SpaceBackdrop";
 import { useSettings } from "@/context/SettingsContext";
+import { usePremiumUi } from "@/context/PremiumContext";
 import { api } from "@/convex/_generated/api";
+import { convexErrorText, isLimitError } from "@/utils/convexError";
+import { useLimits } from "@/hooks/useLimits";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
@@ -60,6 +63,7 @@ import {
 } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import { File, Paths } from "expo-file-system";
 import * as Haptics from "expo-haptics";
 import { MuteSheet } from "@/components/MuteSheet";
@@ -158,6 +162,9 @@ export default function ChatRoomScreen() {
   const forwardMessage = useMutation(api.messages.forwardMessage);
   const sendMediaMessage = useMutation(api.messages.sendMediaMessage);
   const sendAttachment = useMutation(api.messages.sendAttachment);
+  const discardOversized = useMutation(api.messages.discardOversizedUpload);
+  const { openUpsell } = usePremiumUi();
+  const { limits: myLimits } = useLimits();
   const createPoll = useMutation(api.messages.createPoll);
   const sendVoiceMessage = useMutation(api.messages.sendVoiceMessage);
   const sendVideoNote = useMutation(api.messages.sendVideoNote);
@@ -726,12 +733,22 @@ export default function ChatRoomScreen() {
         try {
           for (let i = 0; i < queue.length; i++) {
             const att = queue[i];
+            // Попередня перевірка розміру, щоб не вантажити зайвого (сервер перевіряє ще раз).
+            if (att.size && att.size > myLimits.fileMB * 1024 * 1024) {
+              throw new ConvexError({
+                code: "LIMIT",
+                message: `Файл більший за ${myLimits.fileMB >= 1024 ? `${myLimits.fileMB / 1024} ГБ` : `${myLimits.fileMB} МБ`}${
+                  myLimits.fileMB < 2048 ? ". З Modesto Premium можна надсилати файли до 2 ГБ" : ""
+                }.`,
+              });
+            }
             setUploadState({ index: i, total: queue.length, fraction: 0 });
             const uploadUrl = await generateUploadUrl();
             const storageId = await uploadToStorage(uploadUrl, att, (fraction) =>
               setUploadState({ index: i, total: queue.length, fraction }),
             );
-            await sendAttachment({
+            try {
+              await sendAttachment({
               chatRoomId,
               kind: att.kind,
               storageId,
@@ -747,6 +764,10 @@ export default function ChatRoomScreen() {
               replyToSender: i === 0 ? reply?.senderName : undefined,
               replyToText: i === 0 ? reply?.text : undefined,
             });
+            } catch (sendError) {
+              if (isLimitError(sendError)) discardOversized({ storageId }).catch(() => {});
+              throw sendError;
+            }
             if (i === 0) captionSent = true;
             setAttachments((prev) => prev.filter((a) => a.id !== att.id));
           }
@@ -779,12 +800,19 @@ export default function ChatRoomScreen() {
       setSelection({ start: 0, end: 0 });
       resetTyping();
     } catch (error) {
-      console.error(error);
-      Alert.alert("Помилка", "Не вдалося надіслати повідомлення");
+      if (isLimitError(error)) {
+        openUpsell("limits", convexErrorText(error));
+      } else {
+        console.error(error);
+        Alert.alert("Помилка", convexErrorText(error, "Не вдалося надіслати повідомлення"));
+      }
     } finally {
       setIsSubmitting(false);
     }
   }, [
+    openUpsell,
+    discardOversized,
+    myLimits.fileMB,
     chatRoomId,
     editMessage,
     editingMessageId,
