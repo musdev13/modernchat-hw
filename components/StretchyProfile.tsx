@@ -36,7 +36,17 @@ const BAR_SIDE_MARGIN = 12;
 const AVATAR = 116;
 // Скільки пікселів протягнути вниз, щоб аватар розкрився на повний розмір.
 const PULL_DISTANCE = 220;
+// Висота розкритого фото (як у Telegram — майже на пів екрана), обмежена шириною.
+const FULL_HEIGHT_RATIO = 0.6;
 const SPRING = { damping: 22, stiffness: 210, mass: 0.9 } as const;
+
+/** Затемнює колір #RRGGBB (f < 1 — темніше). */
+function shade(hex: string, f: number): string {
+  const h = hex.replace("#", "");
+  const ch = (i: number) =>
+    Math.max(0, Math.min(255, Math.round(parseInt(h.slice(i, i + 2), 16) * f)));
+  return `rgb(${ch(0)}, ${ch(2)}, ${ch(4)})`;
+}
 
 interface Props {
   name: string;
@@ -80,7 +90,7 @@ export function StretchyProfile({
 }: Props) {
   const c = useChatPalette();
   const insets = useSafeAreaInsets();
-  const { width: W } = useWindowDimensions();
+  const { width: W, height: H } = useWindowDimensions();
 
   const barBottom = insets.top + BAR_TOP_GAP + BAR_BUTTON;
   const barCenterY = insets.top + BAR_TOP_GAP + BAR_BUTTON / 2;
@@ -89,7 +99,7 @@ export function StretchyProfile({
   const baseHeight = nameTop + 64;
   const collapsedHeight = barBottom + 8;
   const collapseDistance = baseHeight - collapsedHeight;
-  const fullHeight = W;
+  const fullHeight = Math.round(Math.min(H * FULL_HEIGHT_RATIO, W * 1.3));
   const extra = Math.max(0, fullHeight - baseHeight);
 
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
@@ -132,7 +142,13 @@ export function StretchyProfile({
       const dy = t.y - startY.value;
       const dx = Math.abs(t.x - startX.value);
       if (!pulling.value) {
-        if (scrollY.value <= 0 && dy > 8 && dy > dx) {
+        const vertical = Math.abs(dy) > dx;
+        if (scrollY.value <= 0 && dy > 8 && vertical) {
+          // Тягнемо вниз від верху — розкриваємо.
+          pulling.value = true;
+          manager.activate();
+        } else if (startE.value > 0.02 && dy < -8 && vertical) {
+          // Розкрите фото можна «закрити» свайпом угору.
           pulling.value = true;
           manager.activate();
         } else if (dy < -8 || dx > 16) {
@@ -151,15 +167,18 @@ export function StretchyProfile({
       if (scrollY.value > 4) return;
       const e1 = expand.value;
       const size = AVATAR + (W - AVATAR) * e1;
+      const boxH = AVATAR + (fullHeight - AVATAR) * e1;
       const top = avatarTop * (1 - e1);
       const left = (W - size) / 2;
-      if (t.x >= left && t.x <= left + size && t.y >= top && t.y <= top + size) {
+      if (t.x >= left && t.x <= left + size && t.y >= top && t.y <= top + boxH) {
         runOnJS(openViewer)();
       }
     })
     .onEnd((e) => {
-      const open = expand.value > 0.35 || e.velocityY > 700;
-      expand.value = withSpring(open ? 1 : 0, SPRING);
+      // Швидкий порух вирішує напрямок, інакше — за положенням (пів шляху).
+      const open =
+        e.velocityY > 600 ? true : e.velocityY < -600 ? false : expand.value > 0.45;
+      expand.value = withSpring(open ? 1 : 0, { ...SPRING, velocity: e.velocityY / PULL_DISTANCE });
     })
     .onFinalize(() => {
       pulling.value = false;
@@ -171,7 +190,6 @@ export function StretchyProfile({
     return { height: h + (fullHeight - h) * expand.value };
   });
 
-  const tintStyle = useAnimatedStyle(() => ({ opacity: 1 - expand.value }));
   const gradientStyle = useAnimatedStyle(() => ({ opacity: expand.value }));
 
   const avatarStyle = useAnimatedStyle(() => {
@@ -180,8 +198,8 @@ export function StretchyProfile({
     const size = AVATAR + (W - AVATAR) * e;
     return {
       width: size,
-      height: size,
-      borderRadius: (size / 2) * (1 - e),
+      height: AVATAR + (fullHeight - AVATAR) * e,
+      borderRadius: (AVATAR / 2) * (1 - e),
       top: avatarTop * (1 - e),
       left: (W - size) / 2,
       opacity: 1 - interpolate(p, [0.75, 1], [0, 1], Extrapolation.CLAMP),
@@ -193,7 +211,7 @@ export function StretchyProfile({
   });
 
   const initialsStyle = useAnimatedStyle(() => {
-    const size = AVATAR + (W - AVATAR) * expand.value;
+    const size = AVATAR + (Math.min(W, fullHeight) - AVATAR) * expand.value;
     return { fontSize: size * 0.36 };
   });
 
@@ -207,16 +225,6 @@ export function StretchyProfile({
     };
   });
 
-  const nameColorStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(expand.value, [0, 1], [c.text, "#FFFFFF"]),
-  }));
-  const statusColorStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      expand.value,
-      [0, 1],
-      [statusAccent ? c.accent : c.muted, "rgba(255,255,255,0.85)"],
-    ),
-  }));
 
   const scrollViewStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: extra * expand.value }],
@@ -246,7 +254,7 @@ export function StretchyProfile({
     </GlassSurface>
   );
 
-  const tint = withAlpha(avatarColor(name || "?"), c.isDark ? 0.26 : 0.2);
+  const coverColor = avatarColor(name || "?");
 
   return (
     <GlassProvider>
@@ -284,9 +292,39 @@ export function StretchyProfile({
                 headerStyle,
               ]}
             >
-              <Animated.View
-                style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: tint }, tintStyle]}
-              />
+              {/* Обкладинка: розмите й збільшене фото аватара (або градієнт кольору аватара) */}
+              <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
+                {hasImage ? (
+                  <>
+                    <Image
+                      source={{ uri: imageUrl! }}
+                      blurRadius={22}
+                      resizeMode="cover"
+                      style={{ position: "absolute", top: -48, left: -48, right: -48, bottom: -48 }}
+                    />
+                    <View
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: "rgba(0,0,0,0.36)",
+                      }}
+                    />
+                  </>
+                ) : (
+                  <Svg width="100%" height="100%">
+                    <Defs>
+                      <LinearGradient id="profileCover" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={shade(coverColor, 0.92)} stopOpacity="1" />
+                        <Stop offset="1" stopColor={shade(coverColor, 0.6)} stopOpacity="1" />
+                      </LinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="100%" height="100%" fill="url(#profileCover)" />
+                  </Svg>
+                )}
+              </View>
 
               <Animated.View
                 style={[
@@ -356,14 +394,20 @@ export function StretchyProfile({
               >
                 <Animated.Text
                   numberOfLines={1}
-                  style={[{ fontSize: 25, fontWeight: "800", textAlign: "center" }, nameColorStyle]}
+                  style={{ fontSize: 25, fontWeight: "800", textAlign: "center", color: "#FFFFFF" }}
                 >
                   {name}
                 </Animated.Text>
                 {status ? (
                   <Animated.Text
                     numberOfLines={1}
-                    style={[{ fontSize: 14, marginTop: 4, textAlign: "center" }, statusColorStyle]}
+                    style={{
+                      fontSize: 14,
+                      marginTop: 4,
+                      textAlign: "center",
+                      color: statusAccent ? "#FFFFFF" : "rgba(255,255,255,0.78)",
+                      fontWeight: statusAccent ? "700" : "400",
+                    }}
                   >
                     {status}
                   </Animated.Text>
