@@ -7,14 +7,17 @@ export const QrCode = memo(function QrCode({
   value,
   size,
   quiet = 2,
+  level = "M",
 }: {
   value: string;
   size: number;
   /** Біла рамка в модулях. */
   quiet?: number;
+  /** Рівень виправлення помилок (Q/H — коли щось закриває центр, наприклад аватар). */
+  level?: "L" | "M" | "Q" | "H";
 }) {
   const { path, n } = useMemo(() => {
-    const qr = qrcode(0, "M");
+    const qr = qrcode(0, level);
     qr.addData(value);
     qr.make();
     const count = qr.getModuleCount();
@@ -31,7 +34,7 @@ export const QrCode = memo(function QrCode({
       }
     }
     return { path: d, n: count };
-  }, [value]);
+  }, [value, level]);
 
   const total = n + quiet * 2;
   return (

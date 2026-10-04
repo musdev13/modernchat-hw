@@ -8,6 +8,7 @@ import { Alert, Text, TouchableOpacity, View } from "react-native";
 
 import { EditProfileModal } from "@/components/EditProfileModal";
 import { PopoverMenu } from "@/components/PopoverMenu";
+import { QrOverlay } from "@/components/QrOverlay";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
 import type { ViewerAction } from "@/components/MediaViewer";
 import {
@@ -58,6 +59,7 @@ export default function ProfileScreen() {
 
   const [editVisible, setEditVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [qrVisible, setQrVisible] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [tab, setTab] = useState("photos");
   const [viewerReq, setViewerReq] = useState<{ index: number; key: number } | null>(null);
@@ -191,7 +193,8 @@ export default function ProfileScreen() {
         actions={actions}
         leftIcon="qr-code-outline"
         leftLabel="QR-код"
-        onLeftPress={() => router.push("/qr" as any)}
+        onLeftPress={() => setQrVisible(true)}
+        lockGestures={qrVisible}
         rightIcon="ellipsis-vertical"
         rightLabel="Меню"
         onRightPress={() => setMenuVisible(true)}
@@ -230,6 +233,13 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             ) : null}
             <MainTabBar active="profile" />
+            <QrOverlay
+              visible={qrVisible}
+              onClose={() => setQrVisible(false)}
+              name={profile.name}
+              username={profile.username}
+              avatarUrl={profile.image}
+            />
           </>
         }
         bottomInset={tabSpace + 56}

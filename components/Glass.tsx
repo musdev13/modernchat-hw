@@ -193,3 +193,33 @@ export function GlassSurface({
     </Animated.View>
   );
 }
+
+/**
+ * Розмиття всього, що показує найближчий GlassTarget (для оверлеїв поверх екрана).
+ * Без нативного розмиття нічого не малює — оверлей тоді лишається просто затемненим.
+ */
+export function GlassBackdrop({ intensity = 55 }: { intensity?: number }) {
+  const c = useChatPalette();
+  const ctx = useContext(GlassContext);
+  const blur = loadBlur();
+  const [failed, setFailed] = useState(false);
+  const Blur = blur?.BlurView;
+  if (!blur || !Blur || !ctx?.ready || failed) return null;
+  return (
+    <BlurBoundary onError={() => setFailed(true)}>
+      <Blur
+        blurTarget={ctx.targetRef}
+        blurMethod="dimezisBlurView"
+        tint={c.isDark ? "dark" : "light"}
+        intensity={intensity}
+        style={StyleSheet.absoluteFill}
+      />
+    </BlurBoundary>
+  );
+}
+
+/** true, якщо поруч є GlassProvider із готовою ціллю розмиття. */
+export function useGlassReady(): boolean {
+  const ctx = useContext(GlassContext);
+  return !!ctx?.ready && isBlurAvailable();
+}

@@ -73,13 +73,6 @@ export default function AppLayout() {
         }}
       />
       <Stack.Screen
-        name="qr"
-        options={{
-          headerShown: false,
-          animation: "slide_from_bottom",
-        }}
-      />
-      <Stack.Screen
         name="u/[username]"
         options={{
           headerShown: false,

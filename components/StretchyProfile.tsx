@@ -277,6 +277,8 @@ interface Props {
   viewerActions?: ViewerAction[];
   /** Запит відкрити повноекранний перегляд на фото №index (зі «Сітки фото»); новий key = новий запит. */
   openViewerRequest?: { index: number; key: number } | null;
+  /** Вимкнути жести шапки (поки поверх екрана відкритий оверлей). */
+  lockGestures?: boolean;
   /** Ліва кнопка шапки, коли немає «Назад» (на вкладці). */
   leftIcon?: IconName;
   leftLabel?: string;
@@ -312,6 +314,7 @@ export function StretchyProfile({
   photos,
   viewerActions,
   openViewerRequest,
+  lockGestures,
   leftIcon,
   leftLabel,
   onLeftPress,
@@ -463,6 +466,7 @@ export function StretchyProfile({
   });
 
   const pan = Gesture.Pan()
+    .enabled(!lockGestures)
     .manualActivation(true)
     .onTouchesDown((e) => {
       const t = e.allTouches[0];
