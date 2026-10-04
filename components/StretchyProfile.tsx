@@ -1,6 +1,7 @@
 import { GlassProvider, GlassTarget } from "@/components/Glass";
 import { PressableScale } from "@/components/PressableScale";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
+import { Image as ExpoImage } from "expo-image";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { avatarColor, initialsOf } from "@/constants/theme";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
@@ -33,6 +34,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
+
+const AnimatedExpoImage = Animated.createAnimatedComponent(ExpoImage);
 
 const BAR_TOP_GAP = 6;
 const BAR_BUTTON = 44;
@@ -546,16 +549,37 @@ export function StretchyProfile({
                 ]}
               >
                 {hasImage ? (
-                  <Animated.Image
+                  <AnimatedExpoImage
                     source={{ uri: imageUrl! }}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    transition={220}
+                    cachePolicy="memory-disk"
+                    recyclingKey={imageUrl!}
                     onError={() => setImageFailed(true)}
                     style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, photoStyle]}
                   />
                 ) : (
-                  <Animated.Text style={[{ color: "#FFFFFF", fontWeight: "700" }, initialsStyle]}>
-                    {initialsOf(name)}
-                  </Animated.Text>
+                  <>
+                    {/* Запасний градієнт, коли немає фото (колір з імені) */}
+                    <Svg
+                      width="100%"
+                      height="100%"
+                      viewBox="0 0 1 1"
+                      preserveAspectRatio="none"
+                      style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+                    >
+                      <Defs>
+                        <LinearGradient id="avatarFallback" x1="0" y1="0" x2="1" y2="1">
+                          <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.22" />
+                          <Stop offset="1" stopColor="#000000" stopOpacity="0.28" />
+                        </LinearGradient>
+                      </Defs>
+                      <Rect x="0" y="0" width="1" height="1" fill="url(#avatarFallback)" />
+                    </Svg>
+                    <Animated.Text style={[{ color: "#FFFFFF", fontWeight: "700" }, initialsStyle]}>
+                      {initialsOf(name)}
+                    </Animated.Text>
+                  </>
                 )}
                 {busy && (
                   <View

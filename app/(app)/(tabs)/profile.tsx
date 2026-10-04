@@ -3,16 +3,15 @@ import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Text, TouchableOpacity, View } from "react-native";
 
 import { EditProfileModal, ProfileField } from "@/components/EditProfileModal";
-import { InfoRow, Section, StatsRow } from "@/components/ProfileParts";
+import { InfoRow, ProfileSkeleton, Section, StatsRow, useCopyToast } from "@/components/ProfileParts";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
 import { StretchyProfile } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import { dayLabel } from "@/utils/chat";
-import { copyText } from "@/utils/clipboard";
 import { pickSquareImage, uploadImageToStorage } from "@/utils/upload";
 
 export default function ProfileScreen() {
@@ -32,13 +31,10 @@ export default function ProfileScreen() {
   const [editVisible, setEditVisible] = useState(false);
   const [focusField, setFocusField] = useState<ProfileField | undefined>();
   const [uploading, setUploading] = useState(false);
+  const { copy: handleCopy, toast: copyToast } = useCopyToast();
 
   if (currentUser === undefined || (currentUser && profile === undefined)) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.divider }}>
-        <ActivityIndicator size="large" color={c.accent} />
-      </View>
-    );
+    return <ProfileSkeleton />;
   }
 
   if (!currentUser || !profile) {
@@ -87,11 +83,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleCopy = async (text: string) => {
-    const result = await copyText(text);
-    if (result === "copied") void Haptics.selectionAsync();
-  };
-
   const phone = clerkUser?.primaryPhoneNumber?.phoneNumber;
 
   return (
@@ -125,7 +116,7 @@ export default function ProfileScreen() {
               icon="call-outline"
               value={phone}
               label="Телефон"
-              onLongPress={() => handleCopy(phone)}
+              onPress={() => handleCopy(phone)}
             />
           ) : null}
           {profile.email ? (
@@ -134,7 +125,7 @@ export default function ProfileScreen() {
               icon="mail-outline"
               value={profile.email}
               label="Пошта"
-              onLongPress={() => handleCopy(profile.email!)}
+              onPress={() => handleCopy(profile.email!)}
             />
           ) : null}
           <InfoRow
@@ -169,6 +160,7 @@ export default function ProfileScreen() {
           />
         </Section>
       </StretchyProfile>
+      {copyToast}
 
       <EditProfileModal
         visible={editVisible}

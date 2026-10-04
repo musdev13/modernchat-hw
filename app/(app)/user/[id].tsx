@@ -1,11 +1,10 @@
 import { useMutation, useQuery } from "convex/react";
-import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Text, TouchableOpacity, View } from "react-native";
 
 import { MuteSheet } from "@/components/MuteSheet";
-import { InfoRow, Section, StatsRow } from "@/components/ProfileParts";
+import { InfoRow, ProfileSkeleton, Section, StatsRow, useCopyToast } from "@/components/ProfileParts";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { StretchyProfile } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
@@ -13,7 +12,6 @@ import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import { useOpenDirectChat } from "@/hooks/useOpenDirectChat";
 import { dayLabel, formatLastSeen, membersLabel } from "@/utils/chat";
-import { copyText } from "@/utils/clipboard";
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -43,13 +41,10 @@ export default function UserProfileScreen() {
   const setMuted = useMutation(api.roomSettings.setMuted);
   const { open: openChat, busyId } = useOpenDirectChat("navigate");
   const [muteVisible, setMuteVisible] = useState(false);
+  const { copy: handleCopy, toast: copyToast } = useCopyToast();
 
   if (profile === undefined || isSelf) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.divider }}>
-        <ActivityIndicator size="large" color={c.accent} />
-      </View>
-    );
+    return <ProfileSkeleton />;
   }
 
   if (!profile) {
@@ -71,11 +66,6 @@ export default function UserProfileScreen() {
   }
 
   const status = formatLastSeen(profile.lastSeenAt, profile.online, profile.lastSeenHidden);
-
-  const handleCopy = async (text: string) => {
-    const result = await copyText(text);
-    if (result === "copied") void Haptics.selectionAsync();
-  };
 
   const actions: { key: string; icon: any; label: string; onPress: () => void }[] = [
     {
@@ -137,6 +127,7 @@ export default function UserProfileScreen() {
               icon="information-circle-outline"
               value={profile.bio}
               label="Про себе"
+              onPress={() => handleCopy(profile.bio!)}
             />
           ) : null}
         </Section>
@@ -158,12 +149,19 @@ export default function UserProfileScreen() {
 
       {sharedRooms && sharedRooms.length > 0 ? (
         <Section title={`Спільні кімнати · ${sharedRooms.length}`}>
-          {sharedRooms.map((room) => (
+          {sharedRooms.map((room, i) => (
             <TouchableOpacity
               key={room._id}
               activeOpacity={0.6}
               onPress={() => router.push(`/chat/${room._id}` as any)}
-              style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8 }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 16,
+                paddingVertical: 9,
+                borderTopWidth: i === 0 ? 0 : 1,
+                borderTopColor: c.divider,
+              }}
             >
               <RoomAvatar title={room.title} imageUrl={room.avatarUrl} size={44} />
               <View style={{ flex: 1, marginLeft: 14 }}>
@@ -176,10 +174,10 @@ export default function UserProfileScreen() {
               </View>
             </TouchableOpacity>
           ))}
-          <View style={{ height: 6 }} />
         </Section>
       ) : null}
     </StretchyProfile>
+    {copyToast}
 
     <MuteSheet
       visible={muteVisible}
