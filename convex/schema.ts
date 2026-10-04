@@ -16,6 +16,10 @@ export default defineSchema({
     lastActiveAt: v.optional(v.number()),
     // Приватність: приховати час останнього входу («був(ла) нещодавно»).
     hideLastSeen: v.optional(v.boolean()),
+    // День народження (ISO «YYYY-MM-DD») і телефон; телефон показується іншим лише за phoneVisible.
+    birthday: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    phoneVisible: v.optional(v.boolean()),
   })
     .index("by_token", ["tokenIdentifier"])
     .index("by_email", ["email"])
@@ -209,4 +213,11 @@ export default defineSchema({
     image: v.optional(v.string()),
     fetchedAt: v.number(),
   }).index("by_url", ["url"]),
+
+  // Історія фото профілю; поточне — те, чий storageId збігається з users.avatarStorageId.
+  profilePhotos: defineTable({
+    userId: v.id("users"),
+    storageId: v.id("_storage"),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]),
 });

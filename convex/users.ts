@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
+import { registerProfilePhoto } from "./photoHelpers";
 
 /** Онлайн, якщо heartbeat був не пізніше ніж ONLINE_WINDOW_MS тому (клієнт шле його кожні ~40 с). */
 export const ONLINE_WINDOW_MS = 70_000;
@@ -238,6 +239,9 @@ export const updateUserProfile = mutation({
     username: v.optional(v.string()),
     bio: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
+    // undefined — не чіпати, "" — очистити.
+    birthday: v.optional(v.string()),
+    phone: v.optional(v.string()),
   },
 
   handler: async (ctx, args) => {
@@ -259,16 +263,35 @@ export const updateUserProfile = mutation({
       bio: args.bio?.trim(),
     };
 
-    if (args.avatarStorageId) {
-      const imageUrl = await ctx.storage.getUrl(args.avatarStorageId);
-
-      if (imageUrl) {
-        patchData.image = imageUrl;
-        patchData.avatarStorageId = args.avatarStorageId;
+    if (args.birthday !== undefined) {
+      const b = args.birthday.trim();
+      if (b) {
+        const d = new Date(`${b}T00:00:00Z`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(b) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== b) {
+          throw new Error("Некоректна дата народження");
+        }
+        if (d.getTime() > Date.now() || d.getUTCFullYear() < 1900) {
+          throw new Error("Некоректна дата народження");
+        }
+        patchData.birthday = b;
+      } else {
+        patchData.birthday = undefined;
       }
+    }
+    if (args.phone !== undefined) {
+      const ph = args.phone.trim();
+      if (ph && !/^\+?[0-9][0-9\s().-]{5,20}$/.test(ph)) {
+        throw new Error("Некоректний номер телефону");
+      }
+      patchData.phone = ph || undefined;
     }
 
     await ctx.db.patch(me._id, patchData);
+
+    // Нове фото з форми редагування теж потрапляє в історію й стає головним.
+    if (args.avatarStorageId) {
+      await registerProfilePhoto(ctx, me, args.avatarStorageId);
+    }
 
     return { success: true };
   },
@@ -288,18 +311,6 @@ export const getUserProfile = query({
     if (!user) {
       return null;
     }
-
-    const userMessages = await ctx.db
-      .query("messages")
-      .filter((q) => q.eq(q.field("senderId"), args.userId))
-      .collect();
-
-    const createdRooms = (
-      await ctx.db
-        .query("chatRooms")
-        .filter((q) => q.eq(q.field("creatorId"), args.userId))
-        .collect()
-    ).filter((room) => !room.isDirect);
 
     const isSelf = me?._id === user._id;
     const status = presenceOf(user, await getPresenceRow(ctx, user._id), me?._id);
@@ -326,11 +337,12 @@ export const getUserProfile = query({
       lastSeenAt: status.lastSeenAt,
       lastSeenHidden: status.lastSeenHidden,
       hideLastSeen: isSelf ? !!user.hideLastSeen : undefined,
-
-      stats: {
-        messagesCount: userMessages.length,
-        roomsCreatedCount: createdRooms.length,
-      },
+      birthday: user.birthday,
+      // Телефон бачить лише власник; іншим — лише коли власник дозволив (за замовчуванням прихований).
+      phone: isSelf || user.phoneVisible ? user.phone : undefined,
+      phoneVisible: isSelf ? !!user.phoneVisible : undefined,
+      // Застаріле (більше не рахуємо — це були повні скани таблиць); прибрати разом зі старим UI.
+      stats: { messagesCount: 0, roomsCreatedCount: 0 },
     };
   },
 });
@@ -365,6 +377,17 @@ export const setHideLastSeen = mutation({
     if (!me) throw new Error("Unauthorized: Потрібна авторизація");
     await ctx.db.patch(me._id, { hideLastSeen: args.hide });
     return { hide: args.hide };
+  },
+});
+
+// Приватність номера: «Усі» / «Ніхто».
+export const setPhoneVisible = mutation({
+  args: { visible: v.boolean() },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized");
+    await ctx.db.patch(me._id, { phoneVisible: args.visible });
+    return { visible: args.visible };
   },
 });
 
