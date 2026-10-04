@@ -21,3 +21,23 @@ export function slugHint(raw: string): string | null {
   if (!SLUG_PATTERN.test(slug)) return "Допустимі лише a–z, 0–9 та _";
   return null;
 }
+
+const TRANSLIT: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "h", ґ: "g", д: "d", е: "e", є: "ye", ж: "zh", з: "z",
+  и: "y", і: "i", ї: "yi", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p",
+  р: "r", с: "s", т: "t", у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh",
+  щ: "shch", ю: "yu", я: "ya", ы: "y", э: "e", ё: "yo", ь: "", ъ: "", "'": "", "ʼ": "", "’": "",
+};
+
+/** Пропозиція посилання з назви каналу: транслітерація → a-z0-9_ (4–32 символи). */
+export function suggestSlug(title: string): string {
+  let out = "";
+  for (const ch of title.trim().toLowerCase()) {
+    if (/[a-z0-9]/.test(ch)) out += ch;
+    else if (TRANSLIT[ch] !== undefined) out += TRANSLIT[ch];
+    else if (/\s|[-_.]/.test(ch) && !out.endsWith("_")) out += "_";
+  }
+  out = out.replace(/^_+|_+$/g, "").slice(0, 28);
+  while (out.length < 4) out += Math.floor(Math.random() * 10);
+  return out;
+}

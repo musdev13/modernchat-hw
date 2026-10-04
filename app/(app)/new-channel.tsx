@@ -5,7 +5,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { withAlpha } from "@/hooks/useChatPalette";
-import { slugHint } from "@/utils/channel";
+import { slugHint, suggestSlug } from "@/utils/channel";
 import { pickSquareImage, uploadImageToStorage, type PickedImage } from "@/utils/upload";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
@@ -16,8 +16,8 @@ import {
   Alert,
   BackHandler,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -48,6 +48,8 @@ export default function NewChannelScreen() {
   const [photo, setPhoto] = useState<PickedImage | null>(null);
   const [isPublic, setIsPublic] = useState(true);
   const [slug, setSlug] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -62,7 +64,14 @@ export default function NewChannelScreen() {
     isPublic && step === "access" && !localError ? { slug: normalizedSlug } : "skip",
   );
   const slugError = localError ?? (slugState && !slugState.ok ? slugState.reason : null);
+  const slugChecking = isPublic && !localError && slugState === undefined;
   const slugOk = !isPublic || (!localError && slugState?.ok === true);
+  // Чому кнопка «Далі» зараз не працює — показуємо під полем і в сповіщенні.
+  const slugMessage: { text: string; tone: "error" | "muted" | "ok" } = slugError
+    ? { text: slugError, tone: "error" }
+    : slugChecking
+      ? { text: "Перевіряємо посилання…", tone: "muted" }
+      : { text: "Посилання вільне", tone: "ok" };
 
   const goBackStep = () => {
     if (step === "members") setStep("access");
@@ -99,6 +108,7 @@ export default function NewChannelScreen() {
 
   const handleCreate = async () => {
     setIsLoading(true);
+    setCreateError(null);
     try {
       let avatarStorageId: Id<"_storage"> | undefined;
       if (photo) {
@@ -115,31 +125,49 @@ export default function NewChannelScreen() {
       });
       router.replace(`/chat/${result.roomId}` as any);
     } catch (error: any) {
-      Alert.alert("Помилка", error?.message ?? "Не вдалося створити канал.");
+      // Convex додає до повідомлення службовий префікс — прибираємо його для користувача.
+      const raw = String(error?.message ?? "");
+      const clean =
+        raw
+          .replace(/^\[CONVEX [^\]]*\]\s*/, "")
+          .replace(/\[Request ID: [^\]]*\]\s*/, "")
+          .replace(/^Uncaught Error:\s*/, "")
+          .split("\n")[0]
+          .replace(/^[A-Za-z ]+:\s*(?=[А-Яа-яІіЇїЄє])/, "")
+          .trim() || "Не вдалося створити канал.";
+      setCreateError(clean);
+      Alert.alert("Не вдалося створити канал", clean);
     } finally {
       setIsLoading(false);
     }
   };
 
   const next = () => {
+    Keyboard.dismiss();
     if (step === "details") {
       if (!title.trim()) {
         Alert.alert("Помилка", "Будь ласка, введіть назву каналу.");
         return;
       }
+      if (!slugTouched) setSlug(suggestSlug(title));
       setStep("access");
     } else if (step === "access") {
-      if (!slugOk) return;
+      if (!slugOk) {
+        Alert.alert(
+          "Перевірте посилання",
+          slugChecking ? "Зачекайте, поки ми перевіримо посилання." : slugMessage.text,
+        );
+        return;
+      }
       setStep("members");
     } else {
       void handleCreate();
     }
   };
 
-  const nextDisabled =
-    isLoading ||
-    (step === "details" && !title.trim()) ||
-    (step === "access" && !slugOk);
+  // Кнопка не блокується повністю, щоб натискання завжди давало відповідь (сповіщення з причиною).
+  const nextDisabled = isLoading;
+  const nextDimmed = (step === "details" && !title.trim()) || (step === "access" && !slugOk);
 
   const fab = (
     <TouchableOpacity
@@ -154,7 +182,7 @@ export default function NewChannelScreen() {
         width: 58,
         height: 58,
         borderRadius: 29,
-        backgroundColor: nextDisabled ? withAlpha(c.accent, 0.5) : c.accent,
+        backgroundColor: nextDisabled || nextDimmed ? withAlpha(c.accent, 0.5) : c.accent,
         alignItems: "center",
         justifyContent: "center",
         elevation: 6,
@@ -262,6 +290,7 @@ export default function NewChannelScreen() {
           header={
             <Text style={{ color: c.muted, fontSize: 13, paddingHorizontal: 16, paddingVertical: 10 }}>
               Підписників можна не додавати — вони зможуть приєднатись за посиланням.
+              {createError ? `\n\n⚠️ ${createError}` : ""}
             </Text>
           }
         />
@@ -292,7 +321,7 @@ export default function NewChannelScreen() {
     return (
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: c.bg }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
       >
         <Stack.Screen options={{ headerShown: false }} />
         {header}
@@ -320,7 +349,10 @@ export default function NewChannelScreen() {
                 <Text style={{ color: c.muted, fontSize: 16 }}>modernchat://c/</Text>
                 <TextInput
                   value={slug}
-                  onChangeText={(text) => setSlug(text.replace(/[^A-Za-z0-9_]/g, "").slice(0, 32))}
+                  onChangeText={(text) => {
+                    setSlugTouched(true);
+                    setSlug(text.replace(/[^A-Za-z0-9_]/g, "").slice(0, 32));
+                  }}
                   placeholder="посилання"
                   placeholderTextColor={c.muted}
                   autoCapitalize="none"
@@ -328,9 +360,13 @@ export default function NewChannelScreen() {
                   maxLength={32}
                   style={{ flex: 1, color: c.text, fontSize: 16, paddingVertical: 10 }}
                 />
-                {normalizedSlug && !slugError && slugState?.ok ? (
+                {slugChecking ? (
+                  <ActivityIndicator size="small" color={c.muted} />
+                ) : slugMessage.tone === "ok" ? (
                   <Ionicons name="checkmark-circle" size={20} color="#34C759" />
-                ) : null}
+                ) : (
+                  <Ionicons name="alert-circle" size={20} color={c.danger} />
+                )}
               </View>
             ) : (
               <Text style={{ color: c.muted, fontSize: 14, lineHeight: 20, paddingVertical: 6 }}>
@@ -339,18 +375,25 @@ export default function NewChannelScreen() {
             )}
           </View>
           {isPublic ? (
-            <Text
-              style={{
-                color: normalizedSlug && slugError ? c.danger : c.muted,
-                fontSize: 13,
-                paddingHorizontal: 16,
-                paddingTop: 8,
-              }}
-            >
-              {normalizedSlug && slugError
-                ? slugError
-                : "Допустимі символи: a–z, 0–9 та _. Довжина від 4 до 32 символів."}
-            </Text>
+            <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+              <Text
+                style={{
+                  color:
+                    slugMessage.tone === "error"
+                      ? c.danger
+                      : slugMessage.tone === "ok"
+                        ? "#34C759"
+                        : c.muted,
+                  fontSize: 13,
+                  fontWeight: "600",
+                }}
+              >
+                {slugMessage.text}
+              </Text>
+              <Text style={{ color: c.muted, fontSize: 13, marginTop: 4 }}>
+                Допустимі символи: a–z, 0–9 та _. Довжина від 4 до 32 символів.
+              </Text>
+            </View>
           ) : null}
         </ScrollView>
         {fab}
@@ -361,7 +404,7 @@ export default function NewChannelScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
     >
       <Stack.Screen options={{ headerShown: false }} />
       {header}

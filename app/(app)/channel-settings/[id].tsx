@@ -252,15 +252,18 @@ export default function ChannelSettingsScreen() {
           {isPublic ? (
             <Text
               style={{
-                color: normalized && slugError ? c.danger : c.muted,
+                color: slugError ? c.danger : slugCheck?.ok ? "#34C759" : c.muted,
                 fontSize: 13,
                 paddingHorizontal: 16,
                 paddingTop: 8,
               }}
             >
-              {normalized && slugError
+              {slugError
                 ? slugError
-                : "Допустимі символи: a–z, 0–9 та _. Довжина від 4 до 32 символів."}
+                : slugCheck === undefined
+                  ? "Перевіряємо посилання…"
+                  : "Посилання вільне"}
+              {"\nДопустимі символи: a–z, 0–9 та _. Довжина від 4 до 32 символів."}
             </Text>
           ) : null}
 
