@@ -1,8 +1,8 @@
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
 
 import { ActionButtons, InfoRow, Section, StatsRow } from "@/components/ProfileParts";
 import { RoomAvatar } from "@/components/RoomAvatar";
@@ -10,6 +10,7 @@ import { StretchyProfile } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette } from "@/hooks/useChatPalette";
+import { useOpenDirectChat } from "@/hooks/useOpenDirectChat";
 import { dayLabel, formatTime, membersLabel } from "@/utils/chat";
 import { copyText } from "@/utils/clipboard";
 
@@ -30,8 +31,16 @@ export default function UserProfileScreen() {
   // Власний профіль відкриваємо в повному вигляді з редагуванням.
   const isSelf = profile?.isSelf === true;
   useEffect(() => {
-    if (isSelf) router.replace("/profile" as any);
+    if (isSelf) router.navigate("/(app)/(tabs)/profile" as any);
   }, [isSelf, router]);
+
+  // Особистий чат із цим користувачем (якщо він уже є) — для вимкнення сповіщень.
+  const directRoom = useQuery(
+    api.rooms.findDirectRoom,
+    id && profile && !isSelf ? { otherUserId: id as Id<"users"> } : "skip",
+  );
+  const setMuted = useMutation(api.roomSettings.setMuted);
+  const { open: openChat, busyId } = useOpenDirectChat("navigate");
 
   if (profile === undefined || isSelf) {
     return (
@@ -70,16 +79,35 @@ export default function UserProfileScreen() {
     if (result === "copied") void Haptics.selectionAsync();
   };
 
-  const actions = profile.username
-    ? [
-        {
-          key: "copy",
-          icon: "copy-outline" as const,
-          label: "Скопіювати нік",
-          onPress: () => handleCopy(`@${profile.username}`),
-        },
-      ]
-    : [];
+  const actions: { key: string; icon: any; label: string; onPress: () => void }[] = [
+    {
+      key: "write",
+      icon: "chatbubble-ellipses-outline",
+      label: busyId ? "Відкриваємо…" : "Написати",
+      onPress: () => openChat(profile._id),
+    },
+  ];
+  if (directRoom) {
+    actions.push({
+      key: "mute",
+      icon: directRoom.muted ? "notifications-outline" : "notifications-off-outline",
+      label: directRoom.muted ? "Увімкнути" : "Без звуку",
+      onPress: () => {
+        setMuted({ chatRoomId: directRoom.roomId, muted: !directRoom.muted }).catch(
+          (error: any) =>
+            Alert.alert("Помилка", error?.message ?? "Не вдалося змінити сповіщення"),
+        );
+      },
+    });
+  }
+  if (profile.username) {
+    actions.push({
+      key: "copy",
+      icon: "copy-outline",
+      label: "Скопіювати нік",
+      onPress: () => handleCopy(`@${profile.username}`),
+    });
+  }
 
   return (
     <StretchyProfile

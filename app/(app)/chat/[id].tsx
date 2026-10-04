@@ -26,6 +26,7 @@ import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { copyText } from "@/utils/clipboard";
 import {
+  activityLabel,
   dayKey,
   dayLabel,
   deleteLastGrapheme,
@@ -107,6 +108,13 @@ export default function ChatRoomScreen() {
   const c = useChatPalette();
 
   const room = useQuery(api.rooms.getRoom, { roomId: chatRoomId });
+  // Особистий чат: заголовок і статус беремо від співрозмовника.
+  const isDirect = room?.isDirect === true;
+  const otherUserId = room?.otherUserId;
+  const otherStatus = useQuery(
+    api.users.getUserStatus,
+    isDirect && otherUserId ? { userId: otherUserId } : "skip",
+  );
 
   const { results: messages, status, loadMore } = usePaginatedQuery(
     api.messages.getPaginatedMessages,
@@ -1039,6 +1047,7 @@ export default function ChatRoomScreen() {
         onReply={handleStartReply}
         onImagePress={setFullscreenImage}
         onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
+        isDirect={isDirect}
         onReplyPress={jumpToMessage}
         flashToken={flash?.id === row.item._id ? flash.token : 0}
         readStatus={
@@ -1059,6 +1068,7 @@ export default function ChatRoomScreen() {
       handleOpenActions,
       handleStartReply,
       handleToggleReaction,
+      isDirect,
       router,
     ],
   );
@@ -1152,9 +1162,25 @@ export default function ChatRoomScreen() {
 
   const roomTitle = room?.title ?? "Чат";
   const memberCount = room?.participants?.length ?? 0;
+  const subtitleText = !room
+    ? " "
+    : isDirect
+      ? otherStatus
+        ? activityLabel(otherStatus.lastActiveAt, otherStatus.inChatNow)
+        : " "
+      : membersLabel(memberCount);
+  const subtitleAccent = isDirect && otherStatus?.inChatNow === true;
+  const openInfo = () =>
+    router.push(
+      (isDirect && otherUserId
+        ? `/user/${otherUserId}`
+        : `/settings/${chatRoomId}`) as any,
+    );
   const typingText =
     typingUsers && typingUsers.length > 0
-      ? typingUsers.length === 1
+      ? isDirect
+        ? "друкує…"
+        : typingUsers.length === 1
         ? `${typingUsers[0]} друкує…`
         : "кілька людей друкують…"
       : null;
@@ -1837,10 +1863,10 @@ export default function ChatRoomScreen() {
 
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => router.push(`/settings/${chatRoomId}`)}
+            onPress={openInfo}
             style={{ flex: 1, flexDirection: "row", alignItems: "center", height: 48 }}
             accessibilityRole="button"
-            accessibilityLabel="Інформація про кімнату"
+            accessibilityLabel={isDirect ? "Профіль користувача" : "Інформація про кімнату"}
           >
             <RoomAvatar title={roomTitle} imageUrl={room?.avatarUrl} size={34} />
 
@@ -1855,12 +1881,12 @@ export default function ChatRoomScreen() {
                 <Text
                   numberOfLines={1}
                   style={{
-                    color: typingText ? c.accent : c.muted,
+                    color: typingText || subtitleAccent ? c.accent : c.muted,
                     fontSize: 12,
                     lineHeight: 16,
                   }}
                 >
-                  {typingText ?? (room ? membersLabel(memberCount) : " ")}
+                  {typingText ?? subtitleText}
                 </Text>
               </Animated.View>
             </View>
@@ -1876,10 +1902,10 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => router.push(`/settings/${chatRoomId}`)}
+            onPress={openInfo}
             style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
             accessibilityRole="button"
-            accessibilityLabel="Налаштування кімнати"
+            accessibilityLabel={isDirect ? "Профіль користувача" : "Налаштування кімнати"}
           >
             <Ionicons name="ellipsis-vertical" size={20} color={c.muted} />
           </TouchableOpacity>

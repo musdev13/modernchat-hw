@@ -237,10 +237,12 @@ export const getUserProfile = query({
       .filter((q) => q.eq(q.field("senderId"), args.userId))
       .collect();
 
-    const createdRooms = await ctx.db
-      .query("chatRooms")
-      .filter((q) => q.eq(q.field("creatorId"), args.userId))
-      .collect();
+    const createdRooms = (
+      await ctx.db
+        .query("chatRooms")
+        .filter((q) => q.eq(q.field("creatorId"), args.userId))
+        .collect()
+    ).filter((room) => !room.isDirect);
 
     const isSelf = me?._id === user._id;
     const presence = await ctx.db
@@ -280,6 +282,7 @@ export const getSharedRooms = query({
     const rooms = await ctx.db.query("chatRooms").order("desc").collect();
     return rooms
       .filter((room) => {
+        if (room.isDirect) return false;
         const members = room.participantIds ?? [room.creatorId];
         return members.includes(me._id) && members.includes(args.userId);
       })

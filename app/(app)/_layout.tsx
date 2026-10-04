@@ -14,29 +14,16 @@ export default function AppLayout() {
         contentStyle: { backgroundColor: c.bg },
       }}
     >
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
-        name="index"
-        options={{
-          title: "Чат-кімнати",
-          headerLargeTitle: true,
-        }}
-      />
-      <Stack.Screen
-        name="new-room"
-        options={{
-          presentation: "modal",
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="profile"
+        name="new-message"
         options={{
           headerShown: false,
           animation: "slide_from_right",
         }}
       />
       <Stack.Screen
-        name="app-settings"
+        name="new-room"
         options={{
           headerShown: false,
           animation: "slide_from_right",

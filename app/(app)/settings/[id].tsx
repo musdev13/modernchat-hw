@@ -32,7 +32,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ComponentProps, useCallback, useMemo, useRef, useState } from "react";
+import { ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -88,6 +88,12 @@ export default function RoomInfoScreen() {
   const onlineIds = useQuery(api.roomMedia.getRoomOnlineUserIds, { chatRoomId: roomId });
   const pins = useQuery(api.messages.getPinnedMessages, { chatRoomId: roomId });
   const settings = useQuery(api.roomSettings.getMyRoomSettings, { chatRoomId: roomId });
+
+  // Особистий чат не має групових налаштувань — показуємо профіль співрозмовника.
+  const directUserId = room?.isDirect ? room.otherUserId : undefined;
+  useEffect(() => {
+    if (directUserId) router.replace(`/user/${directUserId}` as any);
+  }, [directUserId, router]);
 
   const deleteRoom = useMutation(api.rooms.deleteRoom);
   const updateParticipantRole = useMutation(api.rooms.updateParticipantRole);
@@ -289,7 +295,7 @@ export default function RoomInfoScreen() {
   const handleMemberPress = useCallback(
     (member: MemberItem) => {
       if (member._id === myId) {
-        router.push("/profile" as any);
+        router.navigate("/(app)/(tabs)/profile" as any);
         return;
       }
       if (canManage) {
@@ -840,7 +846,7 @@ export default function RoomInfoScreen() {
     </GlassSurface>
   );
 
-  if (room === undefined || currentUser === undefined) {
+  if (room === undefined || currentUser === undefined || room?.isDirect) {
     return (
       <View style={{ flex: 1, backgroundColor: c.divider, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={c.accent} />

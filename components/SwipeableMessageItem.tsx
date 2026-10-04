@@ -68,6 +68,8 @@ interface SwipeableMessageItemProps {
   onReply: (message: MessageItemData) => void;
   onImagePress?: (url: string) => void;
   onAuthorPress?: (userId: Id<"users">) => void;
+  /** Особистий чат: без аватарок і імен співрозмовника біля повідомлень. */
+  isDirect?: boolean;
   /** Тап по цитаті відповіді: перейти до оригінального повідомлення. */
   onReplyPress?: (messageId: Id<"messages">) => void;
   /** Лише для власних повідомлень: «sent» — одна галочка, «read» — прочитано іншими. */
@@ -174,6 +176,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   onReply,
   onImagePress,
   onAuthorPress,
+  isDirect = false,
   onReplyPress,
   flashToken = 0,
   readStatus,
@@ -421,7 +424,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
               },
             ]}
           >
-            {!isOwn && (
+            {!isOwn && !isDirect && (
               <View style={{ width: AVATAR_SIZE, marginRight: 6 }}>
                 {isFirstInSeries ? (
                   <Avatar
@@ -444,7 +447,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
               />
             ) : isSticker ? (
               <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
-                {!isOwn && isFirstInSeries && (
+                {!isOwn && !isDirect && isFirstInSeries && (
                   <Text
                     numberOfLines={1}
                     style={{
@@ -528,7 +531,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
               </View>
             ) : isBigEmoji ? (
               <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
-                {!isOwn && isFirstInSeries && (
+                {!isOwn && !isDirect && isFirstInSeries && (
                   <Text style={{ color: avatarColor(item.senderName), fontWeight: "700", fontSize: 13, marginBottom: 2 }}>
                     {item.senderName}
                   </Text>
@@ -560,7 +563,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
               </View>
             ) : (
               <View style={bubbleStyle}>
-                {!isOwn && isFirstInSeries && (
+                {!isOwn && !isDirect && isFirstInSeries && (
                   <TouchableOpacity
                     onPress={() => onAuthorPress?.(item.senderId)}
                     activeOpacity={0.7}
@@ -722,6 +725,7 @@ export const SwipeableMessageItem = memo(
   SwipeableMessageItemComponent,
   (prev, next) =>
     prev.isOwn === next.isOwn &&
+    prev.isDirect === next.isDirect &&
     prev.isFirstInSeries === next.isFirstInSeries &&
     prev.isLastInSeries === next.isLastInSeries &&
     prev.isSelected === next.isSelected &&
