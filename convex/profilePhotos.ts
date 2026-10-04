@@ -1,9 +1,37 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { mutation, MutationCtx, query } from "./_generated/server";
 import { registerProfilePhoto } from "./photoHelpers";
+import { isPremiumNow } from "./premiumHelpers";
 import { getAuthUser } from "./users";
 
 const MAX_PHOTOS = 30;
+
+/** Чи це поточний (головний) запис: анімований — за animStorageId, звичайний — за зображенням. */
+function isCurrentRow(
+  user: Doc<"users">,
+  row: { storageId: Id<"_storage">; animStorageId?: Id<"_storage"> },
+): boolean {
+  if (row.animStorageId) return row.animStorageId === user.avatarAnimStorageId;
+  return !user.avatarAnimStorageId && !!user.avatarStorageId && row.storageId === user.avatarStorageId;
+}
+
+/** Робить запис поточним. Анімація зберігається на користувачі, але показується лише поки діє преміум. */
+async function applyCurrent(
+  ctx: MutationCtx,
+  user: Doc<"users">,
+  row: Doc<"profilePhotos">,
+): Promise<boolean> {
+  const url = await ctx.storage.getUrl(row.storageId);
+  if (!url) return false;
+  await ctx.db.patch(user._id, {
+    image: url,
+    avatarStorageId: row.storageId,
+    avatarAnimStorageId: row.animStorageId,
+    avatarAnimKind: row.animStorageId ? (row.kind === "gif" ? "gif" : "video") : undefined,
+  });
+  return true;
+}
 
 /** Фото профілю користувача: поточне (головне) першим, далі від нових до старих. */
 export const list = query({
@@ -13,6 +41,7 @@ export const list = query({
     if (!me) return [];
     const user = await ctx.db.get(args.userId);
     if (!user) return [];
+    const premium = isPremiumNow(user);
 
     const rows = await ctx.db
       .query("profilePhotos")
@@ -20,15 +49,27 @@ export const list = query({
       .order("desc")
       .take(MAX_PHOTOS);
 
-    const items: { _id: string; url: string; createdAt: number; isCurrent: boolean }[] = [];
+    const items: {
+      _id: string;
+      url: string;
+      createdAt: number;
+      isCurrent: boolean;
+      kind: "photo" | "video" | "gif";
+      /** Анімований файл; лише поки у власника діє преміум (інакше — тільки постер). */
+      animUrl?: string;
+    }[] = [];
     for (const row of rows) {
       const url = await ctx.storage.getUrl(row.storageId);
       if (!url) continue;
+      const animUrl =
+        premium && row.animStorageId ? ((await ctx.storage.getUrl(row.animStorageId)) ?? undefined) : undefined;
       items.push({
         _id: row._id,
         url,
         createdAt: row.createdAt,
-        isCurrent: !!user.avatarStorageId && row.storageId === user.avatarStorageId,
+        isCurrent: isCurrentRow(user, row),
+        kind: row.kind ?? "photo",
+        animUrl,
       });
     }
 
@@ -40,6 +81,7 @@ export const list = query({
         url: user.image,
         createdAt: user._creationTime,
         isCurrent: true,
+        kind: "photo",
       });
     }
 
@@ -61,6 +103,84 @@ export const add = mutation({
   },
 });
 
+const MAX_ANIM_VIDEO_BYTES = 25 * 1024 * 1024;
+const MAX_ANIM_GIF_BYTES = 15 * 1024 * 1024;
+const MAX_ANIM_VIDEO_MS = 10_500;
+
+/**
+ * Анімований аватар (лише Modesto Premium): відео ≤10 с або GIF/анімований WebP.
+ * Кадр-постер — окреме зображення (або поточне фото профілю); він і є запасним варіантом без преміуму.
+ */
+export const addAnimated = mutation({
+  args: {
+    animStorageId: v.id("_storage"),
+    kind: v.union(v.literal("video"), v.literal("gif")),
+    posterStorageId: v.optional(v.id("_storage")),
+    durationMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized");
+    if (!isPremiumNow(me)) throw new Error("Анімований аватар доступний лише з Modesto Premium");
+
+    const meta = await ctx.storage.getMetadata(args.animStorageId);
+    if (!meta) throw new Error("Файл недоступний");
+    const type = meta.contentType ?? "";
+    if (args.kind === "video") {
+      if (!type.startsWith("video/")) throw new Error("Оберіть відеофайл");
+      if (meta.size > MAX_ANIM_VIDEO_BYTES) throw new Error("Відео завелике: максимум 25 МБ");
+      if (args.durationMs !== undefined && args.durationMs > MAX_ANIM_VIDEO_MS) {
+        throw new Error("Відео для аватара має бути не довшим за 10 секунд");
+      }
+    } else {
+      if (type !== "image/gif" && type !== "image/webp") throw new Error("Підтримуються лише GIF та анімований WebP");
+      if (meta.size > MAX_ANIM_GIF_BYTES) throw new Error("Файл завеликий: максимум 15 МБ");
+    }
+
+    const posterId = args.posterStorageId ?? me.avatarStorageId;
+    if (!posterId) {
+      throw new Error("Спершу встановіть звичайне фото профілю: воно показується, поки анімація завантажується, і після завершення Premium");
+    }
+    const posterUrl = await ctx.storage.getUrl(posterId);
+    if (!posterUrl) throw new Error("Постер недоступний");
+    const posterMeta = await ctx.storage.getMetadata(posterId);
+    if (posterMeta?.contentType && !posterMeta.contentType.startsWith("image/")) {
+      throw new Error("Постер має бути зображенням");
+    }
+
+    // Поточне фото без запису в історії зберігаємо (як і при звичайному додаванні).
+    if (me.avatarStorageId) {
+      const existing = await ctx.db
+        .query("profilePhotos")
+        .withIndex("by_user", (q) => q.eq("userId", me._id))
+        .collect();
+      if (!existing.some((p) => p.storageId === me.avatarStorageId)) {
+        await ctx.db.insert("profilePhotos", {
+          userId: me._id,
+          storageId: me.avatarStorageId,
+          createdAt: Date.now() - 1,
+        });
+      }
+    }
+
+    const photoId = await ctx.db.insert("profilePhotos", {
+      userId: me._id,
+      storageId: posterId,
+      kind: args.kind,
+      animStorageId: args.animStorageId,
+      durationMs: args.durationMs,
+      createdAt: Date.now(),
+    });
+    await ctx.db.patch(me._id, {
+      image: posterUrl,
+      avatarStorageId: posterId,
+      avatarAnimStorageId: args.animStorageId,
+      avatarAnimKind: args.kind,
+    });
+    return { photoId };
+  },
+});
+
 /** «Зробити головним»: обране фото стає поточним аватаром. */
 export const setCurrent = mutation({
   args: { photoId: v.id("profilePhotos") },
@@ -69,9 +189,7 @@ export const setCurrent = mutation({
     if (!me) throw new Error("Unauthorized");
     const photo = await ctx.db.get(args.photoId);
     if (!photo || photo.userId !== me._id) throw new Error("Фото не знайдено");
-    const url = await ctx.storage.getUrl(photo.storageId);
-    if (!url) throw new Error("Файл недоступний");
-    await ctx.db.patch(me._id, { image: url, avatarStorageId: photo.storageId });
+    if (!(await applyCurrent(ctx, me, photo))) throw new Error("Файл недоступний");
     return { success: true };
   },
 });
@@ -85,25 +203,34 @@ export const remove = mutation({
     const photo = await ctx.db.get(args.photoId);
     if (!photo || photo.userId !== me._id) throw new Error("Фото не знайдено");
 
-    const wasCurrent = me.avatarStorageId === photo.storageId;
+    const wasCurrent = isCurrentRow(me, photo);
     await ctx.db.delete(photo._id);
-    try {
-      await ctx.storage.delete(photo.storageId);
-    } catch {
-      // файл міг бути вже видалений
+
+    // Файл видаляємо лише якщо на нього більше ніхто не посилається (постер може бути спільним).
+    const remaining = await ctx.db
+      .query("profilePhotos")
+      .withIndex("by_user", (q) => q.eq("userId", me._id))
+      .collect();
+    const stillUsed = (id: Id<"_storage">) =>
+      remaining.some((r) => r.storageId === id || r.animStorageId === id);
+    for (const id of [photo.storageId, photo.animStorageId]) {
+      if (!id || stillUsed(id)) continue;
+      try {
+        await ctx.storage.delete(id);
+      } catch {
+        // файл міг бути вже видалений
+      }
     }
 
     if (wasCurrent) {
-      const next = await ctx.db
-        .query("profilePhotos")
-        .withIndex("by_user", (q) => q.eq("userId", me._id))
-        .order("desc")
-        .first();
-      const nextUrl = next ? await ctx.storage.getUrl(next.storageId) : null;
-      if (next && nextUrl) {
-        await ctx.db.patch(me._id, { image: nextUrl, avatarStorageId: next.storageId });
-      } else {
-        await ctx.db.patch(me._id, { image: undefined, avatarStorageId: undefined });
+      const next = [...remaining].sort((a, b) => b.createdAt - a.createdAt)[0];
+      if (!next || !(await applyCurrent(ctx, me, next))) {
+        await ctx.db.patch(me._id, {
+          image: undefined,
+          avatarStorageId: undefined,
+          avatarAnimStorageId: undefined,
+          avatarAnimKind: undefined,
+        });
       }
     }
     return { success: true };

@@ -38,6 +38,9 @@ export default defineSchema({
     isAdmin: v.optional(v.boolean()),
     // Емодзі-статус біля імені (лише для преміум; для інших не показується).
     emojiStatus: v.optional(v.string()),
+    // Анімований аватар (лише premium): відео або GIF/WebP поверх статичного кадру-постера (users.image).
+    avatarAnimStorageId: v.optional(v.id("_storage")),
+    avatarAnimKind: v.optional(v.union(v.literal("video"), v.literal("gif"))),
   })
     .index("by_token", ["tokenIdentifier"])
     .index("by_email", ["email"])
@@ -248,7 +251,11 @@ export default defineSchema({
   // Історія фото профілю; поточне — те, чий storageId збігається з users.avatarStorageId.
   profilePhotos: defineTable({
     userId: v.id("users"),
+    // Для kind = video/gif це кадр-постер (завжди зображення); сам анімований файл — animStorageId.
     storageId: v.id("_storage"),
+    kind: v.optional(v.union(v.literal("photo"), v.literal("video"), v.literal("gif"))),
+    animStorageId: v.optional(v.id("_storage")),
+    durationMs: v.optional(v.number()),
     createdAt: v.number(),
   }).index("by_user", ["userId"]),
 });

@@ -338,9 +338,17 @@ export const getUserProfile = query({
     const inChatNow =
       !!presence && presence.lastSeenAt > Date.now() - PRESENCE_TTL_MS;
 
+    // Анімований аватар віддаємо лише поки діє преміум (інакше клієнт бачить тільки постер = image).
+    const avatarAnimUrl =
+      premiumView(user).isPremium && user.avatarAnimStorageId
+        ? ((await ctx.storage.getUrl(user.avatarAnimStorageId)) ?? undefined)
+        : undefined;
+
     return {
       _id: user._id,
       name: user.name ?? "Користувач",
+      avatarAnimUrl,
+      avatarAnimKind: avatarAnimUrl ? user.avatarAnimKind : undefined,
       // Пошту показуємо лише власнику профілю.
       email: isSelf ? user.email : undefined,
       image: user.image,

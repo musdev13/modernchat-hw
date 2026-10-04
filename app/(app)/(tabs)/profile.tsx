@@ -21,6 +21,7 @@ import {
   useCopyToast,
   useRowMenu,
 } from "@/components/ProfileParts";
+import { useAnimatedAvatar } from "@/hooks/useAnimatedAvatar";
 import { StretchyProfile, type ProfilePhoto } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -52,6 +53,7 @@ export default function ProfileScreen() {
     api.users.getSharedRooms,
     currentUser?._id ? { userId: currentUser._id } : "skip",
   );
+  const { pick: pickAnimated, busy: animBusy } = useAnimatedAvatar();
   const generateUploadUrl = useMutation(api.users.generateAvatarUploadUrl);
   const addPhoto = useMutation(api.profilePhotos.add);
   const setCurrent = useMutation(api.profilePhotos.setCurrent);
@@ -71,7 +73,7 @@ export default function ProfileScreen() {
     [photoRows],
   );
 
-  const handleSetPhoto = useCallback(async () => {
+  const handleSetPhoto = useCallback(async (): Promise<void> => {
     if (uploading) return;
     try {
       const picked = await pickSquareImage();
@@ -140,6 +142,7 @@ export default function ProfileScreen() {
   const actions = useMemo(
     () => [
       { key: "photo", icon: "camera-outline" as const, label: "Встановити фото", onPress: handleSetPhoto },
+      { key: "anim", icon: "film-outline" as const, label: "Анімація", onPress: (): void => void pickAnimated() },
       { key: "edit", icon: "create-outline" as const, label: "Змінити", onPress: () => setEditVisible(true) },
       {
         key: "settings",
@@ -148,7 +151,7 @@ export default function ProfileScreen() {
         onPress: () => router.navigate("/(app)/(tabs)/preferences" as any),
       },
     ],
-    [handleSetPhoto, router],
+    [handleSetPhoto, pickAnimated, router],
   );
 
   if (currentUser === undefined || (currentUser && profile === undefined)) {
@@ -185,13 +188,15 @@ export default function ProfileScreen() {
         name={profile.name}
         isPremium={profile.isPremium}
         emojiStatus={profile.emojiStatus}
+        avatarAnimUrl={profile.avatarAnimUrl}
+        avatarAnimKind={profile.avatarAnimKind}
         imageUrl={profile.image}
         photos={photos}
         viewerActions={viewerActions}
         openViewerRequest={viewerReq}
         status="в мережі"
         statusAccent
-        busy={uploading}
+        busy={uploading || animBusy}
         actions={actions}
         leftIcon="qr-code-outline"
         leftLabel="QR-код"

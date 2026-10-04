@@ -176,3 +176,38 @@ export const bootstrapAdmin = internalMutation({
     return { found: true as const, applied, isAdmin: true, lifetime: true, userId: user._id as Id<"users"> };
   },
 });
+
+const EMOJI_RE = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3)/u;
+
+/** Рівно один емодзі (один графем) — інакше помилка. */
+function assertSingleEmoji(value: string) {
+  const bad = () => new Error("Оберіть один емодзі");
+  if (value.length > 24 || !EMOJI_RE.test(value)) throw bad();
+  const Seg = (Intl as unknown as { Segmenter?: new (l?: string, o?: object) => { segment(s: string): Iterable<unknown> } })
+    .Segmenter;
+  if (Seg) {
+    let count = 0;
+    for (const _ of new Seg(undefined, { granularity: "grapheme" }).segment(value)) {
+      count += 1;
+      if (count > 1) throw bad();
+    }
+  }
+}
+
+/** Емодзі-статус поруч з іменем. Встановити можна лише з преміумом; прибрати — завжди. */
+export const setEmojiStatus = mutation({
+  args: { emoji: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Потрібна авторизація");
+    const value = args.emoji?.trim();
+    if (!value) {
+      await ctx.db.patch(me._id, { emojiStatus: undefined });
+      return { success: true };
+    }
+    if (!isPremiumNow(me)) throw new Error("Емодзі-статус доступний лише з Modesto Premium");
+    assertSingleEmoji(value);
+    await ctx.db.patch(me._id, { emojiStatus: value });
+    return { success: true };
+  },
+});

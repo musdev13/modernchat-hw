@@ -1,3 +1,4 @@
+import { AnimatedAvatarVideo } from "@/components/AnimatedAvatarVideo";
 import { NameBadges } from "@/components/PremiumBadge";
 import { GlassProvider, GlassTarget } from "@/components/Glass";
 import { PressableScale } from "@/components/PressableScale";
@@ -280,6 +281,9 @@ interface Props {
   /** Modesto Premium: золота зірка й емодзі-статус поруч з іменем. */
   isPremium?: boolean;
   emojiStatus?: string;
+  /** Анімований аватар (лише premium): відео/GIF поверх головного фото, яке лишається постером. */
+  avatarAnimUrl?: string;
+  avatarAnimKind?: "video" | "gif";
   imageUrl?: string | null;
   /** Усі фото профілю (поточне першим); якщо не задано — використовується imageUrl. */
   photos?: ProfilePhoto[];
@@ -324,6 +328,8 @@ export function StretchyProfile({
   name,
   isPremium,
   emojiStatus,
+  avatarAnimUrl,
+  avatarAnimKind,
   imageUrl,
   photos,
   viewerActions,
@@ -827,6 +833,9 @@ export function StretchyProfile({
                     </Animated.Text>
                   </>
                 )}
+                {hasImage && avatarAnimUrl && avatarAnimKind ? (
+                  <AnimatedAvatarVideo url={avatarAnimUrl} kind={avatarAnimKind} visible={safeIndex === 0} />
+                ) : null}
                 {/* Скрім під іменем: усередині того ж скругленого контейнера, тож кути фото не чорніють */}
                 <Animated.View
                   pointerEvents="none"

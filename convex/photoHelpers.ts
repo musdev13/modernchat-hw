@@ -1,5 +1,6 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
+import { isPremiumNow } from "./premiumHelpers";
 
 /**
  * Реєструє фото профілю й робить його поточним (users.image / avatarStorageId лишаються синхронними,
@@ -13,6 +14,12 @@ export async function registerProfilePhoto(
 ): Promise<{ photoId: Id<"profilePhotos">; url: string } | null> {
   const url = await ctx.storage.getUrl(storageId);
   if (!url) return null;
+
+  // GIF як аватар (анімований) — лише для Modesto Premium; перевіряємо на сервері за типом файлу.
+  const meta = await ctx.storage.getMetadata(storageId);
+  if (meta?.contentType === "image/gif" && !isPremiumNow(user)) {
+    throw new Error("GIF-аватар доступний лише з Modesto Premium");
+  }
 
   if (user.avatarStorageId && user.avatarStorageId !== storageId) {
     const existing = await ctx.db
@@ -33,6 +40,11 @@ export async function registerProfilePhoto(
     storageId,
     createdAt: Date.now(),
   });
-  await ctx.db.patch(user._id, { image: url, avatarStorageId: storageId });
+  await ctx.db.patch(user._id, {
+    image: url,
+    avatarStorageId: storageId,
+    avatarAnimStorageId: undefined,
+    avatarAnimKind: undefined,
+  });
   return { photoId, url };
 }

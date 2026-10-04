@@ -1,3 +1,4 @@
+import { EmojiStatusSheet } from "@/components/EmojiStatusSheet";
 import { Logo } from "@/components/Logo";
 import { SpaceBackdrop } from "@/components/SpaceBackdrop";
 import {
@@ -6,12 +7,16 @@ import {
   PREMIUM_GOLD_SOFT,
   PREMIUM_PERKS,
 } from "@/constants/premium";
+import { api } from "@/convex/_generated/api";
+import { useAnimatedAvatar } from "@/hooks/useAnimatedAvatar";
 import { formatPremiumUntil, usePremium } from "@/hooks/usePremium";
+import { convexErrorText } from "@/utils/convexError";
+import { useMutation, useQuery } from "convex/react";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,6 +26,20 @@ export default function PremiumScreen() {
   const insets = useSafeAreaInsets();
   const premium = usePremium();
   const [noteShown, setNoteShown] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const me = useQuery(api.users.currentUser);
+  const setEmojiStatus = useMutation(api.premium.setEmojiStatus);
+  const { pick: pickAnimated, busy: animBusy } = useAnimatedAvatar();
+  const currentEmoji = premium.isPremium ? me?.emojiStatus : undefined;
+
+  const saveEmoji = async (emoji: string | undefined) => {
+    try {
+      await setEmojiStatus({ emoji });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert("Не вдалося зберегти статус", convexErrorText(e));
+    }
+  };
   const until = formatPremiumUntil(premium);
 
   return (
@@ -139,9 +158,93 @@ export default function PremiumScreen() {
           ))}
         </View>
 
+        {/* Мої налаштування Premium */}
+        <View style={{ marginTop: 6 }}>
+          <Text style={{ color: PREMIUM_GOLD, fontSize: 13.5, fontWeight: "700", marginBottom: 8, marginLeft: 4 }}>
+            Ваш профіль
+          </Text>
+          <View
+            style={{
+              borderRadius: 18,
+              backgroundColor: "rgba(255,255,255,0.05)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.09)",
+              overflow: "hidden",
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => (premium.isPremium ? setEmojiOpen(true) : setNoteShown(true))}
+              style={{ flexDirection: "row", alignItems: "center", padding: 14 }}
+            >
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 13,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(245,196,81,0.14)",
+                }}
+              >
+                {currentEmoji ? (
+                  <Text style={{ fontSize: 22 }}>{currentEmoji}</Text>
+                ) : (
+                  <Ionicons name="happy-outline" size={22} color={PREMIUM_GOLD} />
+                )}
+              </View>
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "600" }}>Емодзі-статус</Text>
+                <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 13.5, marginTop: 2 }}>
+                  {premium.isPremium ? (currentEmoji ? "Натисніть, щоб змінити" : "Оберіть емодзі біля імені") : "Лише з Premium"}
+                </Text>
+              </View>
+              {currentEmoji ? (
+                <TouchableOpacity onPress={() => void saveEmoji(undefined)} hitSlop={10} accessibilityLabel="Прибрати статус">
+                  <Ionicons name="close-circle" size={22} color="rgba(255,255,255,0.55)" />
+                </TouchableOpacity>
+              ) : (
+                <Ionicons name={premium.isPremium ? "chevron-forward" : "lock-closed"} size={18} color="rgba(255,255,255,0.5)" />
+              )}
+            </TouchableOpacity>
+            <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.08)", marginLeft: 70 }} />
+            <TouchableOpacity
+              activeOpacity={0.7}
+              disabled={animBusy}
+              onPress={() => (premium.isPremium ? void pickAnimated() : setNoteShown(true))}
+              style={{ flexDirection: "row", alignItems: "center", padding: 14, opacity: animBusy ? 0.6 : 1 }}
+            >
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 13,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(245,196,81,0.14)",
+                }}
+              >
+                <Ionicons name="film-outline" size={22} color={PREMIUM_GOLD} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "600" }}>Анімований аватар</Text>
+                <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 13.5, marginTop: 2 }}>
+                  {animBusy ? "Завантаження…" : premium.isPremium ? "Відео до 10 с або GIF" : "Лише з Premium"}
+                </Text>
+              </View>
+              <Ionicons name={premium.isPremium ? "chevron-forward" : "lock-closed"} size={18} color="rgba(255,255,255,0.5)" />
+            </TouchableOpacity>
+          </View>
+          {!premium.isPremium && noteShown ? (
+            <Text style={{ color: PREMIUM_GOLD_SOFT, fontSize: 13.5, marginTop: 8, marginLeft: 4 }}>
+              {PREMIUM_ADMIN_NOTE}
+            </Text>
+          ) : null}
+        </View>
+
         {/* Отримати */}
         {!premium.isPremium && !premium.loading ? (
-          <View style={{ marginTop: 10 }}>
+          <View style={{ marginTop: 18 }}>
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => {
@@ -189,6 +292,16 @@ export default function PremiumScreen() {
           </TouchableOpacity>
         ) : null}
       </ScrollView>
+
+      {emojiOpen ? (
+        <EmojiStatusSheet
+          onClose={() => setEmojiOpen(false)}
+          onSelect={(emoji) => {
+            setEmojiOpen(false);
+            void saveEmoji(emoji);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
