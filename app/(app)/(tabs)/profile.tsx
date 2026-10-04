@@ -198,9 +198,8 @@ export default function ProfileScreen() {
         rightIcon="ellipsis-vertical"
         rightLabel="Меню"
         onRightPress={() => setMenuVisible(true)}
-        bottomOverlay={
-          <>
-            {tab === "photos" ? (
+        floatingAction={
+          tab === "photos" ? (
               <TouchableOpacity
                 activeOpacity={0.85}
                 disabled={uploading}
@@ -231,7 +230,10 @@ export default function ProfileScreen() {
                   {uploading ? "Завантаження…" : "Додати фото"}
                 </Text>
               </TouchableOpacity>
-            ) : null}
+            ) : null
+        }
+        bottomOverlay={
+          <>
             <MainTabBar active="profile" />
             <QrOverlay
               visible={qrVisible}

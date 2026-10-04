@@ -302,6 +302,8 @@ interface Props {
   onRightPress?: () => void;
   /** Без onBack кнопку «Назад» не показуємо (екран-вкладка). */
   onBack?: () => void;
+  /** Плаваюча дія (наприклад, «Додати фото»): ховається, поки шапка розкрита, щоб не накривати вміст. */
+  floatingAction?: ReactNode;
   /** Накладка внизу екрана (панель вкладок) — рендериться всередині скляного контексту. */
   bottomOverlay?: ReactNode;
   /** Додатковий відступ знизу під панель вкладок. */
@@ -332,6 +334,7 @@ export function StretchyProfile({
   rightLabel,
   onRightPress,
   onBack,
+  floatingAction,
   bottomOverlay,
   bottomInset = 0,
   children,
@@ -605,6 +608,8 @@ export function StretchyProfile({
     return { height: h + (fullHeight - h) * c01(expand.value) };
   });
 
+  const floatingStyle = useAnimatedStyle(() => ({ opacity: 1 - c01(expand.value) }));
+
   const gradientStyle = useAnimatedStyle(() => ({ opacity: c01(expand.value) }));
 
   const avatarStyle = useAnimatedStyle(() => {
@@ -766,8 +771,8 @@ export function StretchyProfile({
                   {
                     position: "absolute",
                     overflow: "hidden",
-                    // Під фото — темний нейтральний фон (а не колір аватара): під час овер-скролу не видно «синього» шару.
-                    backgroundColor: hasImage ? "#0B0B0D" : avatarColor(name || "?"),
+                    // Під фото — колір теми (не чорний і не колір аватара); контейнер скруглений і обрізає все, що всередині.
+                    backgroundColor: hasImage ? c.header : avatarColor(name || "?"),
                     alignItems: "center",
                     justifyContent: "center",
                   },
@@ -815,6 +820,22 @@ export function StretchyProfile({
                     </Animated.Text>
                   </>
                 )}
+                {/* Скрім під іменем: усередині того ж скругленого контейнера, тож кути фото не чорніють */}
+                <Animated.View
+                  pointerEvents="none"
+                  style={[{ position: "absolute", left: 0, right: 0, bottom: 0, height: 260 }, gradientStyle]}
+                >
+                  <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
+                    <Defs>
+                      <LinearGradient id="profileFade" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor="#000000" stopOpacity="0" />
+                        <Stop offset="0.55" stopColor="#000000" stopOpacity="0.32" />
+                        <Stop offset="1" stopColor="#000000" stopOpacity="0.78" />
+                      </LinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="1" height="1" fill="url(#profileFade)" />
+                  </Svg>
+                </Animated.View>
                 {busy && (
                   <View
                     style={{
@@ -831,25 +852,6 @@ export function StretchyProfile({
                     <ActivityIndicator color="#FFFFFF" size="large" />
                   </View>
                 )}
-              </Animated.View>
-
-              {/* Градієнт під іменем у розкритому стані */}
-              <Animated.View
-                style={[
-                  { position: "absolute", left: 0, right: 0, top: fullHeight - 260, height: 260 },
-                  gradientStyle,
-                ]}
-              >
-                <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
-                  <Defs>
-                    <LinearGradient id="profileFade" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor="#000000" stopOpacity="0" />
-                      <Stop offset="0.55" stopColor="#000000" stopOpacity="0.32" />
-                      <Stop offset="1" stopColor="#000000" stopOpacity="0.78" />
-                    </LinearGradient>
-                  </Defs>
-                  <Rect x="0" y="0" width="1" height="1" fill="url(#profileFade)" />
-                </Svg>
               </Animated.View>
 
               {/* Сегменти-індикатор фото зверху розкритого фото */}
@@ -1031,6 +1033,15 @@ export function StretchyProfile({
               )}
             </View>
           </View>
+
+          {floatingAction ? (
+            <Animated.View
+              pointerEvents={scrollLocked ? "none" : "box-none"}
+              style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, floatingStyle]}
+            >
+              {floatingAction}
+            </Animated.View>
+          ) : null}
 
           {bottomOverlay}
 
