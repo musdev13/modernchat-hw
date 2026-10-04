@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { MutationCtx, mutation, query } from "./_generated/server";
+import { releaseMessageFiles } from "./messageStorage";
 import { isMutedNow, patchRoomSetting } from "./roomSettings";
 import { getAuthUser, getPresenceRow, presenceOf } from "./users";
 
@@ -607,9 +608,7 @@ export const deleteRoom = mutation({
       .withIndex("by_chat_room", (q) => q.eq("chatRoomId", args.roomId))
       .collect();
     for (const message of messages) {
-      if (message.storageId) await ctx.storage.delete(message.storageId);
-      if (message.audioStorageId) await ctx.storage.delete(message.audioStorageId);
-      if (message.videoStorageId) await ctx.storage.delete(message.videoStorageId);
+      await releaseMessageFiles(ctx, message);
       const reactions = await ctx.db
         .query("messageReactions")
         .withIndex("by_message", (q) => q.eq("messageId", message._id))

@@ -1,6 +1,7 @@
 import { avatarColor, initialsOf } from "@/constants/theme";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
+import { formatFileSize } from "@/utils/attachments";
 import { dayLabel, formatTime } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
 import { ComponentProps, memo, useEffect, useState } from "react";
@@ -34,6 +35,16 @@ export interface MediaItem {
   kind: "image" | "sticker" | "video";
   url: string;
   duration?: number;
+}
+
+export interface FileItem {
+  _id: Id<"messages">;
+  createdAt: number;
+  senderName: string;
+  url: string;
+  name: string;
+  size?: number;
+  mime?: string;
 }
 
 export interface VoiceItem {
@@ -141,9 +152,11 @@ export function RoomTabBar({
           >
             <Text
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
               style={{
                 color: selected ? c.accent : c.muted,
-                fontSize: 13.5,
+                fontSize: 13,
                 fontWeight: "700",
               }}
             >
@@ -528,6 +541,56 @@ export const VoiceRow = memo(function VoiceRow({
 });
 
 // ── Посилання ──
+export const FileRow = memo(function FileRow({
+  item,
+  onPress,
+  onOpen,
+}: {
+  item: FileItem;
+  /** Довге натискання — перейти до повідомлення. */
+  onPress: (item: FileItem) => void;
+  onOpen: (url: string) => void;
+}) {
+  const c = useChatPalette();
+  const ext = (item.name.split(".").pop() ?? "").slice(0, 4).toUpperCase();
+  return (
+    <TouchableOpacity
+      activeOpacity={0.6}
+      onPress={() => onOpen(item.url)}
+      onLongPress={() => onPress(item)}
+      delayLongPress={350}
+      style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 9 }}
+    >
+      <View
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 12,
+          backgroundColor: withAlpha(c.accent, 0.16),
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 14,
+        }}
+      >
+        <Ionicons name="document-text" size={21} color={c.accent} />
+        {ext ? (
+          <Text style={{ color: c.accent, fontSize: 8, fontWeight: "800", marginTop: -1 }}>{ext}</Text>
+        ) : null}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={{ color: c.text, fontSize: 16, fontWeight: "600" }}>
+          {item.name}
+        </Text>
+        <Text numberOfLines={1} style={{ color: c.muted, fontSize: 13, marginTop: 1 }}>
+          {[formatFileSize(item.size), `${dayLabel(item.createdAt)}, ${formatTime(item.createdAt)}`]
+            .filter(Boolean)
+            .join(" · ")}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export const LinkRow = memo(function LinkRow({
   item,
   onPress,

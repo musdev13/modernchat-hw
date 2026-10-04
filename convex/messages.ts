@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { attachmentLabel, releaseMessageFiles } from "./messageStorage";
 import { isMutedNow } from "./roomSettings";
 import { getAuthUser } from "./users";
 
@@ -272,14 +273,13 @@ function previewOf(message: {
   videoUrl?: string;
   audioUrl?: string;
   imageUrl?: string;
+  fileUrl?: string;
+  fileName?: string;
 }): string {
   const text = message.content?.trim() ?? "";
   if (text.startsWith(STICKER_MARK)) return "Наліпка";
   if (text) return text.length > 140 ? `${text.slice(0, 140)}…` : text;
-  if (message.isVideoNote && message.videoUrl) return "📹 Відеоповідомлення";
-  if (message.audioUrl) return "🎤 Голосове повідомлення";
-  if (message.imageUrl) return "📷 Фотографія";
-  return "Повідомлення";
+  return attachmentLabel(message) ?? "Повідомлення";
 }
 
 const MAX_PINNED = 50;
@@ -457,8 +457,9 @@ export const sendMessage = mutation({
   },
 });
 
-// Переслати текстове повідомлення в іншу (свою) кімнату. Медіа не пересилаємо: файли
-// у storage належать оригіналу й зникли б разом із ним.
+// Переслати повідомлення (текст або медіа) в іншу свою кімнату. Файли не копіюються:
+// нове повідомлення посилається на той самий storageId, а видалення оригіналу не зачіпає
+// файл, поки на нього посилається хоч одне повідомлення (див. releaseMessageFiles).
 export const forwardMessage = mutation({
   args: {
     messageId: v.id("messages"),
@@ -472,36 +473,51 @@ export const forwardMessage = mutation({
     if (!message) throw new Error("Повідомлення не знайдено");
     await assertRoomMember(ctx, message.chatRoomId, user._id);
     const room = await assertRoomMember(ctx, args.targetChatRoomId, user._id);
+    if (message.isSystem) throw new Error("Системні повідомлення не пересилаються");
 
     const text = message.content?.trim();
-    const isMedia =
-      !!message.imageUrl || !!message.audioUrl || !!message.videoUrl || !!message.storageId;
-    if (message.isSystem || !text || isMedia || text.startsWith("\u2063\u2063")) {
-      throw new Error("Переслати можна лише текстові повідомлення");
-    }
+    const label = attachmentLabel(message);
+    if (!text && !label) throw new Error("Це повідомлення не можна переслати");
 
     const senderName = user.name ?? user.email ?? "Користувач";
-    const messageId = await ctx.db.insert("messages", {
+    await ctx.db.insert("messages", {
       chatRoomId: args.targetChatRoomId,
       senderId: user._id,
       senderName,
       senderPhoto: user.image,
-      content: text,
+      content: text || undefined,
       forwardedFrom: message.forwardedFrom ?? message.senderName,
+      imageUrl: message.imageUrl,
+      storageId: message.storageId,
+      audioUrl: message.audioUrl,
+      audioStorageId: message.audioStorageId,
+      audioDuration: message.audioDuration,
+      waveform: message.waveform,
+      videoUrl: message.videoUrl,
+      videoStorageId: message.videoStorageId,
+      videoDuration: message.videoDuration,
+      isVideoNote: message.isVideoNote,
+      fileUrl: message.fileUrl,
+      fileStorageId: message.fileStorageId,
+      fileName: message.fileName,
+      fileSize: message.fileSize,
+      fileMime: message.fileMime,
+      mediaWidth: message.mediaWidth,
+      mediaHeight: message.mediaHeight,
     });
+    const preview = text && !text.startsWith("\u2063\u2063") ? text : (label ?? "Наліпка");
     await ctx.db.patch(args.targetChatRoomId, {
-      lastMessage: previewLine(room, user.name ?? "Користувач", `↪ ${text}`),
+      lastMessage: previewLine(room, senderName, `↪ ${preview}`),
       lastMessageAt: Date.now(),
     });
     await schedulePushForNewMessage(ctx, {
       roomId: args.targetChatRoomId,
       senderId: user._id,
       senderName,
-      previewText: `↪ ${text}`,
+      previewText: `↪ ${preview}`,
       roomTitle: room.title,
       participantIds: (room.participantIds ?? [room.creatorId]) as Id<"users">[],
     });
-    return messageId;
   },
 });
 
@@ -557,9 +573,7 @@ export const deleteMessage = mutation({
       throw new Error("Forbidden: Ви можете видаляти лише власні повідомлення");
     }
 
-    if (message.storageId) await ctx.storage.delete(message.storageId);
-    if (message.audioStorageId) await ctx.storage.delete(message.audioStorageId);
-    if (message.videoStorageId) await ctx.storage.delete(message.videoStorageId);
+    await releaseMessageFiles(ctx, message);
 
     const reactions = await ctx.db
       .query("messageReactions")
@@ -652,6 +666,96 @@ export const sendMediaMessage = mutation({
     });
 
     return messageId;
+  },
+});
+
+// Фото / відео / файл з підписом. Файл уже завантажений у storage через generateUploadUrl.
+export const sendAttachment = mutation({
+  args: {
+    chatRoomId: v.id("chatRooms"),
+    kind: v.union(v.literal("image"), v.literal("video"), v.literal("file")),
+    storageId: v.id("_storage"),
+    caption: v.optional(v.string()),
+    fileName: v.optional(v.string()),
+    fileSize: v.optional(v.number()),
+    mimeType: v.optional(v.string()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    duration: v.optional(v.number()),
+    replyToId: v.optional(v.id("messages")),
+    replyToSender: v.optional(v.string()),
+    replyToText: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx);
+    if (!user) throw new Error("Unauthorized: Потрібна авторизація");
+    const userId = user._id;
+    const room = await assertRoomMember(ctx, args.chatRoomId, userId);
+
+    const url = await ctx.storage.getUrl(args.storageId);
+    if (!url) throw new Error("Не вдалося отримати посилання на збережений файл");
+
+    const senderName = user.name ?? user.email ?? "Користувач";
+    const caption = args.caption?.trim() || undefined;
+    const sizes = {
+      mediaWidth: args.width && args.width > 0 ? Math.round(args.width) : undefined,
+      mediaHeight: args.height && args.height > 0 ? Math.round(args.height) : undefined,
+    };
+    const base = {
+      chatRoomId: args.chatRoomId,
+      senderId: userId,
+      senderName,
+      senderPhoto: user.image,
+      content: caption,
+      replyToId: args.replyToId,
+      replyToSender: args.replyToSender,
+      replyToText: args.replyToText,
+    };
+
+    let label: string;
+    if (args.kind === "image") {
+      await ctx.db.insert("messages", {
+        ...base,
+        ...sizes,
+        imageUrl: url,
+        storageId: args.storageId,
+      });
+      label = "📷 Фотографія";
+    } else if (args.kind === "video") {
+      await ctx.db.insert("messages", {
+        ...base,
+        ...sizes,
+        videoUrl: url,
+        videoStorageId: args.storageId,
+        videoDuration: args.duration,
+        isVideoNote: false,
+      });
+      label = "🎥 Відео";
+    } else {
+      const fileName = args.fileName?.trim() || "Файл";
+      await ctx.db.insert("messages", {
+        ...base,
+        fileUrl: url,
+        fileStorageId: args.storageId,
+        fileName,
+        fileSize: args.fileSize,
+        fileMime: args.mimeType,
+      });
+      label = `📎 ${fileName}`;
+    }
+
+    await ctx.db.patch(args.chatRoomId, {
+      lastMessage: previewLine(room, senderName, caption ? `${label} ${caption}` : label),
+      lastMessageAt: Date.now(),
+    });
+    await schedulePushForNewMessage(ctx, {
+      roomId: args.chatRoomId,
+      senderId: userId,
+      senderName,
+      previewText: caption ? `${label} ${caption}` : label,
+      roomTitle: room.title,
+      participantIds: (room.participantIds ?? [room.creatorId]) as Id<"users">[],
+    });
   },
 });
 

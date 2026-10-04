@@ -63,6 +63,17 @@ export default defineSchema({
     videoDuration: v.optional(v.number()),
     isVideoNote: v.optional(v.boolean()),
 
+    // Довільний файл (документ, архів тощо).
+    fileUrl: v.optional(v.string()),
+    fileStorageId: v.optional(v.id("_storage")),
+    fileName: v.optional(v.string()),
+    fileSize: v.optional(v.number()),
+    fileMime: v.optional(v.string()),
+
+    // Розміри фото / відео (для правильних пропорцій бульбашки).
+    mediaWidth: v.optional(v.number()),
+    mediaHeight: v.optional(v.number()),
+
     isEdited: v.optional(v.boolean()),
     isSystem: v.optional(v.boolean()),
 
@@ -72,7 +83,12 @@ export default defineSchema({
 
     // Пересланe повідомлення: ім'я першого автора.
     forwardedFrom: v.optional(v.string()),
-  }).index("by_chat_room", ["chatRoomId"]),
+  })
+    .index("by_chat_room", ["chatRoomId"])
+    .index("by_storage", ["storageId"])
+    .index("by_audio_storage", ["audioStorageId"])
+    .index("by_video_storage", ["videoStorageId"])
+    .index("by_file_storage", ["fileStorageId"]),
 
   messageReactions: defineTable({
     messageId: v.id("messages"),

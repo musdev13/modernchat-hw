@@ -20,6 +20,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { FileBubble, ratioFrom, VideoBubble } from "./AttachmentBubbles";
 import { MessageReactions, ReactionItem } from "./MessageReactions";
 import { VideoNotePlayer } from "./VideoNotePlayer";
 import { VoiceMessagePlayer } from "./VoiceMessagePlayer";
@@ -41,6 +42,13 @@ export interface MessageItemData {
   videoStorageId?: Id<"_storage">;
   videoDuration?: number;
   isVideoNote?: boolean;
+
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  fileMime?: string;
+  mediaWidth?: number;
+  mediaHeight?: number;
 
   isEdited?: boolean;
   replyToId?: Id<"messages">;
@@ -71,6 +79,7 @@ interface SwipeableMessageItemProps {
   onShowReactors?: (messageId: Id<"messages">) => void;
   onReply: (message: MessageItemData) => void;
   onImagePress?: (url: string) => void;
+  onVideoPress?: (url: string) => void;
   onAuthorPress?: (userId: Id<"users">) => void;
   /** Особистий чат: без аватарок і імен співрозмовника біля повідомлень. */
   isDirect?: boolean;
@@ -88,8 +97,8 @@ const AVATAR_SIZE = 34;
 const STICKER_SIZE = 140;
 
 /** Зображення з пропорціями оригіналу (також анімовані GIF). */
-function ChatImage({ uri }: { uri: string }) {
-  const [ratio, setRatio] = useState(1);
+function ChatImage({ uri, knownRatio }: { uri: string; knownRatio?: number }) {
+  const [ratio, setRatio] = useState(knownRatio ?? 1);
   return (
     <Image
       source={{ uri }}
@@ -102,7 +111,7 @@ function ChatImage({ uri }: { uri: string }) {
       contentFit="cover"
       onLoad={(e) => {
         const { width, height } = e.source;
-        if (width > 0 && height > 0) {
+        if (!knownRatio && width > 0 && height > 0) {
           setRatio(Math.min(1.8, Math.max(0.6, width / height)));
         }
       }}
@@ -180,6 +189,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   onShowReactors,
   onReply,
   onImagePress,
+  onVideoPress,
   onAuthorPress,
   isDirect = false,
   onReplyPress,
@@ -299,6 +309,10 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   const hasVideoNote = !!(item.isVideoNote && item.videoUrl);
   const hasVoice = !!item.audioUrl;
   const hasImage = !!item.imageUrl;
+  const hasVideo = !!(item.videoUrl && !item.isVideoNote);
+  const hasFile = !!item.fileUrl;
+  // Фото або відео: бульбашка без внутрішніх відступів, час поверх картинки.
+  const hasVisual = hasImage || hasVideo;
   const hasReactions = !!(item.reactions && item.reactions.length > 0);
   const isSticker =
     hasImage && !hasVideoNote && !hasVoice && isStickerContent(item.content);
@@ -310,7 +324,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
     hasVideoNote && !hasText && !item.replyToSender;
 
   const emojiCount =
-    hasText && !hasImage && !hasVideoNote && !hasVoice && !item.replyToSender && !hasReactions
+    hasText && !hasVisual && !hasFile && !hasVideoNote && !hasVoice && !item.replyToSender && !hasReactions
       ? emojiOnlyCount(content)
       : 0;
   const isBigEmoji = emojiCount >= 1 && emojiCount <= 3;
@@ -320,9 +334,9 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   const time = formatTime(item._creationTime);
 
   const inlineMeta =
-    hasText && !hasImage && !hasVideoNote && !hasVoice && !hasReactions;
+    hasText && !hasVisual && !hasVideoNote && !hasVoice && !hasReactions;
   const overlayMeta =
-    hasImage && !hasText && !hasReactions && !item.replyToSender;
+    hasVisual && !hasText && !hasReactions && !item.replyToSender;
 
   // Галочки: одна — надіслано, дві — прочитано.
   const ticks = (idleColor: string, readColor: string) =>
@@ -353,11 +367,11 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
     borderRadius: 18,
     borderBottomRightRadius: isOwn && isLastInSeries ? 5 : 18,
     borderBottomLeftRadius: !isOwn && isLastInSeries ? 5 : 18,
-    paddingHorizontal: hasImage ? 3 : 10,
-    paddingVertical: hasImage ? 3 : 6,
+    paddingHorizontal: hasVisual ? 3 : 10,
+    paddingVertical: hasVisual ? 3 : 6,
   };
 
-  const innerPad = hasImage ? { paddingHorizontal: 7, paddingBottom: 3 } : null;
+  const innerPad = hasVisual ? { paddingHorizontal: 7, paddingBottom: 3 } : null;
 
   return (
     <Animated.View
@@ -619,7 +633,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                           : withAlpha(c.accent, 0.1),
                         borderRadius: 6,
                       },
-                      hasImage ? { marginHorizontal: 4, marginTop: 4 } : null,
+                      hasVisual ? { marginHorizontal: 4, marginTop: 4 } : null,
                     ]}
                   >
                     <Text
@@ -644,7 +658,14 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       activeOpacity={0.9}
                       onPress={() => onImagePress?.(item.imageUrl!)}
                     >
-                      <ChatImage uri={item.imageUrl!} />
+                      <ChatImage
+                        uri={item.imageUrl!}
+                        knownRatio={
+                          item.mediaWidth && item.mediaHeight
+                            ? ratioFrom(item.mediaWidth, item.mediaHeight)
+                            : undefined
+                        }
+                      />
                     </TouchableOpacity>
                     {overlayMeta && (
                       <View
@@ -665,6 +686,46 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       </View>
                     )}
                   </View>
+                )}
+
+                {hasVideo && (
+                  <View>
+                    <VideoBubble
+                      url={item.videoUrl!}
+                      width={item.mediaWidth}
+                      height={item.mediaHeight}
+                      duration={item.videoDuration}
+                      onPress={() => onVideoPress?.(item.videoUrl!)}
+                    />
+                    {overlayMeta && (
+                      <View
+                        pointerEvents="none"
+                        style={{
+                          position: "absolute",
+                          right: 10,
+                          bottom: 10,
+                          backgroundColor: "rgba(0,0,0,0.5)",
+                          borderRadius: 10,
+                          paddingHorizontal: 6,
+                          paddingVertical: 1,
+                        }}
+                      >
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <Text style={{ color: "#FFFFFF", fontSize: 11 }}>{time}</Text>
+                          {ticks("rgba(255,255,255,0.65)", "#FFFFFF")}
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {hasFile && (
+                  <FileBubble
+                    url={item.fileUrl!}
+                    name={item.fileName}
+                    size={item.fileSize}
+                    isOwn={isOwn}
+                  />
                 )}
 
                 {hasVideoNote && (
@@ -708,7 +769,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       style={[
                         { color: textColor, fontSize: 16, lineHeight: 22 },
                         innerPad,
-                        hasImage ? { paddingTop: 5 } : null,
+                        hasVisual ? { paddingTop: 5 } : null,
                       ]}
                     >
                       {content}
@@ -731,7 +792,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   <View
                     style={[
                       { alignSelf: "flex-end", marginTop: 2 },
-                      hasImage ? { paddingRight: 7 } : null,
+                      hasVisual ? { paddingRight: 7 } : null,
                     ]}
                   >
                     {meta}
@@ -761,6 +822,7 @@ export const SwipeableMessageItem = memo(
     prev.item.imageUrl === next.item.imageUrl &&
     prev.item.audioUrl === next.item.audioUrl &&
     prev.item.videoUrl === next.item.videoUrl &&
+    prev.item.fileUrl === next.item.fileUrl &&
     prev.item.senderName === next.item.senderName &&
     prev.item.forwardedFrom === next.item.forwardedFrom &&
     prev.item.senderPhoto === next.item.senderPhoto &&

@@ -20,6 +20,18 @@ export type SharedMediaItem = {
   kind: "image" | "sticker" | "video";
   url: string;
   duration?: number;
+  width?: number;
+  height?: number;
+};
+
+export type SharedFileItem = {
+  _id: Id<"messages">;
+  createdAt: number;
+  senderName: string;
+  url: string;
+  name: string;
+  size?: number;
+  mime?: string;
 };
 
 // Спільний вміст кімнати з останніх SCAN_LIMIT повідомлень:
@@ -29,6 +41,7 @@ export const getRoomSharedContent = query({
   handler: async (ctx, args) => {
     const empty = {
       media: [] as SharedMediaItem[],
+      files: [] as SharedFileItem[],
       voice: [] as {
         _id: Id<"messages">;
         createdAt: number;
@@ -73,6 +86,8 @@ export const getRoomSharedContent = query({
           senderName: message.senderName,
           kind: text.startsWith(STICKER_MARK) ? "sticker" : "image",
           url: message.imageUrl,
+          width: message.mediaWidth,
+          height: message.mediaHeight,
         });
       } else if (message.videoUrl) {
         result.media.push({
@@ -82,6 +97,20 @@ export const getRoomSharedContent = query({
           kind: "video",
           url: message.videoUrl,
           duration: message.videoDuration,
+          width: message.mediaWidth,
+          height: message.mediaHeight,
+        });
+      }
+
+      if (message.fileUrl) {
+        result.files.push({
+          _id: message._id,
+          createdAt,
+          senderName: message.senderName,
+          url: message.fileUrl,
+          name: message.fileName ?? "Файл",
+          size: message.fileSize,
+          mime: message.fileMime,
         });
       }
 

@@ -8,6 +8,8 @@ import { RoomAvatar } from "@/components/RoomAvatar";
 import {
   ActionRow,
   EmptyTab,
+  FileItem,
+  FileRow,
   LinkItem,
   LinkRow,
   MEDIA_COLUMNS,
@@ -57,7 +59,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
-type TabKey = "members" | "media" | "voice" | "links";
+type TabKey = "members" | "media" | "files" | "voice" | "links";
 
 type ListRow =
   | { key: string; type: "top" }
@@ -67,6 +69,7 @@ type ListRow =
   | { key: string; type: "member"; member: MemberItem }
   | { key: string; type: "month"; label: string }
   | { key: string; type: "grid"; items: MediaItem[] }
+  | { key: string; type: "file"; item: FileItem }
   | { key: string; type: "voice"; item: VoiceItem }
   | { key: string; type: "link"; item: LinkItem }
   | { key: string; type: "empty"; icon: IconName; text: string };
@@ -390,6 +393,20 @@ export default function RoomInfoScreen() {
         }
         flush();
       }
+    } else if (tab === "files") {
+      const items = shared?.files ?? [];
+      if (shared === undefined) {
+        result.push({ key: "empty", type: "empty", icon: "document-outline", text: "Завантаження…" });
+      } else if (items.length === 0) {
+        result.push({
+          key: "empty",
+          type: "empty",
+          icon: "document-outline",
+          text: "Файли, надіслані в цю кімнату, зʼявляться тут",
+        });
+      } else {
+        for (const item of items) result.push({ key: `f-${item._id}`, type: "file", item });
+      }
     } else if (tab === "voice") {
       const items = shared?.voice ?? [];
       if (shared === undefined) {
@@ -426,6 +443,7 @@ export default function RoomInfoScreen() {
     () => [
       { key: "members", label: "Учасники", count: room?.participants.length },
       { key: "media", label: "Медіа", count: shared?.media.length },
+      { key: "files", label: "Файли", count: shared?.files.length },
       { key: "voice", label: "Голосові", count: shared?.voice.length },
       { key: "links", label: "Посилання", count: shared?.links.length },
     ],
@@ -685,6 +703,12 @@ export default function RoomInfoScreen() {
                 if (m.kind !== "video") setViewerUrl(m.url);
               }}
             />
+          </View>
+        );
+      case "file":
+        return (
+          <View style={{ backgroundColor: c.header }}>
+            <FileRow item={item.item} onPress={(f) => jumpToMessage(f._id)} onOpen={openLink} />
           </View>
         );
       case "voice":

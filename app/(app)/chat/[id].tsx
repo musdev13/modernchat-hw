@@ -11,6 +11,7 @@ import {
   PIN_BAR_HEIGHT,
   PinnedMessageBar,
 } from "@/components/PinnedMessageBar";
+import { AttachSheet } from "@/components/AttachSheet";
 import { ForwardSheet } from "@/components/ForwardSheet";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { ReactionPickerModal } from "@/components/ReactionPickerModal";
@@ -21,11 +22,22 @@ import {
   SwipeableMessageItem,
 } from "@/components/SwipeableMessageItem";
 import { TypingDots } from "@/components/TypingDots";
+import { VideoViewerModal } from "@/components/VideoViewerModal";
 import { VideoNoteRecorderModal } from "@/components/VideoNoteRecorderModal";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import {
+  captureWithCamera,
+  formatFileSize,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS,
+  pickDocuments,
+  pickFromGallery,
+  PendingAttachment,
+  uploadToStorage,
+} from "@/utils/attachments";
 import { copyText } from "@/utils/clipboard";
 import {
   formatLastSeen,
@@ -41,7 +53,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { File, Paths } from "expo-file-system";
 import * as Haptics from "expo-haptics";
-import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -54,6 +65,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -128,6 +140,7 @@ export default function ChatRoomScreen() {
   const sendMessage = useMutation(api.messages.sendMessage);
   const forwardMessage = useMutation(api.messages.forwardMessage);
   const sendMediaMessage = useMutation(api.messages.sendMediaMessage);
+  const sendAttachment = useMutation(api.messages.sendAttachment);
   const sendVoiceMessage = useMutation(api.messages.sendVoiceMessage);
   const sendVideoNote = useMutation(api.messages.sendVideoNote);
   const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
@@ -154,7 +167,14 @@ export default function ChatRoomScreen() {
   );
   const editingMessageId = editingMessage?._id ?? null;
 
-  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [attachSheetOpen, setAttachSheetOpen] = useState(false);
+  const [uploadState, setUploadState] = useState<{
+    index: number;
+    total: number;
+    fraction: number;
+  } | null>(null);
+  const [viewerVideo, setViewerVideo] = useState<string | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -391,32 +411,50 @@ export default function ChatRoomScreen() {
     }
   }, [panelOpen]);
 
-  const pickImage = useCallback(async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (status !== "granted") {
+  // Додаємо вибрані файли до черги (ліміт кількості й розміру).
+  const addAttachments = useCallback(
+    (picked: PendingAttachment[]) => {
+      if (picked.length === 0) return;
+      const tooBig = picked.filter((p) => (p.size ?? 0) > MAX_ATTACHMENT_BYTES);
+      let accepted = picked.filter((p) => (p.size ?? 0) <= MAX_ATTACHMENT_BYTES);
+      const room = MAX_ATTACHMENTS - attachments.length;
+      const overflow = accepted.length > room;
+      accepted = accepted.slice(0, Math.max(0, room));
+      if (accepted.length > 0) setAttachments((prev) => [...prev, ...accepted]);
+      if (tooBig.length > 0) {
         Alert.alert(
-          "Дозвіл потрібен",
-          "Надайте доступ до медіатеки для надсилання фотографій.",
+          "Файл завеликий",
+          `Максимальний розмір — ${formatFileSize(MAX_ATTACHMENT_BYTES)}: ${tooBig
+            .map((t) => t.name)
+            .join(", ")}`,
         );
-        return;
+      } else if (overflow) {
+        Alert.alert("Забагато вкладень", `За раз можна надіслати до ${MAX_ATTACHMENTS} файлів.`);
       }
+    },
+    [attachments.length],
+  );
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]?.uri) {
-        setSelectedImageUri(result.assets[0].uri);
+  const runPicker = useCallback(
+    async (picker: () => Promise<PendingAttachment[]>) => {
+      try {
+        addAttachments(await picker());
+      } catch (error) {
+        console.error(error);
+        Alert.alert("Помилка", "Не вдалося обрати файл");
       }
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Помилка", "Не вдалося вибрати зображення");
+    },
+    [addAttachments],
+  );
+
+  const openAttachSheet = useCallback(() => {
+    if (attachments.length >= MAX_ATTACHMENTS) {
+      Alert.alert("Забагато вкладень", `За раз можна надіслати до ${MAX_ATTACHMENTS} файлів.`);
+      return;
     }
-  }, []);
+    Keyboard.dismiss();
+    setAttachSheetOpen(true);
+  }, [attachments.length]);
 
   const handleStartReply = useCallback((message: MessageItemData) => {
     let preview = isStickerContent(message.content)
@@ -430,6 +468,10 @@ export default function ChatRoomScreen() {
           ? ` (${Math.round(message.audioDuration)}с)`
           : "";
         preview = `🎤 Голосове повідомлення${dur}`;
+      } else if (message.videoUrl) {
+        preview = "🎥 Відео";
+      } else if (message.fileUrl) {
+        preview = `📎 ${message.fileName ?? "Файл"}`;
       } else if (message.imageUrl) {
         preview = "📷 Фотографія";
       }
@@ -448,7 +490,7 @@ export default function ChatRoomScreen() {
     const text = message.content ?? "";
     setEditingMessage(message);
     setReplyTarget(null);
-    setSelectedImageUri(null);
+    setAttachments([]);
     setPanelOpen(false);
     setInputText(text);
     setSelection({ start: text.length, end: text.length });
@@ -579,7 +621,7 @@ export default function ChatRoomScreen() {
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
 
-    if ((!text && !selectedImageUri) || isSubmitting) return;
+    if ((!text && attachments.length === 0) || isSubmitting) return;
 
     try {
       setIsSubmitting(true);
@@ -590,21 +632,47 @@ export default function ChatRoomScreen() {
           content: text,
         });
         setEditingMessage(null);
-      } else if (selectedImageUri) {
-        const storageId = await uploadFile(selectedImageUri, "image/jpeg");
-
-        await sendMediaMessage({
-          chatRoomId,
-          storageId,
-          caption: text || undefined,
-          replyToId: replyTarget
-            ? (replyTarget.messageId as Id<"messages">)
-            : undefined,
-          replyToSender: replyTarget?.senderName,
-          replyToText: replyTarget?.text,
-        });
-
-        setSelectedImageUri(null);
+      } else if (attachments.length > 0) {
+        const queue = [...attachments];
+        const reply = replyTarget;
+        let captionSent = false;
+        try {
+          for (let i = 0; i < queue.length; i++) {
+            const att = queue[i];
+            setUploadState({ index: i, total: queue.length, fraction: 0 });
+            const uploadUrl = await generateUploadUrl();
+            const storageId = await uploadToStorage(uploadUrl, att, (fraction) =>
+              setUploadState({ index: i, total: queue.length, fraction }),
+            );
+            await sendAttachment({
+              chatRoomId,
+              kind: att.kind,
+              storageId,
+              caption: i === 0 ? text || undefined : undefined,
+              fileName: att.name,
+              fileSize: att.size,
+              mimeType: att.mimeType,
+              width: att.width,
+              height: att.height,
+              duration: att.duration,
+              replyToId:
+                i === 0 && reply ? (reply.messageId as Id<"messages">) : undefined,
+              replyToSender: i === 0 ? reply?.senderName : undefined,
+              replyToText: i === 0 ? reply?.text : undefined,
+            });
+            if (i === 0) captionSent = true;
+            setAttachments((prev) => prev.filter((a) => a.id !== att.id));
+          }
+        } catch (error) {
+          // Вже надіслане прибрано з черги; підпис і відповідь не дублюємо.
+          if (captionSent) {
+            setInputText("");
+            setReplyTarget(null);
+          }
+          throw error;
+        } finally {
+          setUploadState(null);
+        }
         setReplyTarget(null);
       } else {
         await sendMessage({
@@ -636,10 +704,10 @@ export default function ChatRoomScreen() {
     inputText,
     isSubmitting,
     replyTarget,
-    selectedImageUri,
-    sendMediaMessage,
+    attachments,
+    generateUploadUrl,
+    sendAttachment,
     sendMessage,
-    uploadFile,
     resetTyping,
   ]);
 
@@ -1070,6 +1138,7 @@ export default function ChatRoomScreen() {
         onShowReactors={setReactorsFor}
         onReply={handleStartReply}
         onImagePress={setFullscreenImage}
+        onVideoPress={setViewerVideo}
         onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
         isDirect={isDirect}
         onReplyPress={jumpToMessage}
@@ -1135,9 +1204,9 @@ export default function ChatRoomScreen() {
   };
 
   const hasText = inputText.trim().length > 0;
-  const showSendButton = hasText || !!selectedImageUri || !!editingMessageId;
+  const showSendButton = hasText || attachments.length > 0 || !!editingMessageId;
   const sendDisabled =
-    (!inputText.trim() && !selectedImageUri) || isSubmitting;
+    (!inputText.trim() && attachments.length === 0) || isSubmitting;
 
   // Нижній відступ — лише safe-area inset (без додаткових), щоб поле вводу
   // сиділо одразу над системною навігацією.
@@ -1535,33 +1604,111 @@ export default function ChatRoomScreen() {
               </View>
             )}
 
-            {selectedImageUri && (
+            {attachments.length > 0 && (
               <View
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
                   backgroundColor: c.header,
                   borderTopWidth: 1,
                   borderTopColor: c.divider,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
+                  paddingTop: 8,
+                  paddingBottom: 6,
                 }}
               >
-                <Image
-                  source={{ uri: selectedImageUri }}
-                  style={{ width: 48, height: 48, borderRadius: 8, marginRight: 12 }}
-                />
-                <Text style={{ color: c.text, fontSize: 14, flex: 1 }}>
-                  Фото прикріплено
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setSelectedImageUri(null)}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Прибрати фото"
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 12 }}
                 >
-                  <Ionicons name="close" size={22} color={c.muted} />
-                </TouchableOpacity>
+                  {attachments.map((att) => (
+                    <View key={att.id} style={{ marginRight: 8 }}>
+                      <View
+                        style={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          backgroundColor: att.kind === "video" ? "#0B0F14" : c.search,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {att.kind === "image" ? (
+                          <Image
+                            source={{ uri: att.uri }}
+                            style={{ width: 64, height: 64 }}
+                            resizeMode="cover"
+                          />
+                        ) : att.kind === "video" ? (
+                          <Ionicons name="play-circle" size={30} color="rgba(255,255,255,0.85)" />
+                        ) : (
+                          <View style={{ alignItems: "center", paddingHorizontal: 4 }}>
+                            <Ionicons name="document-text" size={22} color={c.accent} />
+                            <Text
+                              numberOfLines={1}
+                              style={{ color: c.muted, fontSize: 9, marginTop: 2, maxWidth: 56 }}
+                            >
+                              {att.name}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {!uploadState && (
+                        <TouchableOpacity
+                          onPress={() =>
+                            setAttachments((prev) => prev.filter((a) => a.id !== att.id))
+                          }
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel="Прибрати вкладення"
+                          style={{
+                            position: "absolute",
+                            top: -5,
+                            right: -5,
+                            width: 20,
+                            height: 20,
+                            borderRadius: 10,
+                            backgroundColor: "rgba(0,0,0,0.7)",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Ionicons name="close" size={13} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+                {uploadState ? (
+                  <View style={{ paddingHorizontal: 14, paddingTop: 8 }}>
+                    <Text style={{ color: c.muted, fontSize: 12, marginBottom: 4 }}>
+                      {`Надсилання ${uploadState.index + 1} з ${uploadState.total} · ${Math.round(
+                        uploadState.fraction * 100,
+                      )}%`}
+                    </Text>
+                    <View
+                      style={{
+                        height: 3,
+                        borderRadius: 2,
+                        backgroundColor: withAlpha(c.muted, 0.25),
+                        overflow: "hidden",
+                      }}
+                    >
+                      <View
+                        style={{
+                          height: 3,
+                          width: `${Math.round(uploadState.fraction * 100)}%`,
+                          backgroundColor: c.accent,
+                        }}
+                      />
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={{ color: c.muted, fontSize: 12, paddingHorizontal: 14, paddingTop: 6 }}>
+                    {attachments.length === 1
+                      ? "Додайте підпис і натисніть «Надіслати»"
+                      : `Вибрано: ${attachments.length}. Підпис додасться до першого`}
+                  </Text>
+                )}
               </View>
             )}
 
@@ -1713,8 +1860,8 @@ export default function ChatRoomScreen() {
                         ? "Змініть текст..."
                         : replyTarget
                           ? `Відповідь для ${replyTarget.senderName}...`
-                          : selectedImageUri
-                            ? "Додайте підпис до фото..."
+                          : attachments.length > 0
+                            ? "Додайте підпис..."
                             : "Повідомлення"
                     }
                     placeholderTextColor={c.muted}
@@ -1731,11 +1878,11 @@ export default function ChatRoomScreen() {
                   />
 
                   <TouchableOpacity
-                    onPress={pickImage}
+                    onPress={openAttachSheet}
                     disabled={isSubmitting}
                     style={iconButtonStyle}
                     accessibilityRole="button"
-                    accessibilityLabel="Прикріпити фото"
+                    accessibilityLabel="Прикріпити файл"
                   >
                     <Ionicons name="attach" size={26} color={c.muted} />
                   </TouchableOpacity>
@@ -2009,6 +2156,18 @@ export default function ChatRoomScreen() {
         visible={!!fullscreenImage}
         imageUrl={fullscreenImage}
         onClose={() => setFullscreenImage(null)}
+      />
+
+      <VideoViewerModal url={viewerVideo} onClose={() => setViewerVideo(null)} />
+
+      <AttachSheet
+        visible={attachSheetOpen}
+        onClose={() => setAttachSheetOpen(false)}
+        onGallery={() =>
+          void runPicker(() => pickFromGallery(MAX_ATTACHMENTS - attachments.length))
+        }
+        onFile={() => void runPicker(pickDocuments)}
+        onCamera={() => void runPicker(captureWithCamera)}
       />
 
       <ReactorsSheet messageId={reactorsFor} onClose={() => setReactorsFor(null)} />
