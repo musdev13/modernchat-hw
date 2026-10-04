@@ -28,6 +28,9 @@ export default function HomeScreen() {
   const rooms = useQuery(api.rooms.listRooms);
   const currentUser = useQuery(api.users.currentUser);
   const unread = useQuery(api.reads.getUnreadCounts);
+  const mutedRoomIds = useQuery(api.roomSettings.getMutedRoomIds);
+  const mutedSet = useMemo(() => new Set<string>(mutedRoomIds ?? []), [mutedRoomIds]);
+  const listExtra = useMemo(() => ({ unread, mutedSet }), [unread, mutedSet]);
   const ensureReads = useMutation(api.reads.ensureReads);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
   const removeParticipant = useMutation(api.rooms.removeParticipant);
@@ -294,7 +297,7 @@ export default function HomeScreen() {
       ) : (
         <FlatList
           data={filteredRooms}
-          extraData={unread}
+          extraData={listExtra}
           keyExtractor={(item) => item._id}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 110 }}
@@ -334,6 +337,7 @@ export default function HomeScreen() {
               room={item}
               isCreator={item.creatorId === currentUser?._id}
               unreadCount={unread?.counts[item._id] ?? 0}
+              muted={mutedSet.has(item._id)}
               onPress={() => router.push(`/chat/${item._id}`)}
               onDelete={handleDeleteRoom}
             />

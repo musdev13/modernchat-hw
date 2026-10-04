@@ -1,4 +1,4 @@
-import { avatarColor, initialsOf } from "@/constants/theme";
+import { RoomAvatar } from "@/components/RoomAvatar";
 import { useTheme } from "@/context/ThemeContext";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +15,7 @@ interface RoomData {
   _id: Id<"chatRooms">;
   title: string;
   description?: string;
+  avatarUrl?: string;
   creatorId: Id<"users">;
   lastMessage?: string;
   lastMessageAt?: number;
@@ -25,6 +26,8 @@ interface SwipeableRoomItemProps {
   isCreator: boolean;
   /** Кількість непрочитаних (0 або undefined — все прочитано). */
   unreadCount?: number;
+  /** Сповіщення цієї кімнати вимкнені. */
+  muted?: boolean;
   onPress: () => void;
   onDelete: (roomId: Id<"chatRooms">) => void;
 }
@@ -48,6 +51,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   room,
   isCreator,
   unreadCount = 0,
+  muted = false,
   onPress,
   onDelete,
 }) => {
@@ -171,21 +175,12 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
               paddingVertical: 9,
             }}
           >
-            <View
-              style={{
-                width: 54,
-                height: 54,
-                borderRadius: 27,
-                backgroundColor: avatarColor(room.title),
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              <Text style={{ color: c.onAccent, fontSize: 20, fontWeight: "700" }}>
-                {initialsOf(room.title)}
-              </Text>
-            </View>
+            <RoomAvatar
+              title={room.title}
+              imageUrl={room.avatarUrl}
+              size={54}
+              style={{ marginRight: 12 }}
+            />
 
             <View style={{ flex: 1 }}>
               <View
@@ -219,6 +214,14 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                       name="ribbon-outline"
                       size={14}
                       color={c.accent}
+                      style={{ marginLeft: 6 }}
+                    />
+                  )}
+                  {muted && (
+                    <Ionicons
+                      name="notifications-off"
+                      size={14}
+                      color={c.muted}
                       style={{ marginLeft: 6 }}
                     />
                   )}
@@ -259,7 +262,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                       borderRadius: 11,
                       paddingHorizontal: 6,
                       marginLeft: 8,
-                      backgroundColor: c.accent,
+                      backgroundColor: muted ? c.muted : c.accent,
                       alignItems: "center",
                       justifyContent: "center",
                     }}
