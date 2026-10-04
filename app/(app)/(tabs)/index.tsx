@@ -8,6 +8,7 @@ import { SwipeableRoomItem } from "@/components/SwipeableRoomItem";
 import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useDrafts } from "@/utils/drafts";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
@@ -34,7 +35,8 @@ export default function ChatsTab() {
   const currentUser = useQuery(api.users.currentUser);
   const unread = useQuery(api.reads.getUnreadCounts);
   const typing = useQuery(api.typing.getTypingInMyRooms);
-  const listExtra = useMemo(() => ({ unread, typing }), [unread, typing]);
+  const drafts = useDrafts();
+  const listExtra = useMemo(() => ({ unread, typing, drafts }), [unread, typing, drafts]);
   const getOrCreateSaved = useMutation(api.rooms.getOrCreateSavedRoom);
   const ensureReads = useMutation(api.reads.ensureReads);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
@@ -332,6 +334,7 @@ export default function ChatsTab() {
                   muted={item.muted}
                   online={item.otherOnline}
                   typingText={typingTextOf(item._id, item.isDirect)}
+                  draft={drafts[item._id]}
                   onPress={() => router.push(`/chat/${item._id}`)}
                   onDelete={handleDeleteRoom}
                   onLongPress={(id) => {

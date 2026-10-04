@@ -39,6 +39,7 @@ import {
   uploadToStorage,
 } from "@/utils/attachments";
 import { copyText } from "@/utils/clipboard";
+import { flushDrafts, getDraft, loadDrafts, setDraft } from "@/utils/drafts";
 import {
   formatLastSeen,
   dayKey,
@@ -500,9 +501,36 @@ export default function ChatRoomScreen() {
 
   const cancelEdit = useCallback(() => {
     setEditingMessage(null);
-    setInputText("");
-    setSelection({ start: 0, end: 0 });
-  }, []);
+    // Після редагування повертаємо чернетку, яку користувач набирав до цього.
+    const draft = getDraft(chatRoomId);
+    setInputText(draft);
+    setSelection({ start: draft.length, end: draft.length });
+  }, [chatRoomId]);
+
+  // ── Чернетка: відновлюємо при відкритті, зберігаємо під час набору ──
+  const draftRestoredRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    draftRestoredRef.current = false;
+    void loadDrafts().then(() => {
+      if (cancelled) return;
+      const draft = getDraft(chatRoomId);
+      if (draft) {
+        setInputText((prev) => prev || draft);
+        setSelection({ start: draft.length, end: draft.length });
+      }
+      draftRestoredRef.current = true;
+    });
+    return () => {
+      cancelled = true;
+      flushDrafts();
+    };
+  }, [chatRoomId]);
+
+  useEffect(() => {
+    if (!draftRestoredRef.current || editingMessageId) return;
+    setDraft(chatRoomId, inputText);
+  }, [chatRoomId, editingMessageId, inputText]);
 
   const handleToggleReaction = useCallback(
     async (messageId: Id<"messages">, emoji: string) => {
@@ -700,7 +728,7 @@ export default function ChatRoomScreen() {
         setReplyTarget(null);
       }
 
-      setInputText("");
+      setInputText(editingMessageId ? getDraft(chatRoomId) : "");
       setSelection({ start: 0, end: 0 });
       resetTyping();
     } catch (error) {

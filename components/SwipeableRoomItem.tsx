@@ -38,6 +38,8 @@ interface SwipeableRoomItemProps {
   online?: boolean;
   /** «друкує…» — показується замість останнього повідомлення. */
   typingText?: string;
+  /** Незавершене повідомлення (чернетка) — показується замість останнього повідомлення. */
+  draft?: string;
   onPress: () => void;
   /** Свайп вліво: видалити / покинути (для особистого чату — приховати). */
   onDelete: (roomId: Id<"chatRooms">) => void;
@@ -67,11 +69,13 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
   muted = false,
   online = false,
   typingText,
+  draft,
   onPress,
   onDelete,
   onLongPress,
 }) => {
   const isDirect = !!room.isDirect;
+  const draftText = draft?.replace(/\s+/g, " ").trim().slice(0, 120);
   const hasUnread = unreadCount > 0;
   const { colors: c } = useTheme();
   const translateX = useSharedValue(0);
@@ -278,6 +282,15 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
               </View>
 
               <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
+                {!typingText && draftText ? (
+                  <Text
+                    numberOfLines={1}
+                    style={{ flex: 1, color: c.muted, fontSize: 14 }}
+                  >
+                    <Text style={{ color: c.danger }}>Чернетка: </Text>
+                    {draftText}
+                  </Text>
+                ) : (
                 <Text
                   numberOfLines={1}
                   style={{
@@ -297,6 +310,7 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                         : room.description) ||
                     "Повідомлень ще немає"}
                 </Text>
+                )}
                 {!hasUnread && room.pinned && !room.isSaved && (
                   <Ionicons
                     name="pin"
