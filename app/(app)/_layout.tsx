@@ -44,8 +44,8 @@ export default function AppLayout() {
       <Stack.Screen
         name="settings/[id]"
         options={{
-          presentation: "modal",
           headerShown: false,
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen

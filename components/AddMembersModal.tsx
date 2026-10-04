@@ -1,4 +1,5 @@
-import { COLORS } from "@/constants/theme";
+import { avatarColor, initialsOf } from "@/constants/theme";
+import { useChatPalette } from "@/hooks/useChatPalette";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,6 +25,7 @@ type Props = {
 };
 
 export function AddMembersModal({ visible, roomId, participantIds, onClose }: Props) {
+  const c = useChatPalette();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Id<"users">[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -62,48 +64,93 @@ export function AddMembersModal({ visible, roomId, participantIds, onClose }: Pr
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-      <View className="flex-1 justify-end bg-black/70">
-        <View className="h-[80%] rounded-t-3xl border-t border-surfaceLight bg-surface p-4">
-          <View className="flex-row items-center justify-between border-b border-surfaceLight pb-3">
-            <TouchableOpacity onPress={close} className="p-1">
-              <Ionicons name="close" size={24} color="#fff" />
+      <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: c.overlay }}>
+        <View
+          style={{
+            height: "80%",
+            backgroundColor: c.sheet,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 16,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderBottomWidth: 1,
+              borderBottomColor: c.divider,
+              paddingBottom: 12,
+            }}
+          >
+            <TouchableOpacity onPress={close} style={{ padding: 4 }}>
+              <Ionicons name="close" size={24} color={c.text} />
             </TouchableOpacity>
-            <Text className="text-lg font-bold text-white">Додати учасників</Text>
+            <Text style={{ color: c.text, fontSize: 17, fontWeight: "700" }}>
+              Додати учасників
+            </Text>
             <TouchableOpacity
               onPress={submit}
               disabled={!selected.length || submitting}
-              className={`rounded-full px-3 py-1.5 ${selected.length ? "bg-primary" : "opacity-40"}`}
+              style={{
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor: selected.length ? c.accent : "transparent",
+                opacity: selected.length ? 1 : 0.4,
+              }}
             >
               {submitting ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={c.onAccent} />
               ) : (
-                <Text className="text-xs font-bold text-white">Додати ({selected.length})</Text>
+                <Text
+                  style={{
+                    color: selected.length ? c.onAccent : c.muted,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  Додати ({selected.length})
+                </Text>
               )}
             </TouchableOpacity>
           </View>
 
-          <View className="my-3 flex-row items-center rounded-xl bg-secondary px-3 py-2">
-            <Ionicons name="search" size={18} color={COLORS.textMuted} />
+          <View
+            style={{
+              marginVertical: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              borderRadius: 20,
+              backgroundColor: c.search,
+              paddingHorizontal: 12,
+              height: 40,
+            }}
+          >
+            <Ionicons name="search" size={18} color={c.muted} />
             <TextInput
               value={query}
               onChangeText={setQuery}
               placeholder="Пошук користувачів"
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={c.muted}
               autoCapitalize="none"
-              className="ml-2 flex-1 text-sm text-white"
+              selectionColor={c.accent}
+              style={{ marginLeft: 8, flex: 1, color: c.text, fontSize: 15, paddingVertical: 0 }}
             />
           </View>
 
           {users === undefined ? (
-            <View className="flex-1 items-center justify-center">
-              <ActivityIndicator color={COLORS.primary} />
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <ActivityIndicator color={c.accent} />
             </View>
           ) : (
             <FlatList
               data={available}
               keyExtractor={(item) => item._id}
+              keyboardShouldPersistTaps="handled"
               ListEmptyComponent={
-                <Text className="mt-10 text-center text-sm text-textMuted">
+                <Text style={{ marginTop: 40, textAlign: "center", fontSize: 14, color: c.muted }}>
                   Немає доступних користувачів
                 </Text>
               }
@@ -112,35 +159,60 @@ export function AddMembersModal({ visible, roomId, participantIds, onClose }: Pr
                 return (
                   <TouchableOpacity
                     onPress={() => toggle(item._id)}
-                    className="flex-row items-center border-b border-surfaceLight/50 px-2 py-3"
+                    activeOpacity={0.6}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: 4,
+                      paddingVertical: 9,
+                    }}
                   >
                     {item.image ? (
                       <Image
                         source={{ uri: item.image }}
-                        className="mr-3 h-10 w-10 rounded-full bg-surfaceLight"
+                        style={{ marginRight: 12, width: 44, height: 44, borderRadius: 22, backgroundColor: c.search }}
                         resizeMode="cover"
                       />
                     ) : (
-                      <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-surfaceLight">
-                        <Text className="font-bold text-primary">
-                          {item.name.slice(0, 1).toUpperCase()}
+                      <View
+                        style={{
+                          marginRight: 12,
+                          width: 44,
+                          height: 44,
+                          borderRadius: 22,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: avatarColor(item.name),
+                        }}
+                      >
+                        <Text style={{ fontWeight: "700", color: "#FFFFFF" }}>
+                          {initialsOf(item.name)}
                         </Text>
                       </View>
                     )}
 
-                    <View className="flex-1">
-                      <Text className="font-semibold text-white">{item.name}</Text>
-                      <Text className="text-xs text-textMuted">
-                        {item.username ? `@${item.username}` : ""}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: c.text, fontSize: 16, fontWeight: "600" }}>
+                        {item.name}
                       </Text>
+                      {item.username ? (
+                        <Text style={{ color: c.muted, fontSize: 13 }}>@{item.username}</Text>
+                      ) : null}
                     </View>
 
                     <View
-                      className={`h-6 w-6 items-center justify-center rounded-full border ${
-                        checked ? "border-primary bg-primary" : "border-textMuted"
-                      }`}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 12,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderWidth: 1.5,
+                        borderColor: checked ? c.accent : c.muted,
+                        backgroundColor: checked ? c.accent : "transparent",
+                      }}
                     >
-                      {checked && <Ionicons name="checkmark" size={16} color="#fff" />}
+                      {checked && <Ionicons name="checkmark" size={16} color={c.onAccent} />}
                     </View>
                   </TouchableOpacity>
                 );
