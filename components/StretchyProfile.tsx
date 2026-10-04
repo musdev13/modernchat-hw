@@ -702,7 +702,10 @@ export function StretchyProfile({
   }));
 
   // Обкладинка зсувається вдвічі повільніше за прокрутку (паралакс).
+  // Є фото — при розгортанні обкладинка (колір, візерунок профілю) плавно зникає й ніколи не лежить
+  // поверх фото; видно її лише у згорнутій шапці або коли фото немає.
   const coverStyle = useAnimatedStyle(() => ({
+    opacity: hasImage ? 1 - c01(expand.value) : 1,
     transform: [{ translateY: -Math.min(scrollY.value, collapseDistance) * 0.25 }],
   }));
 
@@ -806,7 +809,7 @@ export function StretchyProfile({
                     position: "absolute",
                     overflow: "hidden",
                     // Під фото — колір теми (не чорний і не колір аватара); контейнер скруглений і обрізає все, що всередині.
-                    backgroundColor: hasImage ? c.header : avatarColor(name || "?"),
+                    backgroundColor: hasImage ? c.header : (profileColor ?? avatarColor(name || "?")),
                     alignItems: "center",
                     justifyContent: "center",
                   },
@@ -855,6 +858,7 @@ export function StretchyProfile({
                       </Defs>
                       <Rect x="0" y="0" width="1" height="1" fill="url(#avatarFallback)" />
                     </Svg>
+                    <ProfilePattern pattern={profilePattern} />
                     <Animated.Text style={[{ color: "#FFFFFF", fontWeight: "700" }, initialsStyle]}>
                       {initialsOf(name)}
                     </Animated.Text>
