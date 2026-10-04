@@ -1,21 +1,36 @@
-import { COLORS } from "@/constants/theme";
+import { AuthIntro, wasIntroSeen } from "@/components/AuthIntro";
+import { SpaceBackdrop } from "@/components/SpaceBackdrop";
 import { useAuth, useSSO, useSignIn, useSignUp } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import * as AuthSession from "expo-auth-session";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useState } from "react";
+import { StatusBar } from "expo-status-bar";
+import { ComponentProps, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeOut,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -32,6 +47,28 @@ export default function LoginScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const insets = useSafeAreaInsets();
+  // Вступ (3 слайди) показуємо лише при першому запуску.
+  const [intro, setIntro] = useState<"loading" | "show" | "done">("loading");
+  useEffect(() => {
+    let alive = true;
+    wasIntroSeen().then((seen) => {
+      if (alive) setIntro(seen ? "done" : "show");
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Інтро логотипа: поява зі збільшенням і розсуванням літер.
+  const logo = useSharedValue(0);
+  useEffect(() => {
+    logo.value = withDelay(150, withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
+  }, [logo]);
+  const logoStyle = useAnimatedStyle(() => ({
+    opacity: logo.value,
+    transform: [{ scale: 0.86 + 0.14 * logo.value }, { translateY: (1 - logo.value) * 10 }],
+  }));
 
   useEffect(() => {
     if (isSignedIn) {
@@ -164,167 +201,212 @@ export default function LoginScreen() {
     }
   };
 
+  const busy = isLoading || isGoogleLoading;
+
+  const field = (
+    icon: ComponentProps<typeof Ionicons>["name"],
+    props: ComponentProps<typeof TextInput>,
+  ) => (
+    <View style={styles.field}>
+      <Ionicons name={icon} size={20} color="rgba(255,255,255,0.55)" style={{ marginRight: 12 }} />
+      <TextInput
+        style={styles.input}
+        placeholderTextColor="rgba(255,255,255,0.4)"
+        selectionColor="#7CC4FF"
+        {...props}
+      />
+    </View>
+  );
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-surface"
-    >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View className="items-center mt-20">
-          <View className="w-20 h-20 rounded-3xl bg-primary/20 items-center justify-center border border-primary/30">
-            <Ionicons name="chatbubbles" size={38} color={COLORS.primary} />
-          </View>
+    <View style={{ flex: 1, backgroundColor: "#02030A" }}>
+      <StatusBar style="light" />
+      <SpaceBackdrop />
 
-          <Text className="text-3xl font-bold text-white mt-5 tracking-tight">
-            Modern Chat
-          </Text>
-
-          <Text className="text-sm text-textMuted mt-2 text-center px-6">
-            {isSignUp
-              ? "Створіть акаунт для спілкування в кімнатах"
-              : "Увійдіть, щоб продовжити спілкування"}
-          </Text>
-        </View>
-
-        <View className="px-6 mt-12 w-full items-center gap-4">
-          {isSignUp && (
-            <View className="flex-row items-center bg-secondary border border-surfaceLight rounded-2xl px-4 w-full max-w-sm">
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color={COLORS.textMuted}
-                style={{ marginRight: 12 }}
-              />
-
-              <TextInput
-                className="flex-1 py-3.5 text-base text-white"
-                placeholder="Ваше ім'я"
-                placeholderTextColor={COLORS.textMuted}
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-              />
-            </View>
-          )}
-
-          <View className="flex-row items-center bg-secondary border border-surfaceLight rounded-2xl px-4 w-full max-w-sm">
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={COLORS.textMuted}
-              style={{ marginRight: 12 }}
-            />
-
-            <TextInput
-              className="flex-1 py-3.5 text-base text-white"
-              placeholder="Email"
-              placeholderTextColor={COLORS.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View className="flex-row items-center bg-secondary border border-surfaceLight rounded-2xl px-4 w-full max-w-sm">
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={COLORS.textMuted}
-              style={{ marginRight: 12 }}
-            />
-
-            <TextInput
-              className="flex-1 py-3.5 text-base text-white"
-              placeholder="Пароль"
-              placeholderTextColor={COLORS.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-          </View>
-
-          <TouchableOpacity
-            className={`flex-row items-center justify-center bg-primary rounded-2xl py-4 w-full max-w-sm mt-3 active:bg-primaryDark ${
-              isLoading || isGoogleLoading ? "opacity-60" : ""
-            }`}
-            activeOpacity={0.85}
-            onPress={handleAuth}
-            disabled={isLoading || isGoogleLoading}
+      {intro === "show" ? (
+        <AuthIntro onDone={() => setIntro("done")} />
+      ) : intro === "done" ? (
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 56, paddingBottom: insets.bottom + 28 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text className="text-white text-base font-bold">
-                {isSignUp ? "Зареєструватися" : "Увійти"}
+            <Animated.View style={[{ alignItems: "center" }, logoStyle]}>
+              <View style={styles.mark}>
+                <Ionicons name="paper-plane" size={30} color="#FFFFFF" />
+              </View>
+              <Text style={styles.wordmark}>MODERN CHAT</Text>
+              <Text style={styles.tagline}>
+                {isSignUp ? "Приєднуйтесь до нового способу спілкування" : "Зв'язок без меж. Увійдіть, щоб продовжити"}
               </Text>
-            )}
-          </TouchableOpacity>
+            </Animated.View>
 
-          <View className="flex-row items-center w-full max-w-sm my-1">
-            <View className="flex-1 h-px bg-surfaceLight" />
-            <Text className="text-textMuted text-xs font-bold px-3 tracking-widest">
-              АБО
-            </Text>
-            <View className="flex-1 h-px bg-surfaceLight" />
-          </View>
-
-          <TouchableOpacity
-            className={`flex-row items-center justify-center bg-secondary border border-surfaceLight rounded-2xl py-4 w-full max-w-sm gap-2.5 ${
-              isLoading || isGoogleLoading ? "opacity-60" : ""
-            }`}
-            activeOpacity={0.85}
-            onPress={handleGoogleSignIn}
-            disabled={isLoading || isGoogleLoading}
-          >
-            {isGoogleLoading ? (
-              <ActivityIndicator color={COLORS.white} size="small" />
-            ) : (
-              <>
-                <Ionicons name="logo-google" size={20} color="#EA4335" />
-                <Text className="text-white text-base font-bold">
-                  {isSignUp
-                    ? "Зареєструватися через Google"
-                    : "Продовжити з Google"}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setIsSignUp(!isSignUp)}
-            className="mt-3 py-2"
-          >
-            <Text className="text-primary text-sm font-medium">
-              {isSignUp
-                ? "Вже є акаунт? Увійти"
-                : "Немає акаунту? Створити новий"}
-            </Text>
-          </TouchableOpacity>
-
-          {isSignedIn && (
-            <TouchableOpacity
-              onPress={async () => {
-                try {
-                  await signOut();
-                } catch (e) {
-                  console.error("SignOut error:", e);
-                }
-              }}
-              className="mt-4 py-2"
+            <Animated.View
+              layout={LinearTransition.duration(260)}
+              entering={FadeInDown.delay(450).duration(650).easing(Easing.out(Easing.cubic))}
+              style={styles.card}
             >
-              <Text className="text-textMuted text-xs text-center underline">
-                Вийти з поточного акаунта
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+              {isSignUp && (
+                <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(140)}>
+                  {field("person-outline", {
+                    placeholder: "Ваше ім'я",
+                    value: name,
+                    onChangeText: setName,
+                    autoCapitalize: "words",
+                  })}
+                </Animated.View>
+              )}
+
+              {field("mail-outline", {
+                placeholder: "Email",
+                value: email,
+                onChangeText: setEmail,
+                keyboardType: "email-address",
+                autoCapitalize: "none",
+                autoCorrect: false,
+              })}
+
+              {field("lock-closed-outline", {
+                placeholder: "Пароль",
+                value: password,
+                onChangeText: setPassword,
+                secureTextEntry: true,
+                autoCapitalize: "none",
+              })}
+
+              <TouchableOpacity
+                style={[styles.primary, busy && { opacity: 0.6 }]}
+                activeOpacity={0.85}
+                onPress={handleAuth}
+                disabled={busy}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#05070D" size="small" />
+                ) : (
+                  <Text style={styles.primaryText}>{isSignUp ? "Зареєструватися" : "Увійти"}</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.orRow}>
+                <View style={styles.orLine} />
+                <Text style={styles.orText}>АБО</Text>
+                <View style={styles.orLine} />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.secondary, busy && { opacity: 0.6 }]}
+                activeOpacity={0.85}
+                onPress={handleGoogleSignIn}
+                disabled={busy}
+              >
+                {isGoogleLoading ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <View style={styles.googleRow}>
+                    <Ionicons name="logo-google" size={20} color="#EA4335" />
+                    <Text style={styles.secondaryText}>
+                      {isSignUp ? "Зареєструватися через Google" : "Продовжити з Google"}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </Animated.View>
+
+            <Animated.View entering={FadeIn.delay(900).duration(600)} style={{ alignItems: "center", marginTop: 18 }}>
+              <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)} style={{ paddingVertical: 8 }}>
+                <Text style={styles.switchText}>
+                  {isSignUp ? "Вже є акаунт? Увійти" : "Немає акаунту? Створити новий"}
+                </Text>
+              </TouchableOpacity>
+
+              {isSignedIn && (
+                <TouchableOpacity
+                  onPress={async () => {
+                    try {
+                      await signOut();
+                    } catch (e) {
+                      console.error("SignOut error:", e);
+                    }
+                  }}
+                  style={{ paddingVertical: 8, marginTop: 6 }}
+                >
+                  <Text style={styles.signOutText}>Вийти з поточного акаунта</Text>
+                </TouchableOpacity>
+              )}
+            </Animated.View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      ) : null}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  mark: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  wordmark: { color: "#FFFFFF", fontSize: 26, fontWeight: "300", letterSpacing: 8, marginTop: 22 },
+  tagline: {
+    color: "rgba(255,255,255,0.62)",
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    marginTop: 10,
+    paddingHorizontal: 40,
+  },
+  card: {
+    alignSelf: "center",
+    width: "88%",
+    maxWidth: 400,
+    marginTop: 40,
+    padding: 18,
+    gap: 12,
+    borderRadius: 26,
+    backgroundColor: "rgba(10,16,32,0.62)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+  field: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+  },
+  input: { flex: 1, paddingVertical: 14, fontSize: 16, color: "#FFFFFF" },
+  primary: {
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  primaryText: { color: "#05070D", fontSize: 16, fontWeight: "800", letterSpacing: 0.6 },
+  orRow: { flexDirection: "row", alignItems: "center" },
+  orLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.14)" },
+  orText: { color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: "700", letterSpacing: 2, paddingHorizontal: 12 },
+  secondary: {
+    height: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  googleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  secondaryText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
+  switchText: { color: "#9FD3FF", fontSize: 14, fontWeight: "600" },
+  signOutText: { color: "rgba(255,255,255,0.5)", fontSize: 12, textDecorationLine: "underline" },
+});
