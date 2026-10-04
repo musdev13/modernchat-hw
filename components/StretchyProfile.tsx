@@ -1,8 +1,8 @@
-import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
+import { GlassProvider, GlassTarget } from "@/components/Glass";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { avatarColor, initialsOf } from "@/constants/theme";
-import { useChatPalette } from "@/hooks/useChatPalette";
+import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { ComponentProps, ReactNode, useCallback, useEffect, useState } from "react";
 import {
@@ -252,23 +252,33 @@ export function StretchyProfile({
     return { opacity: interpolate(p, [0.7, 1], [0, 1], Extrapolation.CLAMP) };
   });
 
+  // Кнопки й капсула над обкладинкою — суцільні напівпрозорі круглі поверхні (без розмиття):
+  // розмиття знімало б градієнт обкладинки під кнопкою й давало квадратну пляму на Android.
+  const barSurface = {
+    backgroundColor: withAlpha(c.header, 0.9),
+    borderWidth: 1,
+    borderColor: withAlpha(c.muted, 0.22),
+    overflow: "hidden" as const,
+  };
   const barButton = (icon: IconName, label: string, onPress: () => void) => (
-    <GlassSurface
-      radius={BAR_BUTTON / 2}
-      intensity={75}
-      style={{ width: BAR_BUTTON, height: BAR_BUTTON }}
-      contentStyle={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={[
+        barSurface,
+        {
+          width: BAR_BUTTON,
+          height: BAR_BUTTON,
+          borderRadius: BAR_BUTTON / 2,
+          alignItems: "center",
+          justifyContent: "center",
+        },
+      ]}
     >
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={{ width: BAR_BUTTON, height: BAR_BUTTON, alignItems: "center", justifyContent: "center" }}
-      >
-        <Ionicons name={icon} size={22} color={c.text} />
-      </TouchableOpacity>
-    </GlassSurface>
+      <Ionicons name={icon} size={22} color={c.text} />
+    </TouchableOpacity>
   );
 
   const coverColor = avatarColor(name || "?");
@@ -305,20 +315,22 @@ export function StretchyProfile({
                   right: 0,
                   overflow: "hidden",
                   backgroundColor: c.divider,
+                  // Шапка (обкладинка, аватар, ім'я) — над списком, але під плаваючою панеллю (zIndex 30).
+                  zIndex: 1,
                 },
                 headerStyle,
               ]}
             >
               {/* Обкладинка: рівний колір теми з ледь помітним відтінком кольору аватара */}
               <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
-                <Svg width="100%" height="100%">
+                <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
                   <Defs>
                     <LinearGradient id="profileCover" x1="0" y1="0" x2="0" y2="1">
                       <Stop offset="0" stopColor={mix(c.header, coverColor, 0.34)} stopOpacity="1" />
                       <Stop offset="1" stopColor={mix(c.header, coverColor, 0.14)} stopOpacity="1" />
                     </LinearGradient>
                   </Defs>
-                  <Rect x="0" y="0" width="100%" height="100%" fill="url(#profileCover)" />
+                  <Rect x="0" y="0" width="1" height="1" fill="url(#profileCover)" />
                 </Svg>
               </View>
 
@@ -371,14 +383,14 @@ export function StretchyProfile({
                   gradientStyle,
                 ]}
               >
-                <Svg width="100%" height="100%">
+                <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
                   <Defs>
                     <LinearGradient id="profileFade" x1="0" y1="0" x2="0" y2="1">
                       <Stop offset="0" stopColor="#000000" stopOpacity="0" />
                       <Stop offset="1" stopColor="#000000" stopOpacity="0.72" />
                     </LinearGradient>
                   </Defs>
-                  <Rect x="0" y="0" width="100%" height="100%" fill="url(#profileFade)" />
+                  <Rect x="0" y="0" width="1" height="1" fill="url(#profileFade)" />
                 </Svg>
               </Animated.View>
 
@@ -436,17 +448,18 @@ export function StretchyProfile({
                   barTitleStyle,
                 ]}
               >
-                <GlassSurface
-                  radius={BAR_BUTTON / 2}
-                  intensity={75}
-                  style={{ height: BAR_BUTTON }}
-                  contentStyle={{
-                    flex: 1,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingHorizontal: 12,
-                  }}
+                <View
+                  style={[
+                    barSurface,
+                    {
+                      height: BAR_BUTTON,
+                      borderRadius: BAR_BUTTON / 2,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      paddingHorizontal: 12,
+                    },
+                  ]}
                 >
                   <RoomAvatar title={name} imageUrl={imageUrl} size={28} />
                   <Text
@@ -455,7 +468,7 @@ export function StretchyProfile({
                   >
                     {name}
                   </Text>
-                </GlassSurface>
+                </View>
               </Animated.View>
 
               {rightIcon && onRightPress ? (
