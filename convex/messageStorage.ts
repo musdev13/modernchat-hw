@@ -1,5 +1,18 @@
 import { Doc, Id } from "./_generated/dataModel";
 
+/** Id повідомлень кімнати, які користувач приховав «для себе». */
+export async function hiddenMessageIds(
+  ctx: any,
+  userId: Id<"users">,
+  chatRoomId: Id<"chatRooms">,
+): Promise<Set<Id<"messages">>> {
+  const hides = await ctx.db
+    .query("messageHides")
+    .withIndex("by_user_and_room", (q: any) => q.eq("userId", userId).eq("chatRoomId", chatRoomId))
+    .collect();
+  return new Set(hides.map((h: Doc<"messageHides">) => h.messageId));
+}
+
 // Файл у storage може бути підʼєднаний до кількох повідомлень (пересилання медіа не копіює
 // файл, а посилається на той самий storageId). Тому видаляти його можна лише тоді, коли
 // на нього більше не посилається жодне інше повідомлення.

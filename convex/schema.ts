@@ -90,6 +90,17 @@ export default defineSchema({
     .index("by_video_storage", ["videoStorageId"])
     .index("by_file_storage", ["fileStorageId"]),
 
+  // «Видалити для мене»: повідомлення приховане лише для цього користувача.
+  messageHides: defineTable({
+    userId: v.id("users"),
+    messageId: v.id("messages"),
+    chatRoomId: v.id("chatRooms"),
+  })
+    .index("by_user_and_room", ["userId", "chatRoomId"])
+    .index("by_user_and_message", ["userId", "messageId"])
+    .index("by_message", ["messageId"])
+    .index("by_room", ["chatRoomId"]),
+
   messageReactions: defineTable({
     messageId: v.id("messages"),
     userId: v.id("users"),

@@ -146,6 +146,7 @@ export default function ChatRoomScreen() {
   const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
   const editMessage = useMutation(api.messages.editMessage);
   const deleteMessage = useMutation(api.messages.deleteMessage);
+  const hideMessage = useMutation(api.messages.hideMessage);
   const toggleReaction = useMutation(api.messages.toggleReaction);
   const togglePin = useMutation(api.messages.togglePin);
   const markRead = useMutation(api.reads.markRead);
@@ -551,33 +552,44 @@ export default function ChatRoomScreen() {
     [showToast],
   );
 
+  // Видалення: «для мене» (ховаємо лише у себе) або «для всіх» (повністю з чату).
   const handleDelete = useCallback(
-    (message: MessageItemData) => {
+    (message: MessageItemData, canDeleteForAll: boolean) => {
+      const afterRemoved = () => {
+        if (editingMessage?._id === message._id) cancelEdit();
+        setReplyTarget((prev) => (prev?.messageId === message._id ? null : prev));
+      };
+      const run = async (forAll: boolean) => {
+        try {
+          if (forAll) await deleteMessage({ messageId: message._id });
+          else await hideMessage({ messageId: message._id });
+          afterRemoved();
+        } catch (error) {
+          console.error(error);
+          Alert.alert("Помилка", "Не вдалося видалити повідомлення");
+        }
+      };
       Alert.alert(
         "Видалити повідомлення?",
-        "Повідомлення буде видалено для всіх учасників.",
+        canDeleteForAll
+          ? "Можна прибрати його лише у себе або в усіх учасників."
+          : "Повідомлення зникне лише у вас — в інших воно залишиться.",
         [
           { text: "Скасувати", style: "cancel" },
-          {
-            text: "Видалити",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await deleteMessage({ messageId: message._id });
-                if (editingMessage?._id === message._id) cancelEdit();
-                setReplyTarget((prev) =>
-                  prev?.messageId === message._id ? null : prev,
-                );
-              } catch (error) {
-                console.error(error);
-                Alert.alert("Помилка", "Не вдалося видалити повідомлення");
-              }
-            },
-          },
+          { text: "Видалити для мене", onPress: () => void run(false) },
+          ...(canDeleteForAll
+            ? [
+                {
+                  text: "Видалити для всіх",
+                  style: "destructive" as const,
+                  onPress: () => void run(true),
+                },
+              ]
+            : []),
         ],
       );
     },
-    [cancelEdit, deleteMessage, editingMessage?._id],
+    [cancelEdit, deleteMessage, editingMessage?._id, hideMessage],
   );
 
   const uploadFile = useCallback(
@@ -1286,9 +1298,10 @@ export default function ChatRoomScreen() {
         onPress: () => void handleCopy(m),
       });
     }
-    const isPlainText =
-      hasContent && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.isSystem;
-    if (isPlainText) {
+    const isForwardable =
+      !m.isSystem &&
+      (hasContent || !!(m.imageUrl || m.audioUrl || m.videoUrl || m.fileUrl));
+    if (isForwardable) {
       list.push({
         key: "forward",
         label: "Переслати",
@@ -1304,15 +1317,14 @@ export default function ChatRoomScreen() {
         onPress: () => handleStartEdit(m),
       });
     }
-    if (own) {
-      list.push({
-        key: "delete",
-        label: "Видалити",
-        icon: "trash-outline",
-        destructive: true,
-        onPress: () => handleDelete(m),
-      });
-    }
+    list.push({
+      key: "delete",
+      label: "Видалити",
+      icon: "trash-outline",
+      destructive: true,
+      // Для всіх: свої; в особистому чаті — будь-які; у групі — якщо ви адмін.
+      onPress: () => handleDelete(m, own || isDirect || room?.canManageMembers === true),
+    });
     return list;
   }, [
     actionMessage,
@@ -1322,7 +1334,9 @@ export default function ChatRoomScreen() {
     handleStartEdit,
     handleStartReply,
     handleTogglePin,
+    isDirect,
     pinnedIds,
+    room?.canManageMembers,
   ]);
 
   const actionPreview = actionMessage

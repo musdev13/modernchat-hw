@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
-import { attachmentLabel, releaseMessageFiles } from "./messageStorage";
+import { attachmentLabel, hiddenMessageIds, releaseMessageFiles } from "./messageStorage";
 import { isMutedNow } from "./roomSettings";
 import { getAuthUser } from "./users";
 
@@ -144,8 +144,13 @@ export const getPaginatedMessages = query({
       .order("desc")
       .paginate(args.paginationOpts);
 
+    // «Видалені для мене» повідомлення не показуємо.
+    const hidden = await hiddenMessageIds(ctx, userId, args.chatRoomId);
+
     const page = await Promise.all(
-      paginated.page.map(async (message) => {
+      paginated.page
+        .filter((message) => !hidden.has(message._id))
+        .map(async (message) => {
         const reactions = await ctx.db
           .query("messageReactions")
           .withIndex("by_message", (q) => q.eq("messageId", message._id))
@@ -328,7 +333,9 @@ export const getPinnedMessages = query({
       senderName: string;
       preview: string;
     }[] = [];
+    const hidden = await hiddenMessageIds(ctx, me._id, args.chatRoomId);
     for (const id of room.pinnedMessageIds ?? []) {
+      if (hidden.has(id)) continue;
       const message = await ctx.db.get(id);
       if (!message || message.chatRoomId !== args.chatRoomId) continue;
       result.push({
@@ -372,8 +379,9 @@ export const searchMessages = query({
       snippet: string;
     }[] = [];
 
+    const hidden = await hiddenMessageIds(ctx, me._id, args.chatRoomId);
     for (const message of recent) {
-      if (message.isSystem) continue;
+      if (message.isSystem || hidden.has(message._id)) continue;
       const text = message.content ?? "";
       if (text.startsWith(STICKER_MARK)) continue;
       const index = text.toLowerCase().indexOf(needle);
@@ -567,13 +575,23 @@ export const deleteMessage = mutation({
 
     const message = await ctx.db.get(args.messageId);
     if (!message) throw new Error("Message not found: Повідомлення не знайдено");
-    await assertRoomMember(ctx, message.chatRoomId, userId);
+    const room = await assertRoomMember(ctx, message.chatRoomId, userId);
 
-    if (message.senderId !== userId) {
-      throw new Error("Forbidden: Ви можете видаляти лише власні повідомлення");
+    // Видалити для всіх: автор; в особистому чаті — будь-який із двох; у групі — адмін/творець.
+    const isAdmin =
+      !room.isDirect &&
+      (room.creatorId === userId || (room.adminIds ?? []).includes(userId));
+    if (message.senderId !== userId && !room.isDirect && !isAdmin) {
+      throw new Error("Forbidden: Ви можете видаляти для всіх лише власні повідомлення");
     }
 
     await releaseMessageFiles(ctx, message);
+
+    const hides = await ctx.db
+      .query("messageHides")
+      .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
+      .collect();
+    await Promise.all(hides.map((hide) => ctx.db.delete(hide._id)));
 
     const reactions = await ctx.db
       .query("messageReactions")
@@ -603,10 +621,37 @@ export const deleteMessage = mutation({
         ? previewLine(
             roomOfMessage,
             lastRemainingMessage.senderName,
-            lastRemainingMessage.content ?? "",
+            lastRemainingMessage.content?.trim() ||
+              attachmentLabel(lastRemainingMessage) ||
+              "",
           )
         : "Повідомлень немає",
       lastMessageAt: lastRemainingMessage?._creationTime ?? Date.now(),
+    });
+  },
+});
+
+// «Видалити для мене»: ховаємо повідомлення лише для поточного користувача.
+export const hideMessage = mutation({
+  args: { messageId: v.id("messages") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    const message = await ctx.db.get(args.messageId);
+    if (!message) return;
+    await assertRoomMember(ctx, message.chatRoomId, me._id);
+
+    const existing = await ctx.db
+      .query("messageHides")
+      .withIndex("by_user_and_message", (q) =>
+        q.eq("userId", me._id).eq("messageId", args.messageId),
+      )
+      .first();
+    if (existing) return;
+    await ctx.db.insert("messageHides", {
+      userId: me._id,
+      messageId: args.messageId,
+      chatRoomId: message.chatRoomId,
     });
   },
 });

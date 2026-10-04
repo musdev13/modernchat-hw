@@ -616,6 +616,11 @@ export const deleteRoom = mutation({
       for (const reaction of reactions) await ctx.db.delete(reaction._id);
       await ctx.db.delete(message._id);
     }
+    const hides = await ctx.db
+      .query("messageHides")
+      .withIndex("by_room", (q) => q.eq("chatRoomId", args.roomId))
+      .collect();
+    for (const hide of hides) await ctx.db.delete(hide._id);
     const typing = await ctx.db
       .query("typingIndicators")
       .withIndex("by_room", (q) => q.eq("chatRoomId", args.roomId))

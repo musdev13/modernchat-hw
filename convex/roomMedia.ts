@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
+import { hiddenMessageIds } from "./messageStorage";
 import { getAuthUser } from "./users";
 
 // Скільки останніх повідомлень переглядаємо для вкладок «Медіа / Голосові / Посилання».
@@ -74,8 +75,9 @@ export const getRoomSharedContent = query({
 
     const result = { ...empty, scanned: recent.length, truncated: recent.length >= SCAN_LIMIT };
 
+    const hidden = await hiddenMessageIds(ctx, me._id, args.chatRoomId);
     for (const message of recent) {
-      if (message.isSystem) continue;
+      if (message.isSystem || hidden.has(message._id)) continue;
       const text = message.content ?? "";
       const createdAt = message._creationTime;
 
