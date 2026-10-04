@@ -2,7 +2,7 @@ import { ChatSearchPanel } from "@/components/ChatSearchPanel";
 import { EmojiPanel } from "@/components/EmojiPanel";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import type { GifItem } from "@/components/GifPicker";
-import { ImageViewerModal } from "@/components/ImageViewerModal";
+import { MediaViewer, type ViewerItem } from "@/components/MediaViewer";
 import {
   MessageAction,
   MessageActionSheet,
@@ -23,7 +23,6 @@ import {
   SwipeableMessageItem,
 } from "@/components/SwipeableMessageItem";
 import { TypingDots } from "@/components/TypingDots";
-import { VideoViewerModal } from "@/components/VideoViewerModal";
 import { VideoNoteRecorderModal } from "@/components/VideoNoteRecorderModal";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -188,8 +187,7 @@ export default function ChatRoomScreen() {
     total: number;
     fraction: number;
   } | null>(null);
-  const [viewerVideo, setViewerVideo] = useState<string | null>(null);
-  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number } | null>(null);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -1193,6 +1191,27 @@ export default function ChatRoomScreen() {
     setActionMessage(message);
   }, []);
 
+  // Галерея переглядача: усі завантажені фото/відео чату за часом; відкриваємо на натиснутому.
+  const openMedia = useCallback(
+    (url: string) => {
+      const list: ViewerItem[] = [...(messages ?? [])]
+        .sort((x, y) => x._creationTime - y._creationTime)
+        .flatMap((m): ViewerItem[] => {
+          if (m.videoUrl && !m.isVideoNote) {
+            return [{ id: m._id, kind: "video", url: m.videoUrl, senderName: m.senderName, createdAt: m._creationTime }];
+          }
+          if (m.imageUrl && !isStickerContent(m.content)) {
+            return [{ id: m._id, kind: "image", url: m.imageUrl, senderName: m.senderName, createdAt: m._creationTime }];
+          }
+          return [];
+        });
+      const index = list.findIndex((it) => it.url === url);
+      if (index >= 0) setViewer({ items: list, index });
+      else setViewer({ items: [{ id: url, kind: "image", url }], index: 0 });
+    },
+    [messages],
+  );
+
   const renderMessageItem = useCallback(
     ({ item: row }: { item: MessageRow }) => (
       <SwipeableMessageItem
@@ -1210,8 +1229,8 @@ export default function ChatRoomScreen() {
         onToggleReaction={(emoji) => handleToggleReaction(row.item._id, emoji)}
         onShowReactors={setReactorsFor}
         onReply={handleStartReply}
-        onImagePress={setFullscreenImage}
-        onVideoPress={setViewerVideo}
+        onImagePress={openMedia}
+        onVideoPress={openMedia}
         onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
         isDirect={isDirect}
         onReplyPress={jumpToMessage}
@@ -1234,6 +1253,7 @@ export default function ChatRoomScreen() {
       handleOpenActions,
       handleStartReply,
       handleToggleReaction,
+      openMedia,
       isDirect,
       isChannel,
       canPost,
@@ -2266,13 +2286,12 @@ export default function ChatRoomScreen() {
         </Animated.View>
       )}
 
-      <ImageViewerModal
-        visible={!!fullscreenImage}
-        imageUrl={fullscreenImage}
-        onClose={() => setFullscreenImage(null)}
+      <MediaViewer
+        visible={!!viewer}
+        items={viewer?.items ?? []}
+        initialIndex={viewer?.index ?? 0}
+        onClose={() => setViewer(null)}
       />
-
-      <VideoViewerModal url={viewerVideo} onClose={() => setViewerVideo(null)} />
 
       <CreatePollModal
         visible={pollModalOpen}

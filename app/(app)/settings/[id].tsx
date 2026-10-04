@@ -4,6 +4,7 @@ import { EditRoomModal } from "@/components/EditRoomModal";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import { ForwardSheet } from "@/components/ForwardSheet";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
+import { MediaViewer, type ViewerItem } from "@/components/MediaViewer";
 import { MuteSheet } from "@/components/MuteSheet";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import {
@@ -126,6 +127,7 @@ export default function RoomInfoScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [memberSheet, setMemberSheet] = useState<MemberItem | null>(null);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [gallery, setGallery] = useState<{ items: ViewerItem[]; index: number } | null>(null);
 
   const listRef = useRef<FlatList<ListRow>>(null);
 
@@ -396,6 +398,25 @@ export default function RoomInfoScreen() {
 
   // ── Рядки списку ──
   const cell = Math.floor((windowWidth - MEDIA_GAP * (MEDIA_COLUMNS - 1)) / MEDIA_COLUMNS);
+
+  // Довге натискання по плитці медіа відкриває галерею (фото й відео за часом, без наліпок).
+  const openGallery = useCallback(
+    (messageId: string) => {
+      const list: ViewerItem[] = [...(shared?.media ?? [])]
+        .filter((m) => m.kind !== "sticker")
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .map((m) => ({
+          id: m._id,
+          kind: m.kind === "video" ? ("video" as const) : ("image" as const),
+          url: m.url,
+          senderName: m.senderName,
+          createdAt: m.createdAt,
+        }));
+      const index = list.findIndex((it) => it.id === messageId);
+      if (index >= 0) setGallery({ items: list, index });
+    },
+    [shared?.media],
+  );
 
   const rows = useMemo<ListRow[]>(() => {
     const result: ListRow[] = [
@@ -907,9 +928,7 @@ export default function RoomInfoScreen() {
               items={item.items}
               cell={cell}
               onPress={(m) => jumpToMessage(m._id)}
-              onLongPress={(m) => {
-                if (m.kind !== "video") setViewerUrl(m.url);
-              }}
+              onLongPress={(m) => openGallery(m._id)}
             />
           </View>
         );
@@ -1347,6 +1366,13 @@ export default function RoomInfoScreen() {
           roomId={roomId}
           participantIds={room.participantIds}
           onClose={() => setAddVisible(false)}
+        />
+
+        <MediaViewer
+          visible={!!gallery}
+          items={gallery?.items ?? []}
+          initialIndex={gallery?.index ?? 0}
+          onClose={() => setGallery(null)}
         />
 
         <ImageViewerModal
