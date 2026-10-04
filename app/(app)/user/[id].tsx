@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
 
 import { MuteSheet } from "@/components/MuteSheet";
-import { ActionButtons, InfoRow, Section, StatsRow } from "@/components/ProfileParts";
+import { InfoRow, Section, StatsRow } from "@/components/ProfileParts";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { StretchyProfile } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
@@ -117,10 +117,9 @@ export default function UserProfileScreen() {
       imageUrl={profile.image}
       status={status}
       statusAccent={profile.online}
+      actions={actions}
       onBack={() => router.back()}
     >
-      <ActionButtons items={actions} />
-
       {profile.username || profile.bio ? (
         <Section title="Інформація">
           {profile.username ? (

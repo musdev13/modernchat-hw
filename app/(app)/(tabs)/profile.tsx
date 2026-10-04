@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
 
 import { EditProfileModal, ProfileField } from "@/components/EditProfileModal";
-import { ActionButtons, InfoRow, Section, StatsRow } from "@/components/ProfileParts";
+import { InfoRow, Section, StatsRow } from "@/components/ProfileParts";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
 import { StretchyProfile } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
@@ -102,25 +102,22 @@ export default function ProfileScreen() {
         status="в мережі"
         statusAccent
         busy={uploading}
+        actions={[
+          { key: "photo", icon: "camera-outline", label: "Встановити фото", onPress: handleSetPhoto },
+          { key: "edit", icon: "create-outline", label: "Редагувати", onPress: () => openEdit() },
+          {
+            key: "settings",
+            icon: "settings-outline",
+            label: "Налаштування",
+            onPress: () => router.navigate("/(app)/(tabs)/preferences" as any),
+          },
+        ]}
         rightIcon="create-outline"
         rightLabel="Редагувати профіль"
         onRightPress={() => openEdit()}
         bottomOverlay={<MainTabBar active="profile" />}
         bottomInset={tabSpace}
       >
-        <ActionButtons
-          items={[
-            { key: "photo", icon: "camera-outline", label: "Встановити фото", onPress: handleSetPhoto },
-            { key: "edit", icon: "create-outline", label: "Редагувати", onPress: () => openEdit() },
-            {
-              key: "settings",
-              icon: "settings-outline",
-              label: "Налаштування",
-              onPress: () => router.navigate("/(app)/(tabs)/preferences" as any),
-            },
-          ]}
-        />
-
         <Section title="Інформація">
           {phone ? (
             <InfoRow

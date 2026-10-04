@@ -5,9 +5,10 @@ import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
-import { ComponentProps } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { ComponentProps, useCallback, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -18,6 +19,11 @@ const BAR_HEIGHT = 64;
 const BAR_MARGIN = 14;
 const PILL_W = 58;
 const PILL_H = 32;
+
+const TAB_ORDER: MainTab[] = ["chats", "contacts", "preferences", "profile"];
+// Остання активна вкладка: кожен екран має свою панель, тож «пілюля» ковзає від попередньої.
+let lastTabIndex = -1;
+const PILL_SPRING = { damping: 20, stiffness: 260, mass: 0.8 } as const;
 
 const ROUTES: Record<MainTab, string> = {
   chats: "/(app)/(tabs)",
@@ -43,6 +49,22 @@ export function MainTabBar({ active }: { active: MainTab }) {
   const unread = useQuery(api.reads.getUnreadCounts);
   const me = useQuery(api.users.currentUser);
   const total = unread?.total ?? 0;
+
+  // Індикатор активної вкладки ковзає між вкладками (UI-потік, лише translateX).
+  const index = TAB_ORDER.indexOf(active);
+  const [itemW, setItemW] = useState(0);
+  const pillX = useSharedValue(index);
+  useFocusEffect(
+    useCallback(() => {
+      const from = lastTabIndex >= 0 ? lastTabIndex : index;
+      lastTabIndex = index;
+      pillX.value = from;
+      pillX.value = withSpring(index, PILL_SPRING);
+    }, [index, pillX]),
+  );
+  const pillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pillX.value * itemW }],
+  }));
 
   const go = (tab: MainTab) => {
     if (tab === active) return;
@@ -75,7 +97,6 @@ export function MainTabBar({ active }: { active: MainTab }) {
             borderRadius: PILL_H / 2,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: selected ? withAlpha(c.accent, 0.2) : "transparent",
           }}
         >
           {tab === "profile" ? (
@@ -146,12 +167,34 @@ export function MainTabBar({ active }: { active: MainTab }) {
         radius={BAR_HEIGHT / 2}
         intensity={80}
         style={{ height: BAR_HEIGHT }}
-        contentStyle={{ flex: 1, flexDirection: "row", paddingHorizontal: 6 }}
+        contentStyle={{ flex: 1, paddingHorizontal: 6 }}
       >
-        {item("chats", "Чати", "chatbubble-outline", "chatbubble")}
-        {item("contacts", "Контакти", "people-outline", "people")}
-        {item("preferences", "Налаштування", "settings-outline", "settings")}
-        {item("profile", "Профіль", "person-outline", "person")}
+        <View
+          style={{ flex: 1, flexDirection: "row" }}
+          onLayout={(e) => setItemW(e.nativeEvent.layout.width / TAB_ORDER.length)}
+        >
+          {itemW > 0 ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                {
+                  position: "absolute",
+                  top: 8,
+                  left: (itemW - PILL_W) / 2,
+                  width: PILL_W,
+                  height: PILL_H,
+                  borderRadius: PILL_H / 2,
+                  backgroundColor: withAlpha(c.accent, 0.2),
+                },
+                pillStyle,
+              ]}
+            />
+          ) : null}
+          {item("chats", "Чати", "chatbubble-outline", "chatbubble")}
+          {item("contacts", "Контакти", "people-outline", "people")}
+          {item("preferences", "Налаштування", "settings-outline", "settings")}
+          {item("profile", "Профіль", "person-outline", "person")}
+        </View>
       </GlassSurface>
     </View>
   );

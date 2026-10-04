@@ -1,24 +1,28 @@
 import { GlassProvider, GlassTarget } from "@/components/Glass";
+import { PressableScale } from "@/components/PressableScale";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { avatarColor, initialsOf } from "@/constants/theme";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
-import { ComponentProps, ReactNode, useCallback, useEffect, useState } from "react";
+import * as Haptics from "expo-haptics";
+import { Children, ComponentProps, ReactNode, useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Text,
-  TouchableOpacity,
   useWindowDimensions,
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  Easing,
   Extrapolation,
+  FadeInDown,
   interpolate,
   interpolateColor,
   runOnJS,
+  type SharedValue,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -38,6 +42,8 @@ const AVATAR = 116;
 const PULL_DISTANCE = 220;
 // Висота розкритого фото (як у Telegram — майже на пів екрана), обмежена шириною.
 const FULL_HEIGHT_RATIO = 0.6;
+// Висота кнопок дій і відступ між шапкою та рядом кнопок у згорнутому стані.
+const ACTION_H = 74;
 const SPRING = { damping: 22, stiffness: 210, mass: 0.9 } as const;
 
 /** Змішує два кольори #RRGGBB: t = 0 → a, t = 1 → b. */
@@ -53,6 +59,145 @@ function mix(a: string, b: string, t: number): string {
   return `rgb(${ch(0)}, ${ch(2)}, ${ch(4)})`;
 }
 
+export interface ProfileAction {
+  key: string;
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+}
+
+/** Кнопка дії: у згорнутому стані — картка теми, у розкритому — темна напівпрозора «пілюля» поверх фото. */
+function ActionPill({
+  item,
+  expand,
+  index,
+}: {
+  item: ProfileAction;
+  expand: SharedValue<number>;
+  index: number;
+}) {
+  const c = useChatPalette();
+  const bgStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      expand.value,
+      [0, 1],
+      [c.header, "rgba(0, 0, 0, 0.4)"],
+    ),
+  }));
+  const accentLayer = useAnimatedStyle(() => ({ opacity: 1 - expand.value }));
+  const whiteLayer = useAnimatedStyle(() => ({ opacity: expand.value }));
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(120 + index * 70).duration(360)}
+      style={{ flex: 1, marginHorizontal: 4 }}
+    >
+      <PressableScale
+        onPress={item.onPress}
+        accessibilityRole="button"
+        accessibilityLabel={item.label}
+        innerStyle={[
+          {
+            height: ACTION_H,
+            borderRadius: 18,
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          },
+          bgStyle,
+        ]}
+      >
+        <View style={{ width: 24, height: 24 }}>
+          <Animated.View style={[{ position: "absolute", top: 0, left: 0 }, accentLayer]}>
+            <Ionicons name={item.icon} size={24} color={c.accent} />
+          </Animated.View>
+          <Animated.View style={[{ position: "absolute", top: 0, left: 0 }, whiteLayer]}>
+            <Ionicons name={item.icon} size={24} color="#FFFFFF" />
+          </Animated.View>
+        </View>
+        <View style={{ marginTop: 6, alignSelf: "stretch", paddingHorizontal: 4 }}>
+          <Animated.Text
+            numberOfLines={1}
+            style={[{ fontSize: 12, fontWeight: "600", textAlign: "center", color: c.accent }, accentLayer]}
+          >
+            {item.label}
+          </Animated.Text>
+          <Animated.Text
+            numberOfLines={1}
+            style={[
+              {
+                position: "absolute",
+                left: 4,
+                right: 4,
+                fontSize: 12,
+                fontWeight: "600",
+                textAlign: "center",
+                color: "#FFFFFF",
+              },
+              whiteLayer,
+            ]}
+          >
+            {item.label}
+          </Animated.Text>
+        </View>
+      </PressableScale>
+    </Animated.View>
+  );
+}
+
+/** Кругла кнопка верхньої панелі: тема → темна напівпрозора з білою іконкою при розкритому фото. */
+function BarIconButton({
+  icon,
+  label,
+  onPress,
+  expand,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  expand: SharedValue<number>;
+}) {
+  const c = useChatPalette();
+  const bgStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      expand.value,
+      [0, 1],
+      [withAlpha(c.header, 0.9), "rgba(0, 0, 0, 0.38)"],
+    ),
+  }));
+  const accentLayer = useAnimatedStyle(() => ({ opacity: 1 - expand.value }));
+  const whiteLayer = useAnimatedStyle(() => ({ opacity: expand.value }));
+  return (
+    <PressableScale
+      onPress={onPress}
+      scaleTo={0.9}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      innerStyle={[
+        {
+          width: BAR_BUTTON,
+          height: BAR_BUTTON,
+          borderRadius: BAR_BUTTON / 2,
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          borderWidth: 1,
+          borderColor: withAlpha(c.muted, 0.22),
+        },
+        bgStyle,
+      ]}
+    >
+      <View style={{ width: 22, height: 22 }}>
+        <Animated.View style={[{ position: "absolute", top: 0, left: 0 }, accentLayer]}>
+          <Ionicons name={icon} size={22} color={c.text} />
+        </Animated.View>
+        <Animated.View style={[{ position: "absolute", top: 0, left: 0 }, whiteLayer]}>
+          <Ionicons name={icon} size={22} color="#FFFFFF" />
+        </Animated.View>
+      </View>
+    </PressableScale>
+  );
+}
+
 interface Props {
   name: string;
   imageUrl?: string | null;
@@ -62,6 +207,8 @@ interface Props {
   statusAccent?: boolean;
   /** Показати спінер поверх аватара (завантаження фото). */
   busy?: boolean;
+  /** Кнопки дій: під шапкою, а при розкритому фото — поверх його низу. */
+  actions?: ProfileAction[];
   rightIcon?: IconName;
   rightLabel?: string;
   onRightPress?: () => void;
@@ -85,6 +232,7 @@ export function StretchyProfile({
   status,
   statusAccent,
   busy,
+  actions,
   rightIcon,
   rightLabel,
   onRightPress,
@@ -105,7 +253,15 @@ export function StretchyProfile({
   const collapsedHeight = barBottom + 8;
   const collapseDistance = baseHeight - collapsedHeight;
   const fullHeight = Math.round(Math.min(H * FULL_HEIGHT_RATIO, W * 1.3));
-  const extra = Math.max(0, fullHeight - baseHeight);
+  const hasActions = (actions?.length ?? 0) > 0;
+  // Місце під кнопки дій у списку (у згорнутому стані вони лежать саме тут).
+  const spacerH = hasActions ? ACTION_H + 10 : 0;
+  const pillsTopCollapsed = baseHeight + 4;
+  const pillsTopExpanded = fullHeight - 14 - ACTION_H;
+  const pillsDelta = pillsTopExpanded - pillsTopCollapsed;
+  // Список під розкритим фото починається одразу під ним.
+  const shift = Math.max(0, fullHeight + 8 - (baseHeight + spacerH));
+  const expandedNameTop = hasActions ? pillsTopExpanded - 12 - 58 : fullHeight - 84;
 
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
@@ -118,6 +274,21 @@ export function StretchyProfile({
   const startX = useSharedValue(0);
   const startY = useSharedValue(0);
   const pulling = useSharedValue(false);
+  const crossed = useSharedValue(false);
+  const [pillsLive, setPillsLive] = useState(true);
+
+  const tick = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  // Кнопки, що вже сховались при прокрутці, не повинні ловити дотики.
+  useAnimatedReaction(
+    () => scrollY.value > collapseDistance * 0.9,
+    (hidden, prev) => {
+      if (hidden !== prev) runOnJS(setPillsLive)(!hidden);
+    },
+    [collapseDistance],
+  );
 
   const openViewer = useCallback(() => {
     if (imageUrl && !imageFailed) setViewerUrl(imageUrl);
@@ -127,7 +298,7 @@ export function StretchyProfile({
     scrollY.value = event.contentOffset.y;
     // Прокрутка вгору згортає розкритий аватар.
     if (event.contentOffset.y > 4 && expand.value > 0 && !pulling.value) {
-      expand.value = withTiming(0, { duration: 180 });
+      expand.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
     }
   });
 
@@ -139,6 +310,7 @@ export function StretchyProfile({
       startX.value = t.x;
       startY.value = t.y;
       startE.value = expand.value;
+      crossed.value = expand.value > 0.45;
       pulling.value = false;
     })
     .onTouchesMove((e, manager) => {
@@ -162,6 +334,12 @@ export function StretchyProfile({
         return;
       }
       expand.value = Math.min(1, Math.max(0, startE.value + dy / PULL_DISTANCE));
+      // Тактильний «клік», коли перетнули поріг прилипання.
+      const past = expand.value > 0.45;
+      if (past !== crossed.value) {
+        crossed.value = past;
+        runOnJS(tick)();
+      }
     })
     .onTouchesUp((e) => {
       // Короткий тап по аватару відкриває перегляд фото.
@@ -220,36 +398,60 @@ export function StretchyProfile({
     return { fontSize: size * 0.36 };
   });
 
+  // Ім'я під круглим аватаром: зникає, коли фото розкривається, і при прокрутці.
   const nameBlockStyle = useAnimatedStyle(() => {
     const e = expand.value;
     const p = Math.min(1, Math.max(0, scrollY.value / collapseDistance));
     return {
-      top: nameTop + (fullHeight - 84 - nameTop) * e,
-      opacity: 1 - interpolate(p, [0, 0.45], [0, 1], Extrapolation.CLAMP),
-      transform: [{ translateY: -p * 40 }],
+      opacity:
+        (1 - interpolate(p, [0, 0.45], [0, 1], Extrapolation.CLAMP)) *
+        (1 - interpolate(e, [0, 0.5], [0, 1], Extrapolation.CLAMP)),
+      transform: [{ translateY: -p * 40 + e * 16 }],
     };
   });
 
+  // Ім'я знизу-зліва на фото: випливає й трохи збільшується разом з розкриттям.
+  const expandedNameStyle = useAnimatedStyle(() => {
+    const e = expand.value;
+    return {
+      opacity: interpolate(e, [0.4, 1], [0, 1], Extrapolation.CLAMP),
+      transform: [{ translateY: (1 - e) * 18 }, { scale: 0.9 + 0.1 * e }],
+    };
+  });
 
-  // На світлій/кольоровій обкладинці — кольори теми; у розкритому стані (поверх фото) — білі.
-  const nameColorStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(expand.value, [0, 1], [c.text, "#FFFFFF"]),
-  }));
-  const statusColorStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      expand.value,
-      [0, 1],
-      [statusAccent ? c.accent : c.muted, "rgba(255,255,255,0.88)"],
+  // Кнопки дій їдуть із шапкою: вниз на фото при розкритті, вгору й зникають при прокрутці.
+  const pillsLayerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      scrollY.value,
+      [collapseDistance * 0.45, collapseDistance * 0.9],
+      [1, 0],
+      Extrapolation.CLAMP,
     ),
+    transform: [{ translateY: pillsDelta * expand.value - scrollY.value }],
+  }));
+
+  // «Паралакс»: фото всередині кола повільніше за рамку, обкладинка зсувається вдвічі повільніше.
+  const photoStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: 1.14 - 0.14 * expand.value },
+      { translateY: -Math.min(scrollY.value, collapseDistance) * 0.12 },
+    ],
+  }));
+  const coverStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.min(scrollY.value, collapseDistance) * 0.25 }],
   }));
 
   const scrollViewStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: extra * expand.value }],
+    transform: [{ translateY: shift * expand.value }],
   }));
 
   const barTitleStyle = useAnimatedStyle(() => {
     const p = Math.min(1, Math.max(0, scrollY.value / collapseDistance));
-    return { opacity: interpolate(p, [0.7, 1], [0, 1], Extrapolation.CLAMP) };
+    const t = interpolate(p, [0.7, 1], [0, 1], Extrapolation.CLAMP);
+    return {
+      opacity: t * (1 - expand.value),
+      transform: [{ translateY: (1 - t) * 8 }, { scale: 0.94 + 0.06 * t }],
+    };
   });
 
   // Кнопки й капсула над обкладинкою — суцільні напівпрозорі круглі поверхні (без розмиття):
@@ -261,24 +463,7 @@ export function StretchyProfile({
     overflow: "hidden" as const,
   };
   const barButton = (icon: IconName, label: string, onPress: () => void) => (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={[
-        barSurface,
-        {
-          width: BAR_BUTTON,
-          height: BAR_BUTTON,
-          borderRadius: BAR_BUTTON / 2,
-          alignItems: "center",
-          justifyContent: "center",
-        },
-      ]}
-    >
-      <Ionicons name={icon} size={22} color={c.text} />
-    </TouchableOpacity>
+    <BarIconButton icon={icon} label={label} onPress={onPress} expand={expand} />
   );
 
   const coverColor = avatarColor(name || "?");
@@ -298,10 +483,20 @@ export function StretchyProfile({
               style={scrollViewStyle}
               contentContainerStyle={{
                 paddingTop: baseHeight,
-                paddingBottom: extra + insets.bottom + 28 + bottomInset,
+                paddingBottom: shift + insets.bottom + 28 + bottomInset,
               }}
             >
-              {children}
+              {hasActions ? <View style={{ height: spacerH }} /> : null}
+              {Children.toArray(children).map((child, index) => (
+                <Animated.View
+                  key={index}
+                  entering={FadeInDown.delay(180 + Math.min(index, 5) * 80)
+                    .duration(420)
+                    .easing(Easing.out(Easing.cubic))}
+                >
+                  {child}
+                </Animated.View>
+              ))}
             </Animated.ScrollView>
 
             {/* Шапка: тло, аватар, ім'я. Дотики проходять крізь неї до списку. */}
@@ -322,7 +517,9 @@ export function StretchyProfile({
               ]}
             >
               {/* Обкладинка: рівний колір теми з ледь помітним відтінком кольору аватара */}
-              <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
+              <Animated.View
+                style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: -80 }, coverStyle]}
+              >
                 <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
                   <Defs>
                     <LinearGradient id="profileCover" x1="0" y1="0" x2="0" y2="1">
@@ -332,7 +529,7 @@ export function StretchyProfile({
                   </Defs>
                   <Rect x="0" y="0" width="1" height="1" fill="url(#profileCover)" />
                 </Svg>
-              </View>
+              </Animated.View>
 
               <Animated.View
                 style={[
@@ -347,11 +544,11 @@ export function StretchyProfile({
                 ]}
               >
                 {hasImage ? (
-                  <Image
+                  <Animated.Image
                     source={{ uri: imageUrl! }}
                     resizeMode="cover"
                     onError={() => setImageFailed(true)}
-                    style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+                    style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, photoStyle]}
                   />
                 ) : (
                   <Animated.Text style={[{ color: "#FFFFFF", fontWeight: "700" }, initialsStyle]}>
@@ -379,7 +576,7 @@ export function StretchyProfile({
               {/* Градієнт під іменем у розкритому стані */}
               <Animated.View
                 style={[
-                  { position: "absolute", left: 0, right: 0, top: fullHeight - 170, height: 170 },
+                  { position: "absolute", left: 0, right: 0, top: fullHeight - 260, height: 260 },
                   gradientStyle,
                 ]}
               >
@@ -387,35 +584,99 @@ export function StretchyProfile({
                   <Defs>
                     <LinearGradient id="profileFade" x1="0" y1="0" x2="0" y2="1">
                       <Stop offset="0" stopColor="#000000" stopOpacity="0" />
-                      <Stop offset="1" stopColor="#000000" stopOpacity="0.72" />
+                      <Stop offset="0.55" stopColor="#000000" stopOpacity="0.32" />
+                      <Stop offset="1" stopColor="#000000" stopOpacity="0.78" />
                     </LinearGradient>
                   </Defs>
                   <Rect x="0" y="0" width="1" height="1" fill="url(#profileFade)" />
                 </Svg>
               </Animated.View>
 
+              {/* Ім'я та статус під круглим аватаром (згорнутий стан) */}
               <Animated.View
                 style={[
-                  { position: "absolute", left: 0, right: 0, alignItems: "center", paddingHorizontal: 24 },
+                  {
+                    position: "absolute",
+                    top: nameTop,
+                    left: 0,
+                    right: 0,
+                    alignItems: "center",
+                    paddingHorizontal: 24,
+                  },
                   nameBlockStyle,
                 ]}
               >
-                <Animated.Text
+                <Text
                   numberOfLines={1}
-                  style={[{ fontSize: 25, fontWeight: "800", textAlign: "center" }, nameColorStyle]}
+                  style={{ fontSize: 25, fontWeight: "800", textAlign: "center", color: c.text }}
                 >
                   {name}
-                </Animated.Text>
+                </Text>
                 {status ? (
-                  <Animated.Text
+                  <Text
                     numberOfLines={1}
-                    style={[{ fontSize: 14, marginTop: 4, textAlign: "center" }, statusColorStyle]}
+                    style={{
+                      fontSize: 14,
+                      marginTop: 4,
+                      textAlign: "center",
+                      color: statusAccent ? c.accent : c.muted,
+                    }}
                   >
                     {status}
-                  </Animated.Text>
+                  </Text>
+                ) : null}
+              </Animated.View>
+
+              {/* Ім'я та статус знизу-зліва над градієнтом (розкрите фото) */}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  {
+                    position: "absolute",
+                    top: expandedNameTop,
+                    left: 20,
+                    right: 20,
+                    transformOrigin: "left bottom",
+                  },
+                  expandedNameStyle,
+                ]}
+              >
+                <Text numberOfLines={1} style={{ fontSize: 26, fontWeight: "800", color: "#FFFFFF" }}>
+                  {name}
+                </Text>
+                {status ? (
+                  <Text
+                    numberOfLines={1}
+                    style={{ fontSize: 14, marginTop: 3, color: "rgba(255, 255, 255, 0.88)" }}
+                  >
+                    {status}
+                  </Text>
                 ) : null}
               </Animated.View>
             </Animated.View>
+
+            {/* Кнопки дій: їдуть разом із шапкою; поверх фото — темні напівпрозорі «пілюлі» */}
+            {hasActions ? (
+              <Animated.View
+                pointerEvents={pillsLive ? "box-none" : "none"}
+                style={[
+                  {
+                    position: "absolute",
+                    top: pillsTopCollapsed,
+                    left: 0,
+                    right: 0,
+                    zIndex: 2,
+                    flexDirection: "row",
+                    paddingHorizontal: 8,
+                  },
+                  pillsLayerStyle,
+                ]}
+              >
+                {actions!.map((item, index) => (
+                  <ActionPill key={item.key} item={item} expand={expand} index={index} />
+                ))}
+              </Animated.View>
+            ) : null}
           </GlassTarget>
 
           {/* Плаваюча скляна панель */}
