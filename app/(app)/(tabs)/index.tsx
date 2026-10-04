@@ -1,4 +1,5 @@
 import { ActionSheet, SheetAction } from "@/components/ActionSheet";
+import { ChatFolder, ChatFolderTabs } from "@/components/ChatFolderTabs";
 import { GlassProvider, GlassTarget } from "@/components/Glass";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
 import { MuteSheet } from "@/components/MuteSheet";
@@ -47,6 +48,7 @@ export default function ChatsTab() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [folder, setFolder] = useState<ChatFolder>("all");
   const [menuRoomId, setMenuRoomId] = useState<Id<"chatRooms"> | null>(null);
   const [muteRoomId, setMuteRoomId] = useState<Id<"chatRooms"> | null>(null);
 
@@ -68,12 +70,31 @@ export default function ChatsTab() {
     return names.length === 1 ? `${names[0]} друкує…` : "кілька людей друкують…";
   };
 
+  // Папки — клієнтський фільтр списку; лічильник = кількість чатів із непрочитаними
+  // (у «Усі»/«Особисті»/«Групи» вимкнені чати не рахуються, у «Непрочитані» — усі).
+  const folderCounts = useMemo(() => {
+    const counts: Record<ChatFolder, number> = { all: 0, direct: 0, groups: 0, unread: 0 };
+    for (const r of rooms ?? []) {
+      if ((unread?.counts[r._id] ?? 0) <= 0) continue;
+      counts.unread += 1;
+      if (r.muted) continue;
+      counts.all += 1;
+      if (r.isDirect) counts.direct += 1;
+      else counts.groups += 1;
+    }
+    return counts;
+  }, [rooms, unread]);
+
   const filteredRooms = useMemo(() => {
     if (!rooms) return rooms;
     const q = search.trim().toLowerCase();
-    if (!q) return rooms;
-    return rooms.filter((r) => r.title.toLowerCase().includes(q));
-  }, [rooms, search]);
+    return rooms.filter((r) => {
+      if (folder === "direct" && !r.isDirect) return false;
+      if (folder === "groups" && r.isDirect) return false;
+      if (folder === "unread" && !((unread?.counts[r._id] ?? 0) > 0)) return false;
+      return !q || r.title.toLowerCase().includes(q);
+    });
+  }, [rooms, search, folder, unread]);
 
   // Для кімнат без запису про прочитання (старі дані) починаємо відлік з поточного моменту.
   const readsMissing = unread?.missing ?? false;
@@ -211,7 +232,7 @@ export default function ChatsTab() {
             backgroundColor: c.header,
             paddingTop: insets.top + 8,
             paddingHorizontal: 14,
-            paddingBottom: 10,
+            paddingBottom: 0,
           }}
         >
           <View
@@ -255,6 +276,7 @@ export default function ChatsTab() {
           </View>
 
           <SearchField value={search} onChangeText={setSearch} placeholder="Пошук чатів" />
+          <ChatFolderTabs active={folder} onChange={setFolder} counts={folderCounts} />
         </View>
 
         <GlassTarget style={{ flex: 1, backgroundColor: c.bg }}>
@@ -306,7 +328,7 @@ export default function ChatsTab() {
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />
               }
               ListFooterComponent={
-                onlySaved && !search.trim() ? (
+                onlySaved && !search.trim() && folder === "all" ? (
                   <View style={{ alignItems: "center", paddingTop: 40, paddingHorizontal: 32 }}>
                     <Ionicons name="chatbubbles-outline" size={44} color={c.muted} />
                     <Text style={{ color: c.text, fontSize: 17, fontWeight: "700", marginTop: 12 }}>
@@ -322,7 +344,11 @@ export default function ChatsTab() {
                 <View style={{ alignItems: "center", paddingTop: 48 }}>
                   <Ionicons name="search-outline" size={40} color={c.muted} />
                   <Text style={{ color: c.muted, fontSize: 15, marginTop: 10 }}>
-                    Нічого не знайдено
+                    {search.trim()
+                      ? "Нічого не знайдено"
+                      : folder === "unread"
+                        ? "Непрочитаних чатів немає"
+                        : "У цій папці поки немає чатів"}
                   </Text>
                 </View>
               }
