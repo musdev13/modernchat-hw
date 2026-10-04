@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
 
 import { MuteSheet } from "@/components/MuteSheet";
-import { ActionSheet } from "@/components/ActionSheet";
+import { PopoverMenu } from "@/components/PopoverMenu";
 import {
   InfoRow,
   PhotoGrid,
@@ -232,10 +232,9 @@ export default function UserProfileScreen() {
     {copyToast}
     {rowMenuSheet}
 
-    <ActionSheet
+    <PopoverMenu
       visible={menuVisible}
       onClose={() => setMenuVisible(false)}
-      title={profile.name}
       actions={
         profile.username
           ? [

@@ -47,6 +47,8 @@ const PULL_DISTANCE = 220;
 const FULL_HEIGHT_RATIO = 0.6;
 // Висота кнопок дій і відступ між шапкою та рядом кнопок у згорнутому стані.
 const ACTION_H = 74;
+/** Відступ між статусом під іменем і рядом кнопок дій. */
+const PILLS_GAP = 10;
 const SPRING = { damping: 22, stiffness: 210, mass: 0.9 } as const;
 
 /** Змішує два кольори #RRGGBB: t = 0 → a, t = 1 → b. */
@@ -231,7 +233,12 @@ function HeroPage({
 }) {
   const style = useAnimatedStyle(() => {
     const size = AVATAR + (W - AVATAR) * expand.value;
+    // Видно лише поточне фото; сусідні з'являються тільки під час гортання повністю розкритої шапки
+    // (інакше збільшений на 14% сусід виглядає з-під краю кружечка).
+    const current = Math.round(indexSV.value) === i;
+    const swiping = expand.value > 0.98 && Math.abs(pageDrag.value) > 0.5;
     return {
+      opacity: current || swiping ? 1 : 0,
       transform: [
         { translateX: (i - indexSV.value) * size + pageDrag.value },
         { scale: 1.14 - 0.14 * expand.value },
@@ -334,13 +341,13 @@ export function StretchyProfile({
   const fullHeight = Math.round(Math.min(H * FULL_HEIGHT_RATIO, W * 1.3));
   const hasActions = (actions?.length ?? 0) > 0;
   // Місце під кнопки дій у списку (у згорнутому стані вони лежать саме тут).
-  const spacerH = hasActions ? ACTION_H + 10 : 0;
-  const pillsTopCollapsed = baseHeight + 4;
+  const spacerH = hasActions ? ACTION_H + PILLS_GAP + 4 : 0;
+  const pillsTopCollapsed = baseHeight + PILLS_GAP;
   const pillsTopExpanded = fullHeight - 14 - ACTION_H;
   const pillsDelta = pillsTopExpanded - pillsTopCollapsed;
   // Список під розкритим фото починається одразу під ним.
   const shift = Math.max(0, fullHeight + 8 - (baseHeight + spacerH));
-  const expandedNameTop = hasActions ? pillsTopExpanded - 12 - 58 : fullHeight - 84;
+  const expandedNameTop = hasActions ? pillsTopExpanded - 14 - 58 : fullHeight - 84;
 
   // Список фото: історія профілю або єдине поточне.
   const list = useMemo<ProfilePhoto[]>(() => {
@@ -395,6 +402,14 @@ export function StretchyProfile({
   const pulling = useSharedValue(false);
   const crossed = useSharedValue(false);
   const [pillsLive, setPillsLive] = useState(true);
+  // Поки шапка розкрита, список не прокручується: вертикальний рух належить жесту (згортання свайпом угору).
+  const [scrollLocked, setScrollLocked] = useState(false);
+  useAnimatedReaction(
+    () => expand.value > 0.02,
+    (locked, prev) => {
+      if (locked !== prev) runOnJS(setScrollLocked)(locked);
+    },
+  );
 
   const tick = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -550,11 +565,25 @@ export function StretchyProfile({
         return;
       }
       // Швидкий порух вирішує напрямок, інакше — за положенням (пів шляху).
+      const moved = expand.value - startE.value;
       const open =
-        e.velocityY > 600 ? true : e.velocityY < -600 ? false : expand.value > 0.45;
+        e.velocityY > 600
+          ? true
+          : e.velocityY < -600
+            ? false
+            : moved > 0.15
+              ? true
+              : moved < -0.15
+                ? false
+                : startE.value > 0.5;
       expand.value = withSpring(open ? 1 : 0, { ...SPRING, velocity: e.velocityY / PULL_DISTANCE });
     })
-    .onFinalize(() => {
+    .onFinalize((_e, success) => {
+      // Жест скасовано системою (наприклад, перехопив скрол) — докручуємо шапку до найближчого стану.
+      if (!success && pulling.value && !paging.value) {
+        expand.value = withSpring(expand.value > 0.45 ? 1 : 0, SPRING);
+      }
+      if (!success && paging.value) pageDrag.value = withSpring(0, SPRING);
       pulling.value = false;
       paging.value = false;
     });
@@ -666,6 +695,7 @@ export function StretchyProfile({
               onScroll={scrollHandler}
               scrollEventThrottle={16}
               bounces={false}
+              scrollEnabled={!scrollLocked}
               overScrollMode="never"
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"

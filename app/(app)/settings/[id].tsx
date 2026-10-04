@@ -1,4 +1,5 @@
 import { ActionSheet, SheetAction } from "@/components/ActionSheet";
+import { PopoverMenu } from "@/components/PopoverMenu";
 import { AddMembersModal } from "@/components/AddMembersModal";
 import { EditRoomModal } from "@/components/EditRoomModal";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
@@ -1275,14 +1276,7 @@ export default function RoomInfoScreen() {
           )}
         </View>
 
-        <ActionSheet
-          visible={menuVisible}
-          onClose={() => setMenuVisible(false)}
-          title={room.title}
-          subtitle={isChannel ? subscribersLabel(room.participants.length) : membersLabel(room.participants.length)}
-          avatar={<RoomAvatar title={room.title} imageUrl={room.avatarUrl} size={44} />}
-          actions={menuActions}
-        />
+        <PopoverMenu visible={menuVisible} onClose={() => setMenuVisible(false)} actions={menuActions} />
 
         <ActionSheet
           visible={!!memberSheet}

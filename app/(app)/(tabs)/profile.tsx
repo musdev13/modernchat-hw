@@ -6,8 +6,8 @@ import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
 
-import { ActionSheet } from "@/components/ActionSheet";
 import { EditProfileModal } from "@/components/EditProfileModal";
+import { PopoverMenu } from "@/components/PopoverMenu";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
 import type { ViewerAction } from "@/components/MediaViewer";
 import {
@@ -326,10 +326,9 @@ export default function ProfileScreen() {
       {copyToast}
       {rowMenuSheet}
 
-      <ActionSheet
+      <PopoverMenu
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
-        title={profile.name}
         actions={[
           ...(link
             ? [
