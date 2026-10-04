@@ -2,6 +2,7 @@ import { ChatSearchPanel } from "@/components/ChatSearchPanel";
 import { EmojiPanel } from "@/components/EmojiPanel";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import type { GifItem } from "@/components/GifPicker";
+import { EdgeScrim } from "@/components/EdgeScrim";
 import { MediaViewer, type ViewerItem } from "@/components/MediaViewer";
 import {
   MessageAction,
@@ -1550,6 +1551,10 @@ export default function ChatRoomScreen() {
             removeClippedSubviews={Platform.OS === "android"}
           />
           </GlassTarget>
+
+          {/* Скрими: повідомлення плавно гаснуть під капсулою шапки й під полем вводу */}
+          <EdgeScrim edge="top" height={islandBlock + 14} color={c.wallpaper} />
+          <EdgeScrim edge="bottom" height={composerHeight + 28} color={c.wallpaper} />
 
           {/* Порожній чат: малюємо ПОЗА інвертованим списком (там тексти віддзеркалюються, а дотики
               не доходять), між шапкою й полем вводу. */}
