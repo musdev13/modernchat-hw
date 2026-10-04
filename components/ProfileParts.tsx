@@ -336,7 +336,7 @@ export const PhotoGrid = memo(function PhotoGrid({
   onPress,
   emptyText = "Фото ще немає",
 }: {
-  photos: { id: string; url: string }[];
+  photos: { id: string; url: string; kind?: "photo" | "video" | "gif"; animUrl?: string }[];
   onPress: (index: number) => void;
   emptyText?: string;
 }) {
@@ -376,6 +376,28 @@ export const PhotoGrid = memo(function PhotoGrid({
             transition={140}
             style={{ width: size, height: size, backgroundColor: withAlpha(c.muted, 0.2) }}
           />
+          {p.kind && p.kind !== "photo" && p.animUrl ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                left: 5,
+                bottom: 5,
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 6,
+                height: 20,
+                borderRadius: 10,
+                backgroundColor: "rgba(0,0,0,0.6)",
+              }}
+            >
+              <Ionicons name="play" size={10} color="#FFFFFF" />
+              <Ionicons name="repeat" size={12} color="#FFFFFF" style={{ marginLeft: 3 }} />
+              {p.kind === "gif" ? (
+                <Text style={{ color: "#FFFFFF", fontSize: 9.5, fontWeight: "800", marginLeft: 3 }}>GIF</Text>
+              ) : null}
+            </View>
+          ) : null}
         </TouchableOpacity>
       ))}
     </View>

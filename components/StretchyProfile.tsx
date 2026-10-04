@@ -215,13 +215,19 @@ function BarIconButton({
 
 export interface ProfilePhoto {
   id: string;
+  /** Зображення (для анімованих — кадр-постер). */
   url: string;
   createdAt?: number;
+  /** photo — звичайне; video/gif — анімований аватар (файл у animUrl, лише коли діє преміум власника). */
+  kind?: "photo" | "video" | "gif";
+  animUrl?: string;
 }
 
 /** Одна сторінка каруселі фото в шапці: позиція за індексом, зсув пальцем, паралакс при прокрутці. */
 function HeroPage({
   url,
+  anim,
+  playing,
   i,
   W,
   indexSV,
@@ -231,6 +237,9 @@ function HeroPage({
   collapseDistance,
 }: {
   url: string;
+  /** Анімований аватар: відео/GIF поверх постера (грає лише на поточній сторінці). */
+  anim?: { url: string; kind: "video" | "gif"; active: boolean };
+  playing: boolean;
   i: number;
   W: number;
   indexSV: SharedValue<number>;
@@ -255,14 +264,17 @@ function HeroPage({
     };
   });
   return (
-    <AnimatedExpoImage
-      source={{ uri: url }}
-      contentFit="cover"
-      transition={180}
-      cachePolicy="memory-disk"
-      recyclingKey={url}
-      style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, style]}
-    />
+    <Animated.View style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, style]}>
+      <ExpoImage
+        source={{ uri: url }}
+        contentFit="cover"
+        transition={180}
+        cachePolicy="memory-disk"
+        recyclingKey={url}
+        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      {anim && anim.active ? <AnimatedAvatarVideo url={anim.url} kind={anim.kind} visible={playing} /> : null}
+    </Animated.View>
   );
 }
 
@@ -281,9 +293,6 @@ interface Props {
   /** Modesto Premium: золота зірка й емодзі-статус поруч з іменем. */
   isPremium?: boolean;
   emojiStatus?: string;
-  /** Анімований аватар (лише premium): відео/GIF поверх головного фото, яке лишається постером. */
-  avatarAnimUrl?: string;
-  avatarAnimKind?: "video" | "gif";
   imageUrl?: string | null;
   /** Усі фото профілю (поточне першим); якщо не задано — використовується imageUrl. */
   photos?: ProfilePhoto[];
@@ -328,8 +337,6 @@ export function StretchyProfile({
   name,
   isPremium,
   emojiStatus,
-  avatarAnimUrl,
-  avatarAnimKind,
   imageUrl,
   photos,
   viewerActions,
@@ -413,7 +420,13 @@ export function StretchyProfile({
   }, [list, safeIndex]);
 
   const viewerItems = useMemo<ViewerItem[]>(
-    () => list.map((p) => ({ id: p.id, kind: "image", url: p.url, senderName: name, createdAt: p.createdAt })),
+    () =>
+      list.map((p): ViewerItem => {
+        const base = { id: p.id, senderName: name, createdAt: p.createdAt, poster: { uri: p.url } };
+        if (p.animUrl && p.kind === "video") return { ...base, kind: "video", url: p.animUrl, loop: true };
+        if (p.animUrl && p.kind === "gif") return { ...base, kind: "image", url: p.animUrl };
+        return { ...base, kind: "image", url: p.url };
+      }),
     [list, name],
   );
   const hasImage = count > 0;
@@ -800,6 +813,12 @@ export function StretchyProfile({
                         <HeroPage
                           key={list[i].id}
                           url={list[i].url}
+                          anim={
+                            list[i].animUrl && list[i].kind && list[i].kind !== "photo"
+                              ? { url: list[i].animUrl!, kind: list[i].kind as "video" | "gif", active: i === safeIndex }
+                              : undefined
+                          }
+                          playing={!viewerOpen}
                           i={i}
                           W={W}
                           indexSV={indexSV}
@@ -833,9 +852,6 @@ export function StretchyProfile({
                     </Animated.Text>
                   </>
                 )}
-                {hasImage && avatarAnimUrl && avatarAnimKind ? (
-                  <AnimatedAvatarVideo url={avatarAnimUrl} kind={avatarAnimKind} visible={safeIndex === 0} />
-                ) : null}
                 {/* Скрім під іменем: усередині того ж скругленого контейнера, тож кути фото не чорніють */}
                 <Animated.View
                   pointerEvents="none"

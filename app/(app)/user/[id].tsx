@@ -42,7 +42,13 @@ export default function UserProfileScreen() {
     id ? { userId: id as Id<"users"> } : "skip",
   );
   const photos = useMemo<ProfilePhoto[]>(
-    () => (photoRows ?? []).map((p) => ({ id: p._id, url: p.url, createdAt: p.createdAt })),
+    () => (photoRows ?? []).map((p) => ({
+        id: p._id,
+        url: p.url,
+        createdAt: p.createdAt,
+        kind: p.kind,
+        animUrl: p.animUrl,
+      })),
     [photoRows],
   );
   const [tab, setTab] = useState("photos");
@@ -131,8 +137,6 @@ export default function UserProfileScreen() {
       name={profile.name}
       isPremium={profile.isPremium}
       emojiStatus={profile.emojiStatus}
-      avatarAnimUrl={profile.avatarAnimUrl}
-      avatarAnimKind={profile.avatarAnimKind}
       imageUrl={profile.image}
       status={status}
       statusAccent={profile.online}

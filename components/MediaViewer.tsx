@@ -41,6 +41,8 @@ export interface ViewerItem {
   createdAt?: number;
   /** Мініатюра відео: показується, доки не з'явиться перший кадр (без чорного спалаху). */
   poster?: ImageProps["source"];
+  /** Відео крутиться по колу (анімований аватар). */
+  loop?: boolean;
   fileName?: string;
 }
 
@@ -293,21 +295,31 @@ function ThumbStrip({
       >
         {items.map((it, i) => (
           <TouchableOpacity key={it.id} activeOpacity={0.8} onPress={() => onSelect(i)}>
-            <ExpoImage
-              source={{ uri: it.url }}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              recyclingKey={it.id}
-              style={{
-                width: THUMB,
-                height: THUMB,
-                borderRadius: 8,
-                opacity: i === index ? 1 : 0.55,
-                borderWidth: i === index ? 2 : 0,
-                borderColor: "#FFFFFF",
-                backgroundColor: "rgba(255,255,255,0.12)",
-              }}
-            />
+            <View>
+              <ExpoImage
+                source={it.poster ?? { uri: it.url }}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={it.id}
+                style={{
+                  width: THUMB,
+                  height: THUMB,
+                  borderRadius: 8,
+                  opacity: i === index ? 1 : 0.55,
+                  borderWidth: i === index ? 2 : 0,
+                  borderColor: "#FFFFFF",
+                  backgroundColor: "rgba(255,255,255,0.12)",
+                }}
+              />
+              {it.kind === "video" ? (
+                <View
+                  pointerEvents="none"
+                  style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Ionicons name="play-circle" size={20} color="rgba(255,255,255,0.9)" />
+                </View>
+              ) : null}
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -368,6 +380,14 @@ function Viewer({
     p.audioMixingMode = "doNotMix"; // забираємо аудіофокус, як у Telegram
     if (activeUrl) p.play();
   });
+  const wantLoop = !!item?.loop;
+  useEffect(() => {
+    try {
+      player.loop = wantLoop;
+    } catch {
+      // плеєр звільнено
+    }
+  }, [player, wantLoop, activeUrl]);
   const ps = usePlayerState(player, isVideo, progress, buffered, scrubbing);
 
   // Панелі керування: видимість, автоприховування

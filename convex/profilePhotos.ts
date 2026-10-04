@@ -58,7 +58,10 @@ export const list = query({
       /** Анімований файл; лише поки у власника діє преміум (інакше — тільки постер). */
       animUrl?: string;
     }[] = [];
+    // Постер анімованого аватара — це те саме зображення, що й звичайне фото: дубль у списку ховаємо.
+    const posterOfAnim = new Set(rows.filter((r) => r.animStorageId).map((r) => r.storageId as string));
     for (const row of rows) {
+      if (!row.animStorageId && posterOfAnim.has(row.storageId as string)) continue;
       const url = await ctx.storage.getUrl(row.storageId);
       if (!url) continue;
       const animUrl =

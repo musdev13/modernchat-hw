@@ -69,7 +69,13 @@ export default function ProfileScreen() {
   const { open: openRowMenu, sheet: rowMenuSheet } = useRowMenu();
 
   const photos = useMemo<ProfilePhoto[]>(
-    () => (photoRows ?? []).map((p) => ({ id: p._id, url: p.url, createdAt: p.createdAt })),
+    () => (photoRows ?? []).map((p) => ({
+        id: p._id,
+        url: p.url,
+        createdAt: p.createdAt,
+        kind: p.kind,
+        animUrl: p.animUrl,
+      })),
     [photoRows],
   );
 
@@ -188,8 +194,6 @@ export default function ProfileScreen() {
         name={profile.name}
         isPremium={profile.isPremium}
         emojiStatus={profile.emojiStatus}
-        avatarAnimUrl={profile.avatarAnimUrl}
-        avatarAnimKind={profile.avatarAnimKind}
         imageUrl={profile.image}
         photos={photos}
         viewerActions={viewerActions}
