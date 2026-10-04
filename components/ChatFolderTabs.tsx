@@ -1,12 +1,13 @@
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
-export type ChatFolder = "all" | "direct" | "groups" | "unread";
+export type ChatFolder = "all" | "direct" | "groups" | "channels" | "unread";
 
 export const CHAT_FOLDERS: { key: ChatFolder; label: string }[] = [
   { key: "all", label: "Усі" },
   { key: "direct", label: "Особисті" },
   { key: "groups", label: "Групи" },
+  { key: "channels", label: "Канали" },
   { key: "unread", label: "Непрочитані" },
 ];
 

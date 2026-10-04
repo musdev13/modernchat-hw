@@ -23,6 +23,8 @@ interface RoomData {
   isDirect?: boolean;
   /** «Збережене» (чат із собою). */
   isSaved?: boolean;
+  /** Канал (публікують лише адміністратори). */
+  isChannel?: boolean;
   /** Закріплено нагорі списку. */
   pinned?: boolean;
 }
@@ -206,6 +208,25 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                 size={54}
                 saved={room.isSaved}
               />
+              {room.isChannel ? (
+                <View
+                  style={{
+                    position: "absolute",
+                    right: -2,
+                    bottom: -2,
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    backgroundColor: "#34C759",
+                    borderWidth: 2,
+                    borderColor: c.bg,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="megaphone" size={10} color="#FFFFFF" />
+                </View>
+              ) : null}
               {isDirect && online ? (
                 <View
                   style={{
@@ -307,7 +328,9 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                       ? "Нотатки та переслані повідомлення"
                       : isDirect
                         ? undefined
-                        : room.description) ||
+                        : room.isChannel
+                          ? "Публікацій ще немає"
+                          : room.description) ||
                     "Повідомлень ще немає"}
                 </Text>
                 )}

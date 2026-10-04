@@ -55,6 +55,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { File, Paths } from "expo-file-system";
 import * as Haptics from "expo-haptics";
+import { MuteSheet } from "@/components/MuteSheet";
+import { subscribersLabel } from "@/utils/channel";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -126,6 +128,10 @@ export default function ChatRoomScreen() {
   const room = useQuery(api.rooms.getRoom, { roomId: chatRoomId });
   // Особистий чат: заголовок і статус беремо від співрозмовника.
   const isDirect = room?.isDirect === true;
+  const isChannel = room?.isChannel === true;
+  // Канал: писати можуть лише адміністратори; підписникам — рядок «Вимкнути сповіщення».
+  const canPost = !isChannel || room?.canPost === true;
+  const readOnlyChannel = isChannel && !canPost;
   const otherUserId = room?.otherUserId;
   const isSaved = room?.isSaved === true;
   const otherStatus = room?.otherPresence;
@@ -152,6 +158,9 @@ export default function ChatRoomScreen() {
   const hideMessage = useMutation(api.messages.hideMessage);
   const toggleReaction = useMutation(api.messages.toggleReaction);
   const togglePin = useMutation(api.messages.togglePin);
+  const setRoomMuted = useMutation(api.roomSettings.setMuted);
+  const mySettings = useQuery(api.roomSettings.getMyRoomSettings, { chatRoomId });
+  const [muteSheetOpen, setMuteSheetOpen] = useState(false);
   const markRead = useMutation(api.reads.markRead);
   const readState = useQuery(api.reads.getReadState, { chatRoomId });
   const othersLastReadAt = readState?.othersLastReadAt ?? 0;
@@ -1188,7 +1197,10 @@ export default function ChatRoomScreen() {
     ({ item: row }: { item: MessageRow }) => (
       <SwipeableMessageItem
         item={row.item}
-        isOwn={row.item.senderId === currentUser?._id}
+        isOwn={!isChannel && row.item.senderId === currentUser?._id}
+        isMine={row.item.senderId === currentUser?._id}
+        isChannel={isChannel}
+        canReply={canPost}
         isFirstInSeries={row.isFirstInSeries}
         isLastInSeries={row.isLastInSeries}
         isSelected={actionMessage?._id === row.item._id}
@@ -1223,6 +1235,8 @@ export default function ChatRoomScreen() {
       handleStartReply,
       handleToggleReaction,
       isDirect,
+      isChannel,
+      canPost,
       router,
     ],
   );
@@ -1301,7 +1315,9 @@ export default function ChatRoomScreen() {
         ? otherStatus
           ? formatLastSeen(otherStatus.lastSeenAt, otherStatus.online, otherStatus.lastSeenHidden)
           : " "
-        : membersLabel(memberCount);
+        : isChannel
+          ? subscribersLabel(memberCount)
+          : membersLabel(memberCount);
   const subtitleAccent = isDirect && !isSaved && otherStatus?.online === true;
   const openInfo = () =>
     isSaved ||
@@ -1375,8 +1391,11 @@ export default function ChatRoomScreen() {
       // Для всіх: свої; в особистому чаті — будь-які; у групі — якщо ви адмін.
       onPress: () => handleDelete(m, own || isDirect || room?.canManageMembers === true),
     });
-    return list;
+    return readOnlyChannel
+      ? list.filter((item) => item.key !== "reply" && item.key !== "pin")
+      : list;
   }, [
+    readOnlyChannel,
     actionMessage,
     currentUser?._id,
     handleCopy,
@@ -1776,7 +1795,38 @@ export default function ChatRoomScreen() {
               </View>
             )}
 
-            {isRecording ? (
+            {readOnlyChannel ? (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  if (mySettings?.muted) {
+                    void Haptics.selectionAsync();
+                    void setRoomMuted({ chatRoomId, muted: false }).catch(() => {});
+                  } else {
+                    setMuteSheetOpen(true);
+                  }
+                }}
+                style={{
+                  height: 52 + bottomInset,
+                  paddingBottom: bottomInset,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexDirection: "row",
+                  backgroundColor: c.header,
+                  borderTopWidth: 1,
+                  borderTopColor: c.divider,
+                }}
+              >
+                <Ionicons
+                  name={mySettings?.muted ? "notifications-outline" : "notifications-off-outline"}
+                  size={20}
+                  color={c.accent}
+                />
+                <Text style={{ color: c.accent, fontSize: 16, fontWeight: "600", marginLeft: 8 }}>
+                  {mySettings?.muted ? "Увімкнути сповіщення" : "Вимкнути сповіщення"}
+                </Text>
+              </TouchableOpacity>
+            ) : isRecording ? (
               <View
                 style={{
                   flexDirection: "row",
@@ -2239,6 +2289,16 @@ export default function ChatRoomScreen() {
         onFile={() => void runPicker(pickDocuments)}
         onCamera={() => void runPicker(captureWithCamera)}
         onPoll={() => setPollModalOpen(true)}
+      />
+
+      <MuteSheet
+        visible={muteSheetOpen}
+        onClose={() => setMuteSheetOpen(false)}
+        title={roomTitle}
+        onPick={(durationMs) => {
+          setMuteSheetOpen(false);
+          void setRoomMuted({ chatRoomId, muted: true, durationMs }).catch(() => {});
+        }}
       />
 
       <ReactorsSheet messageId={reactorsFor} onClose={() => setReactorsFor(null)} />

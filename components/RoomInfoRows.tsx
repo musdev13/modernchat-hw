@@ -55,6 +55,16 @@ export interface VoiceItem {
   duration: number;
 }
 
+export interface PollItem {
+  _id: Id<"messages">;
+  createdAt: number;
+  senderName: string;
+  question: string;
+  totalVoters: number;
+  anonymous: boolean;
+  closed: boolean;
+}
+
 export interface LinkItem {
   _id: Id<"messages">;
   createdAt: number;
@@ -536,6 +546,48 @@ export const VoiceRow = memo(function VoiceRow({
       <Text style={{ color: c.muted, fontSize: 14, fontVariant: ["tabular-nums"] }}>
         {formatDuration(item.duration)}
       </Text>
+    </TouchableOpacity>
+  );
+});
+
+// ── Опитування ──
+export const PollRow = memo(function PollRow({
+  item,
+  onPress,
+}: {
+  item: PollItem;
+  onPress: (item: PollItem) => void;
+}) {
+  const c = useChatPalette();
+  return (
+    <TouchableOpacity
+      activeOpacity={0.6}
+      onPress={() => onPress(item)}
+      style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 9 }}
+    >
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: withAlpha(c.accent, 0.16),
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 14,
+        }}
+      >
+        <Ionicons name="stats-chart" size={20} color={c.accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={2} style={{ color: c.text, fontSize: 16, fontWeight: "600" }}>
+          {item.question}
+        </Text>
+        <Text numberOfLines={1} style={{ color: c.muted, fontSize: 13, marginTop: 1 }}>
+          {item.closed ? "Завершено" : item.anonymous ? "Анонімне" : "Публічне"} · {item.totalVoters} голос.
+          {" · "}
+          {dayLabel(item.createdAt)}
+        </Text>
+      </View>
     </TouchableOpacity>
   );
 });

@@ -1,5 +1,6 @@
 import { ActionSheet, SheetAction } from "@/components/ActionSheet";
 import { ChatFolder, ChatFolderTabs } from "@/components/ChatFolderTabs";
+import { PublicChannelResults } from "@/components/PublicChannelResults";
 import { GlassProvider, GlassTarget } from "@/components/Glass";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
 import { MuteSheet } from "@/components/MuteSheet";
@@ -73,13 +74,20 @@ export default function ChatsTab() {
   // Папки — клієнтський фільтр списку; лічильник = кількість чатів із непрочитаними
   // (у «Усі»/«Особисті»/«Групи» вимкнені чати не рахуються, у «Непрочитані» — усі).
   const folderCounts = useMemo(() => {
-    const counts: Record<ChatFolder, number> = { all: 0, direct: 0, groups: 0, unread: 0 };
+    const counts: Record<ChatFolder, number> = {
+      all: 0,
+      direct: 0,
+      groups: 0,
+      channels: 0,
+      unread: 0,
+    };
     for (const r of rooms ?? []) {
       if ((unread?.counts[r._id] ?? 0) <= 0) continue;
       counts.unread += 1;
       if (r.muted) continue;
       counts.all += 1;
       if (r.isDirect) counts.direct += 1;
+      else if (r.isChannel) counts.channels += 1;
       else counts.groups += 1;
     }
     return counts;
@@ -90,7 +98,8 @@ export default function ChatsTab() {
     const q = search.trim().toLowerCase();
     return rooms.filter((r) => {
       if (folder === "direct" && !r.isDirect) return false;
-      if (folder === "groups" && r.isDirect) return false;
+      if (folder === "groups" && (r.isDirect || r.isChannel)) return false;
+      if (folder === "channels" && !r.isChannel) return false;
       if (folder === "unread" && !((unread?.counts[r._id] ?? 0) > 0)) return false;
       return !q || r.title.toLowerCase().includes(q);
     });
@@ -328,7 +337,11 @@ export default function ChatsTab() {
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />
               }
               ListFooterComponent={
-                onlySaved && !search.trim() && folder === "all" ? (
+                <>
+                  {folder === "all" || folder === "channels" ? (
+                    <PublicChannelResults query={search} />
+                  ) : null}
+                {onlySaved && !search.trim() && folder === "all" ? (
                   <View style={{ alignItems: "center", paddingTop: 40, paddingHorizontal: 32 }}>
                     <Ionicons name="chatbubbles-outline" size={44} color={c.muted} />
                     <Text style={{ color: c.text, fontSize: 17, fontWeight: "700", marginTop: 12 }}>
@@ -338,7 +351,8 @@ export default function ChatsTab() {
                       Напишіть комусь із вкладки «Контакти» або створіть групу кнопкою внизу праворуч
                     </Text>
                   </View>
-                ) : null
+                ) : null}
+                </>
               }
               ListEmptyComponent={
                 <View style={{ alignItems: "center", paddingTop: 48 }}>
@@ -348,6 +362,8 @@ export default function ChatsTab() {
                       ? "Нічого не знайдено"
                       : folder === "unread"
                         ? "Непрочитаних чатів немає"
+                        : folder === "channels"
+                          ? "Ви ще не підписані на канали"
                         : "У цій папці поки немає чатів"}
                   </Text>
                 </View>
@@ -420,7 +436,7 @@ export default function ChatsTab() {
           visible={!!menuRoom}
           onClose={() => setMenuRoomId(null)}
           title={menuRoom?.title}
-          subtitle={menuRoom?.isDirect ? "Особистий чат" : "Група"}
+          subtitle={menuRoom?.isDirect ? "Особистий чат" : menuRoom?.isChannel ? "Канал" : "Група"}
           avatar={
             menuRoom ? (
               <RoomAvatar

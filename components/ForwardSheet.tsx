@@ -20,20 +20,30 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onPick: (roomId: Id<"chatRooms">) => void;
+  /** Заголовок (за замовчуванням «Переслати в…»). */
+  title?: string;
+  /** Додатковий фільтр чатів. */
+  filter?: (room: NonNullable<ReturnType<typeof useRoomList>>[number]) => boolean;
+}
+
+function useRoomList(enabled: boolean) {
+  return useQuery(api.rooms.listRooms, enabled ? {} : "skip");
 }
 
 /** Вибір чату, куди переслати повідомлення (включно зі «Збереженим»). */
-export function ForwardSheet({ visible, onClose, onPick }: Props) {
+export function ForwardSheet({ visible, onClose, onPick, title = "Переслати в…", filter }: Props) {
   const c = useChatPalette();
   const insets = useSafeAreaInsets();
-  const rooms = useQuery(api.rooms.listRooms, visible ? {} : "skip");
+  const rooms = useRoomList(visible);
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!rooms) return rooms;
-    return q ? rooms.filter((r) => r.title.toLowerCase().includes(q)) : rooms;
-  }, [rooms, search]);
+    // У канали, де ви лише підписник, пересилати не можна.
+    const allowed = rooms.filter((r) => r.canPost !== false && (!filter || filter(r)));
+    return q ? allowed.filter((r) => r.title.toLowerCase().includes(q)) : allowed;
+  }, [rooms, search, filter]);
 
   const close = () => {
     setSearch("");
@@ -73,7 +83,7 @@ export function ForwardSheet({ visible, onClose, onPick }: Props) {
               paddingBottom: 10,
             }}
           >
-            Переслати в…
+            {title}
           </Text>
           <View style={{ paddingHorizontal: 14, paddingBottom: 8 }}>
             <SearchField value={search} onChangeText={setSearch} placeholder="Пошук чатів" />

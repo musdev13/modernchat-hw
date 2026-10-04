@@ -2,6 +2,7 @@ import { ActionSheet, SheetAction } from "@/components/ActionSheet";
 import { AddMembersModal } from "@/components/AddMembersModal";
 import { EditRoomModal } from "@/components/EditRoomModal";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
+import { ForwardSheet } from "@/components/ForwardSheet";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { MuteSheet } from "@/components/MuteSheet";
 import { RoomAvatar } from "@/components/RoomAvatar";
@@ -20,6 +21,8 @@ import {
   MemberRow,
   MemberSearchRow,
   MonthHeader,
+  PollItem,
+  PollRow,
   RoomTabBar,
   VoiceItem,
   VoiceRow,
@@ -30,7 +33,9 @@ import { avatarColor } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
+import { channelLink, subscribersLabel } from "@/utils/channel";
 import { dayLabel, membersLabel } from "@/utils/chat";
+import { copyText } from "@/utils/clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
@@ -41,6 +46,7 @@ import {
   Alert,
   FlatList,
   Linking,
+  Share,
   Text,
   TouchableOpacity,
   useWindowDimensions,
@@ -59,7 +65,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
-type TabKey = "members" | "media" | "files" | "voice" | "links";
+type TabKey = "members" | "media" | "files" | "voice" | "links" | "polls";
 
 type ListRow =
   | { key: string; type: "top" }
@@ -72,6 +78,7 @@ type ListRow =
   | { key: string; type: "file"; item: FileItem }
   | { key: string; type: "voice"; item: VoiceItem }
   | { key: string; type: "link"; item: LinkItem }
+  | { key: string; type: "poll"; item: PollItem }
   | { key: string; type: "empty"; icon: IconName; text: string };
 
 const BAR_TOP_GAP = 6;
@@ -103,8 +110,15 @@ export default function RoomInfoScreen() {
   const updateParticipantRole = useMutation(api.rooms.updateParticipantRole);
   const removeParticipant = useMutation(api.rooms.removeParticipant);
   const setMuted = useMutation(api.roomSettings.setMuted);
+  const openDiscussionMutation = useMutation(api.channels.openDiscussion);
+  const createDiscussionGroup = useMutation(api.channels.createDiscussionGroup);
+  const linkDiscussionGroup = useMutation(api.channels.linkDiscussionGroup);
+  const unlinkDiscussionGroup = useMutation(api.channels.unlinkDiscussionGroup);
 
-  const [tab, setTab] = useState<TabKey>("members");
+  const [rawTab, setTab] = useState<TabKey>("members");
+  const [discussionMenu, setDiscussionMenu] = useState(false);
+  const [pickGroup, setPickGroup] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [memberQuery, setMemberQuery] = useState("");
   const [addVisible, setAddVisible] = useState(false);
   const [muteVisible, setMuteVisible] = useState(false);
@@ -157,6 +171,10 @@ export default function RoomInfoScreen() {
   // ── Права та стан ──
   const myId = currentUser?._id;
   const isCreator = !!room && !!myId && room.creatorId === myId;
+  const isChannel = room?.isChannel === true;
+  // У каналі немає вкладки «Учасники» — список підписників відкривається окремим екраном.
+  const tab: TabKey = isChannel && rawTab === "members" ? "media" : rawTab;
+  const noun = isChannel ? "канал" : "кімнату";
   const canManage = room?.canManageMembers ?? false;
   const muted = settings?.muted ?? false;
   const pinCount = pins?.length ?? 0;
@@ -210,14 +228,17 @@ export default function RoomInfoScreen() {
     if (isCreator) {
       Alert.alert(
         "Творець не може вийти",
-        "Ви створили цю кімнату, тому не можете її залишити. Якщо вона більше не потрібна, видаліть її.",
+        `Ви створили ${isChannel ? "цей канал" : "цю кімнату"}, тому не можете ${isChannel ? "його" : "її"} залишити. Якщо ${isChannel ? "він" : "вона"} більше не потрібн${isChannel ? "ий" : "а"}, видаліть ${isChannel ? "його" : "її"}.`,
       );
       return;
     }
-    Alert.alert("Вийти з кімнати?", `Ви втратите доступ до «${room.title}».`, [
+    Alert.alert(
+      isChannel ? "Відписатись від каналу?" : "Вийти з кімнати?",
+      `Ви втратите доступ до «${room.title}».`,
+      [
       { text: "Скасувати", style: "cancel" },
       {
-        text: "Вийти",
+        text: isChannel ? "Відписатись" : "Вийти",
         style: "destructive",
         onPress: async () => {
           try {
@@ -230,13 +251,13 @@ export default function RoomInfoScreen() {
         },
       },
     ]);
-  }, [currentUser, isCreator, removeParticipant, room, roomId, router]);
+  }, [currentUser, isChannel, isCreator, removeParticipant, room, roomId, router]);
 
   const handleDelete = useCallback(() => {
     if (!room) return;
     Alert.alert(
-      "Видалити кімнату?",
-      `Кімната «${room.title}» та всі її повідомлення будуть видалені назавжди.`,
+      isChannel ? "Видалити канал?" : "Видалити кімнату?",
+      `${isChannel ? "Канал" : "Кімната"} «${room.title}» та всі ${isChannel ? "його публікації" : "її повідомлення"} будуть видалені назавжди.`,
       [
         { text: "Скасувати", style: "cancel" },
         {
@@ -255,7 +276,7 @@ export default function RoomInfoScreen() {
         },
       ],
     );
-  }, [deleteRoom, room, roomId, router]);
+  }, [deleteRoom, isChannel, room, roomId, router]);
 
   const handleRole = useCallback(
     async (targetUserId: Id<"users">, role: "admin" | "member") => {
@@ -287,6 +308,50 @@ export default function RoomInfoScreen() {
     },
     [removeParticipant, roomId],
   );
+
+  const inviteLink = room?.slug ? channelLink(room.slug) : "";
+
+  const handleCopyLink = useCallback(async () => {
+    if (!inviteLink) return;
+    const result = await copyText(inviteLink);
+    if (result === "copied") {
+      void Haptics.selectionAsync();
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    }
+  }, [inviteLink]);
+
+  const handleShare = useCallback(async () => {
+    if (!inviteLink || !room) return;
+    try {
+      await Share.share({ message: `${room.title}\n${inviteLink}` });
+    } catch {
+      // користувач закрив меню
+    }
+  }, [inviteLink, room]);
+
+  const openLinkedChat = useCallback(
+    async (open: () => Promise<Id<"chatRooms">>) => {
+      try {
+        const groupId = await open();
+        router.push(`/chat/${groupId}` as any);
+      } catch (error: any) {
+        Alert.alert("Помилка", error?.message ?? "Не вдалося відкрити обговорення");
+      }
+    },
+    [router],
+  );
+
+  const handleDiscussion = useCallback(() => {
+    if (!room) return;
+    if (room.discussion) {
+      void openLinkedChat(() => openDiscussionMutation({ channelId: roomId }));
+    } else if (isCreator) {
+      setDiscussionMenu(true);
+    } else {
+      Alert.alert("Обговорення", "Для цього каналу обговорення ще не налаштоване.");
+    }
+  }, [isCreator, openDiscussionMutation, openLinkedChat, room, roomId]);
 
   const openLink = useCallback(async (url: string) => {
     try {
@@ -421,6 +486,20 @@ export default function RoomInfoScreen() {
       } else {
         for (const item of items) result.push({ key: `v-${item._id}`, type: "voice", item });
       }
+    } else if (tab === "polls") {
+      const items = shared?.polls ?? [];
+      if (shared === undefined) {
+        result.push({ key: "empty", type: "empty", icon: "stats-chart-outline", text: "Завантаження…" });
+      } else if (items.length === 0) {
+        result.push({
+          key: "empty",
+          type: "empty",
+          icon: "stats-chart-outline",
+          text: "Опитування з цього каналу зʼявляться тут",
+        });
+      } else {
+        for (const item of items) result.push({ key: `p-${item._id}`, type: "poll", item });
+      }
     } else {
       const items = shared?.links ?? [];
       if (shared === undefined) {
@@ -440,14 +519,23 @@ export default function RoomInfoScreen() {
   }, [canManage, memberQuery, room, shared, tab]);
 
   const tabs = useMemo(
-    () => [
-      { key: "members", label: "Учасники", count: room?.participants.length },
-      { key: "media", label: "Медіа", count: shared?.media.length },
-      { key: "files", label: "Файли", count: shared?.files.length },
-      { key: "voice", label: "Голосові", count: shared?.voice.length },
-      { key: "links", label: "Посилання", count: shared?.links.length },
-    ],
-    [room?.participants.length, shared],
+    () =>
+      isChannel
+        ? [
+            { key: "media", label: "Медіа", count: shared?.media.length },
+            { key: "files", label: "Файли", count: shared?.files.length },
+            { key: "links", label: "Посилання", count: shared?.links.length },
+            { key: "voice", label: "Голосові", count: shared?.voice.length },
+            { key: "polls", label: "Опитування", count: shared?.polls?.length },
+          ]
+        : [
+            { key: "members", label: "Учасники", count: room?.participants.length },
+            { key: "media", label: "Медіа", count: shared?.media.length },
+            { key: "files", label: "Файли", count: shared?.files.length },
+            { key: "voice", label: "Голосові", count: shared?.voice.length },
+            { key: "links", label: "Посилання", count: shared?.links.length },
+          ],
+    [isChannel, room?.participants.length, shared],
   );
 
   const handleTabChange = useCallback(
@@ -498,6 +586,30 @@ export default function RoomInfoScreen() {
     </TouchableOpacity>
   );
 
+  const channelRow = (icon: IconName, label: string, count?: number, onPress?: () => void) => (
+    <TouchableOpacity
+      key={label}
+      activeOpacity={onPress ? 0.6 : 1}
+      disabled={!onPress}
+      onPress={onPress}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 16,
+        height: 52,
+        borderTopWidth: 1,
+        borderTopColor: c.divider,
+      }}
+    >
+      <Ionicons name={icon} size={22} color={c.muted} />
+      <Text style={{ color: c.text, fontSize: 16, marginLeft: 16, flex: 1 }}>{label}</Text>
+      {count !== undefined ? (
+        <Text style={{ color: c.muted, fontSize: 15, marginRight: onPress ? 6 : 0 }}>{count}</Text>
+      ) : null}
+      {onPress ? <Ionicons name="chevron-forward" size={18} color={c.muted} /> : null}
+    </TouchableOpacity>
+  );
+
   const renderTop = () => {
     if (!room) return null;
     const creator = room.participants.find((p) => p.role === "creator");
@@ -534,8 +646,11 @@ export default function RoomInfoScreen() {
                 {room.title}
               </Text>
               <Text style={{ color: c.muted, fontSize: 14, marginTop: 4 }}>
-                {membersLabel(room.participants.length)}
-                {onlineOthers > 0 ? `, ${onlineOthers} у чаті` : ""}
+                {isChannel
+                  ? room.isPublic
+                    ? "публічний канал"
+                    : "приватний канал"
+                  : `${membersLabel(room.participants.length)}${onlineOthers > 0 ? `, ${onlineOthers} у чаті` : ""}`}
               </Text>
             </Animated.View>
           </View>
@@ -546,9 +661,18 @@ export default function RoomInfoScreen() {
               muted ? "Увімкнути" : "Вимкнути",
               handleToggleMute,
             )}
-            {actionButton("search", "Пошук", () => goToChat({ search: true }))}
-            {canManage &&
-              actionButton("person-add-outline", "Додати", () => setAddVisible(true))}
+            {isChannel ? (
+              <>
+                {actionButton("chatbubbles-outline", "Обговорення", handleDiscussion)}
+                {room.slug ? actionButton("share-outline", "Поділитися", () => void handleShare()) : null}
+              </>
+            ) : (
+              <>
+                {actionButton("search", "Пошук", () => goToChat({ search: true }))}
+                {canManage &&
+                  actionButton("person-add-outline", "Додати", () => setAddVisible(true))}
+              </>
+            )}
             {actionButton(
               isCreator ? "trash-outline" : "exit-outline",
               isCreator ? "Видалити" : "Вийти",
@@ -568,7 +692,7 @@ export default function RoomInfoScreen() {
                   onPress={() => setEditVisible(true)}
                   hitSlop={10}
                   accessibilityRole="button"
-                  accessibilityLabel="Редагувати кімнату"
+                  accessibilityLabel={isChannel ? "Редагувати канал" : "Редагувати кімнату"}
                 >
                   <Ionicons name="create-outline" size={20} color={c.accent} />
                 </TouchableOpacity>
@@ -581,13 +705,75 @@ export default function RoomInfoScreen() {
             ) : canManage ? (
               <TouchableOpacity onPress={() => setEditVisible(true)} activeOpacity={0.7}>
                 <Text style={{ color: c.muted, fontSize: 16, marginTop: 6 }}>
-                  Додати опис кімнати
+                  {isChannel ? "Додати опис каналу" : "Додати опис кімнати"}
                 </Text>
               </TouchableOpacity>
             ) : (
               <Text style={{ color: c.muted, fontSize: 16, marginTop: 6 }}>Опис не додано</Text>
             )}
           </View>
+
+          {isChannel && room.slug && (room.isPublic || canManage) ? (
+            <TouchableOpacity
+              activeOpacity={0.6}
+              onPress={() => void handleCopyLink()}
+              accessibilityRole="button"
+              accessibilityLabel="Скопіювати запрошувальне посилання"
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderTopWidth: 1,
+                borderTopColor: c.divider,
+              }}
+            >
+              <Text style={{ color: c.accent, fontSize: 14, fontWeight: "700" }}>
+                Запрошувальне посилання
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+                <Text
+                  numberOfLines={1}
+                  selectable={false}
+                  style={{ flex: 1, color: c.text, fontSize: 16 }}
+                >
+                  {inviteLink}
+                </Text>
+                <Ionicons
+                  name={copied ? "checkmark-circle" : "copy-outline"}
+                  size={20}
+                  color={copied ? "#34C759" : c.muted}
+                />
+              </View>
+              <Text style={{ color: c.muted, fontSize: 13, marginTop: 4 }}>
+                {copied
+                  ? "Посилання скопійовано"
+                  : "Торкніться, щоб скопіювати. Усі, хто відкриє його, зможуть підписатись."}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {isChannel && room.discussion ? (
+            <TouchableOpacity
+              activeOpacity={0.6}
+              onPress={handleDiscussion}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 16,
+                height: 56,
+                borderTopWidth: 1,
+                borderTopColor: c.divider,
+              }}
+            >
+              <Ionicons name="chatbubbles-outline" size={22} color={c.muted} />
+              <View style={{ flex: 1, marginLeft: 16 }}>
+                <Text style={{ color: c.text, fontSize: 16 }} numberOfLines={1}>
+                  {room.discussion.title}
+                </Text>
+                <Text style={{ color: c.muted, fontSize: 13 }}>Обговорення</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={c.muted} />
+            </TouchableOpacity>
+          ) : null}
 
           {pinCount > 0 && (
             <TouchableOpacity
@@ -636,6 +822,28 @@ export default function RoomInfoScreen() {
               )}
             </View>
           </View>
+
+          {isChannel ? (
+            <>
+              {channelRow(
+                "people-outline",
+                "Підписники",
+                room.participants.length,
+                canManage ? () => router.push(`/subscribers/${roomId}` as any) : undefined,
+              )}
+              {channelRow(
+                "shield-checkmark-outline",
+                "Адміністратори",
+                room.participants.filter((p) => p.role !== "member").length,
+                () => router.push(`/subscribers/${roomId}?admins=1` as any),
+              )}
+              {canManage
+                ? channelRow("settings-outline", "Налаштування каналу", undefined, () =>
+                    router.push(`/channel-settings/${roomId}` as any),
+                  )
+                : null}
+            </>
+          ) : null}
         </View>
       </View>
     );
@@ -717,6 +925,12 @@ export default function RoomInfoScreen() {
             <VoiceRow item={item.item} onPress={(v) => jumpToMessage(v._id)} />
           </View>
         );
+      case "poll":
+        return (
+          <View style={{ backgroundColor: c.header }}>
+            <PollRow item={item.item} onPress={(p) => jumpToMessage(p._id)} />
+          </View>
+        );
       case "link":
         return (
           <View style={{ backgroundColor: c.header }}>
@@ -747,9 +961,13 @@ export default function RoomInfoScreen() {
           Небезпечна зона
         </Text>
         <Text style={{ color: c.muted, fontSize: 14, lineHeight: 20 }}>
-          {isCreator
-            ? "Кімната та всі повідомлення в ній будуть видалені без можливості відновлення. Творець не може просто вийти з кімнати."
-            : "Ви втратите доступ до цієї кімнати та її історії, доки вас не додадуть знову."}
+          {isChannel
+            ? isCreator
+              ? "Канал та всі його публікації будуть видалені без можливості відновлення. Творець не може просто залишити канал."
+              : "Ви перестанете отримувати публікації цього каналу."
+            : isCreator
+              ? "Кімната та всі повідомлення в ній будуть видалені без можливості відновлення. Творець не може просто вийти з кімнати."
+              : "Ви втратите доступ до цієї кімнати та її історії, доки вас не додадуть знову."}
         </Text>
         <TouchableOpacity
           onPress={isCreator ? handleDelete : handleLeave}
@@ -767,7 +985,13 @@ export default function RoomInfoScreen() {
         >
           <Ionicons name={isCreator ? "trash-outline" : "exit-outline"} size={20} color={c.danger} />
           <Text style={{ color: c.danger, fontSize: 16, fontWeight: "700", marginLeft: 8 }}>
-            {isCreator ? "Видалити кімнату" : "Вийти з кімнати"}
+            {isChannel
+              ? isCreator
+                ? "Видалити канал"
+                : "Відписатись"
+              : isCreator
+                ? "Видалити кімнату"
+                : "Вийти з кімнати"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -781,13 +1005,13 @@ export default function RoomInfoScreen() {
     if (canManage) {
       menuActions.push({
         key: "edit",
-        label: "Редагувати кімнату",
+        label: isChannel ? "Редагувати канал" : "Редагувати кімнату",
         icon: "create-outline",
         onPress: () => setEditVisible(true),
       });
       menuActions.push({
         key: "add",
-        label: "Додати учасників",
+        label: isChannel ? "Додати підписників" : "Додати учасників",
         icon: "person-add-outline",
         onPress: () => setAddVisible(true),
       });
@@ -804,18 +1028,34 @@ export default function RoomInfoScreen() {
       icon: "search-outline",
       onPress: () => goToChat({ search: true }),
     });
+    if (isChannel && room.slug) {
+      menuActions.push({
+        key: "share",
+        label: "Поділитися посиланням",
+        icon: "share-outline",
+        onPress: () => void handleShare(),
+      });
+    }
+    if (isChannel && canManage) {
+      menuActions.push({
+        key: "channel-settings",
+        label: "Налаштування каналу",
+        icon: "settings-outline",
+        onPress: () => router.push(`/channel-settings/${roomId}` as any),
+      });
+    }
     menuActions.push(
       isCreator
         ? {
             key: "delete",
-            label: "Видалити кімнату",
+            label: isChannel ? "Видалити канал" : "Видалити кімнату",
             icon: "trash-outline",
             destructive: true,
             onPress: handleDelete,
           }
         : {
             key: "leave",
-            label: "Вийти з кімнати",
+            label: isChannel ? "Відписатись" : "Вийти з кімнати",
             icon: "exit-outline",
             destructive: true,
             onPress: handleLeave,
@@ -1020,7 +1260,7 @@ export default function RoomInfoScreen() {
           visible={menuVisible}
           onClose={() => setMenuVisible(false)}
           title={room.title}
-          subtitle={membersLabel(room.participants.length)}
+          subtitle={isChannel ? subscribersLabel(room.participants.length) : membersLabel(room.participants.length)}
           avatar={<RoomAvatar title={room.title} imageUrl={room.avatarUrl} size={44} />}
           actions={menuActions}
         />
@@ -1044,6 +1284,43 @@ export default function RoomInfoScreen() {
             ) : undefined
           }
           actions={memberActions}
+        />
+
+        <ActionSheet
+          visible={discussionMenu}
+          onClose={() => setDiscussionMenu(false)}
+          title="Обговорення"
+          subtitle="Група для коментарів до публікацій"
+          actions={[
+            {
+              key: "create",
+              label: "Створити нову групу",
+              icon: "add-circle-outline",
+              onPress: () =>
+                void openLinkedChat(() => createDiscussionGroup({ channelId: roomId })),
+            },
+            {
+              key: "pick",
+              label: "Обрати наявну групу",
+              icon: "people-outline",
+              onPress: () => setTimeout(() => setPickGroup(true), 300),
+            },
+          ]}
+        />
+
+        <ForwardSheet
+          visible={pickGroup}
+          title="Обрати групу обговорення"
+          filter={(r) =>
+            !r.isDirect && !r.isChannel && !r.isSaved && r.creatorId === myId && !r.discussionOfChannelId
+          }
+          onClose={() => setPickGroup(false)}
+          onPick={(groupId) => {
+            setPickGroup(false);
+            void linkDiscussionGroup({ channelId: roomId, groupId }).catch((error: any) =>
+              Alert.alert("Помилка", error?.message ?? "Не вдалося привʼязати групу"),
+            );
+          }}
         />
 
         <MuteSheet

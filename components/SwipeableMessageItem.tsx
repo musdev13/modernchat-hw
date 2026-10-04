@@ -87,6 +87,12 @@ interface SwipeableMessageItemProps {
   onAuthorPress?: (userId: Id<"users">) => void;
   /** Особистий чат: без аватарок і імен співрозмовника біля повідомлень. */
   isDirect?: boolean;
+  /** Канал: пости на всю ширину, без аватарів і імен авторів. */
+  isChannel?: boolean;
+  /** Можна відповідати свайпом (у каналі — лише адміністраторам). */
+  canReply?: boolean;
+  /** Повідомлення написав поточний користувач (для керування опитуванням). */
+  isMine?: boolean;
   /** Тап по цитаті відповіді: перейти до оригінального повідомлення. */
   onReplyPress?: (messageId: Id<"messages">) => void;
   /** Лише для власних повідомлень: «sent» — одна галочка, «read» — прочитано іншими. */
@@ -195,12 +201,16 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   onImagePress,
   onVideoPress,
   onAuthorPress,
-  isDirect = false,
+  isDirect: isDirectProp = false,
+  isChannel = false,
+  canReply = true,
+  isMine,
   onReplyPress,
   flashToken = 0,
   readStatus,
 }) => {
   const c = useChatPalette();
+  const isDirect = isDirectProp || isChannel;
   const translateX = useSharedValue(0);
   const flashValue = useSharedValue(0);
 
@@ -224,6 +234,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   };
 
   const panGesture = Gesture.Pan()
+    .enabled(canReply)
     .activeOffsetX([-10, 10])
     .failOffsetY([-12, 12])
     .onUpdate((event) => {
@@ -368,7 +379,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
 
   const bubbleStyle = {
     backgroundColor: isOwn ? c.outgoing : c.incoming,
-    maxWidth: "80%" as const,
+    maxWidth: isChannel ? ("94%" as const) : ("80%" as const),
     borderRadius: 18,
     borderBottomRightRadius: isOwn && isLastInSeries ? 5 : 18,
     borderBottomLeftRadius: !isOwn && isLastInSeries ? 5 : 18,
@@ -724,7 +735,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   </View>
                 )}
 
-                {hasPoll && <PollBubble poll={item.poll!} isOwn={isOwn} isCreator={isOwn} />}
+                {hasPoll && <PollBubble poll={item.poll!} isOwn={isOwn} isCreator={isMine ?? isOwn} />}
 
                 {hasFile && (
                   <FileBubble
@@ -819,6 +830,9 @@ export const SwipeableMessageItem = memo(
   (prev, next) =>
     prev.isOwn === next.isOwn &&
     prev.isDirect === next.isDirect &&
+    prev.isChannel === next.isChannel &&
+    prev.canReply === next.canReply &&
+    prev.isMine === next.isMine &&
     prev.isFirstInSeries === next.isFirstInSeries &&
     prev.isLastInSeries === next.isLastInSeries &&
     prev.isSelected === next.isSelected &&
