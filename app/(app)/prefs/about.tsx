@@ -1,9 +1,12 @@
+import { useChatPalette } from "@/hooks/useChatPalette";
+import { Logo } from "@/components/Logo";
 import { Group, NavRow, SettingsPage } from "@/components/SettingsUI";
 import { copyText } from "@/utils/clipboard";
 import Constants from "expo-constants";
-import { Alert, Platform } from "react-native";
+import { Alert, Platform, View } from "react-native";
 
 export default function AboutSettings() {
+  const c = useChatPalette();
   const cfg = Constants.expoConfig;
   const name = cfg?.name ?? "Modern Chat";
   const version = cfg?.version ?? "1.0.0";
@@ -16,6 +19,12 @@ export default function AboutSettings() {
 
   return (
     <SettingsPage title="Про застосунок">
+      <View style={{ alignItems: "center", paddingTop: 28, paddingBottom: 6 }}>
+        <Logo size={84} tone="text" glow={c.glow} animated />
+        <View style={{ marginTop: 22 }}>
+          <Logo variant="wordmark" size={200} tone="text" animated delay={400} />
+        </View>
+      </View>
       <Group>
         <NavRow icon="chatbubbles" tint="#10B981" label={name} value={`Версія ${version}`} />
         <NavRow icon="hammer" tint="#6B7280" label="Збірка" value={build} />

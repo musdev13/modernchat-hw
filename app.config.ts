@@ -83,7 +83,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       googleServicesFile: "./google-services.json",
 
       adaptiveIcon: {
-        backgroundColor: "#0F172A",
+        backgroundColor: "#000000",
         foregroundImage: dynamicConfig.adaptiveIconForeground,
         backgroundImage: dynamicConfig.adaptiveIconBackground,
         monochromeImage: dynamicConfig.adaptiveIconMonochrome,
@@ -120,7 +120,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           image: "./assets/images/splash-icon.png",
           imageWidth: 200,
           resizeMode: "contain",
-          backgroundColor: "#0F172A",
+          backgroundColor: "#000000",
         },
       ],
 
@@ -180,8 +180,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         "expo-notifications",
         {
-          icon: "./assets/images/icon.png",
-          color: "#3B82F6",
+          icon: "./assets/images/notification-icon.png",
+          color: "#FFFFFF",
           defaultChannel: "default",
           sounds: [],
           enableBackgroundRemoteNotifications: false,

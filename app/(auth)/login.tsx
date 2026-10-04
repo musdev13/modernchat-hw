@@ -1,3 +1,4 @@
+import { Logo } from "@/components/Logo";
 import { AuthIntro, wasIntroSeen } from "@/components/AuthIntro";
 import { SpaceBackdrop } from "@/components/SpaceBackdrop";
 import { useAuth, useSSO, useSignIn, useSignUp } from "@clerk/clerk-expo";
@@ -233,10 +234,10 @@ export default function LoginScreen() {
             showsVerticalScrollIndicator={false}
           >
             <Animated.View style={[{ alignItems: "center" }, logoStyle]}>
-              <View style={styles.mark}>
-                <Ionicons name="paper-plane" size={30} color="#FFFFFF" />
+              <Logo size={88} glow="#B8D0E8" animated delay={200} />
+              <View style={{ marginTop: 26 }}>
+                <Logo variant="wordmark" size={216} animated delay={650} />
               </View>
-              <Text style={styles.wordmark}>MODERN CHAT</Text>
               <Text style={styles.tagline}>
                 {isSignUp ? "Приєднуйтесь до нового способу спілкування" : "Зв'язок без меж. Увійдіть, щоб продовжити"}
               </Text>
@@ -343,17 +344,6 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  mark: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.35)",
-    backgroundColor: "rgba(255,255,255,0.07)",
-  },
-  wordmark: { color: "#FFFFFF", fontSize: 26, fontWeight: "300", letterSpacing: 8, marginTop: 22 },
   tagline: {
     color: "rgba(255,255,255,0.62)",
     fontSize: 14,

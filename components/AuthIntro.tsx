@@ -1,3 +1,4 @@
+import { Logo } from "@/components/Logo";
 import { Ionicons } from "@expo/vector-icons";
 import * as SecureStore from "expo-secure-store";
 import { ComponentProps, memo, useCallback, useRef, useState } from "react";
@@ -72,6 +73,13 @@ export function AuthIntro({ onDone }: { onDone: () => void }) {
         <Text style={styles.skipText}>Пропустити</Text>
       </Pressable>
 
+      <View
+        pointerEvents="none"
+        style={{ position: "absolute", top: insets.top + 20, left: 0, right: 0, alignItems: "center" }}
+      >
+        <Logo variant="wordmark" size={132} color="rgba(255,255,255,0.7)" animated delay={300} />
+      </View>
+
       <Animated.FlatList
         ref={list as any}
         data={SLIDES}
@@ -85,7 +93,11 @@ export function AuthIntro({ onDone }: { onDone: () => void }) {
         renderItem={({ item, index: i }) => (
           <View style={{ width: W, alignItems: "center", justifyContent: "center", paddingHorizontal: 36 }}>
             <Animated.View entering={FadeInDown.delay(i === 0 ? 250 : 0).duration(600)} style={styles.iconRing}>
-              <Ionicons name={item.icon} size={54} color="#FFFFFF" />
+              {i === 0 ? (
+                <Logo size={70} animated delay={450} />
+              ) : (
+                <Ionicons name={item.icon} size={54} color="#FFFFFF" />
+              )}
             </Animated.View>
             <Text style={styles.title}>{item.title}</Text>
             <Text style={styles.text}>{item.text}</Text>
