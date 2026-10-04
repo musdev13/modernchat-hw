@@ -18,7 +18,8 @@ export default defineSchema({
     hideLastSeen: v.optional(v.boolean()),
   })
     .index("by_token", ["tokenIdentifier"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_username", ["username"]),
 
   chatRooms: defineTable({
     title: v.string(),
@@ -197,4 +198,15 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_chat_room", ["chatRoomId"]),
+
+  // Кеш попереднього перегляду посилань (OpenGraph), ключ — url без #фрагмента.
+  linkPreviews: defineTable({
+    url: v.string(),
+    status: v.union(v.literal("ok"), v.literal("failed")),
+    siteName: v.optional(v.string()),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    image: v.optional(v.string()),
+    fetchedAt: v.number(),
+  }).index("by_url", ["url"]),
 });

@@ -192,6 +192,25 @@ export const listContacts = query({
 });
 
 // Легкий статус користувача (для шапки особистого чату).
+/** Пошук користувача за @username (для тапу по згадці в повідомленні). */
+export const findByUsername = query({
+  args: { username: v.string() },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) return null;
+    const name = args.username.trim().replace(/^@/, "");
+    if (!name) return null;
+    for (const candidate of Array.from(new Set([name, name.toLowerCase()]))) {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_username", (q) => q.eq("username", candidate))
+        .first();
+      if (user) return { _id: user._id };
+    }
+    return null;
+  },
+});
+
 export const getUserStatus = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
