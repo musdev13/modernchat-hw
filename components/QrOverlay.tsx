@@ -1,11 +1,12 @@
 import { GlassBackdrop } from "@/components/Glass";
 import { QrCode } from "@/components/QrCode";
-import { RoomAvatar } from "@/components/RoomAvatar";
+import { avatarColor, initialsOf } from "@/constants/theme";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import { copyText } from "@/utils/clipboard";
 import { userLink } from "@/utils/profileFormat";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Image as ExpoImage } from "expo-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, Pressable, Share, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -54,11 +55,16 @@ export function QrOverlay({ visible, onClose, name, username, avatarUrl }: Props
   const { width: W } = useWindowDimensions();
   const [mounted, setMounted] = useState(visible);
   const [copied, setCopied] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const progress = useSharedValue(0);
   const dragY = useSharedValue(0);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const unmount = useCallback(() => setMounted(false), []);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarUrl]);
 
   useEffect(() => {
     if (visible) {
@@ -151,16 +157,19 @@ export function QrOverlay({ visible, onClose, name, username, avatarUrl }: Props
       <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.center]}>
         <GestureDetector gesture={swipe}>
           <Animated.View style={[{ width: cardW }, cardStyle]}>
-            <View style={styles.card}>
-              <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
-                <Defs>
-                  <LinearGradient id="qrCard" x1="0" y1="0" x2="1" y2="1">
-                    <Stop offset="0" stopColor={top} stopOpacity="1" />
-                    <Stop offset="1" stopColor={bottom} stopOpacity="1" />
-                  </LinearGradient>
-                </Defs>
-                <Rect x="0" y="0" width="1" height="1" fill="url(#qrCard)" />
-              </Svg>
+            <View style={[styles.card, { backgroundColor: bottom }]}>
+              {/* Градієнт лежить у власному контейнері з однаковим радіусом з усіх боків */}
+              <View pointerEvents="none" style={styles.gradientClip}>
+                <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
+                  <Defs>
+                    <LinearGradient id="qrCard" x1="0" y1="0" x2="1" y2="1">
+                      <Stop offset="0" stopColor={top} stopOpacity="1" />
+                      <Stop offset="1" stopColor={bottom} stopOpacity="1" />
+                    </LinearGradient>
+                  </Defs>
+                  <Rect x="0" y="0" width="1" height="1" fill="url(#qrCard)" />
+                </Svg>
+              </View>
 
               <View style={styles.grabber} />
 
@@ -168,7 +177,20 @@ export function QrOverlay({ visible, onClose, name, username, avatarUrl }: Props
                 <View style={[styles.tile, { width: tile, height: tile }]}>
                   <QrCode value={link} size={qrSize} quiet={0} level="Q" />
                   <View style={styles.avatarWrap} pointerEvents="none">
-                    <RoomAvatar title={name} imageUrl={avatarUrl ?? undefined} size={52} />
+                    <View style={[styles.avatarCircle, { backgroundColor: avatarColor(name || "?") }]}>
+                      {avatarUrl && !avatarFailed ? (
+                        <ExpoImage
+                          source={{ uri: avatarUrl }}
+                          contentFit="cover"
+                          transition={0}
+                          cachePolicy="memory-disk"
+                          onError={() => setAvatarFailed(true)}
+                          style={StyleSheet.absoluteFill}
+                        />
+                      ) : (
+                        <Text style={styles.avatarInitials}>{initialsOf(name)}</Text>
+                      )}
+                    </View>
                   </View>
                 </View>
               ) : (
@@ -226,17 +248,20 @@ export function QrOverlay({ visible, onClose, name, username, avatarUrl }: Props
 const styles = StyleSheet.create({
   center: { alignItems: "center", justifyContent: "center" },
   card: {
-    borderRadius: 32,
-    overflow: "hidden",
+    borderRadius: 28,
     alignItems: "center",
     paddingTop: 12,
-    paddingBottom: 22,
+    paddingBottom: 20,
     paddingHorizontal: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 16,
+  },
+  gradientClip: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 28,
+    overflow: "hidden",
   },
   grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.45)", marginBottom: 16 },
   tile: {
@@ -247,14 +272,26 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     position: "absolute",
-    padding: 4,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
   },
+  avatarCircle: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInitials: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
   noUser: { color: "#6B7280", fontSize: 14, textAlign: "center", marginTop: 10, paddingHorizontal: 18 },
   name: { color: "#FFFFFF", fontSize: 24, fontWeight: "800", marginTop: 20, alignSelf: "stretch", textAlign: "center" },
   username: { color: "rgba(255,255,255,0.86)", fontSize: 16, marginTop: 4, alignSelf: "stretch", textAlign: "center" },
-  buttons: { alignSelf: "stretch", marginTop: 22, gap: 10 },
+  buttons: { alignSelf: "stretch", marginTop: 22, gap: 12 },
   btn: { height: 50, borderRadius: 16, overflow: "hidden" },
   btnRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   btnText: { fontSize: 15.5, fontWeight: "700" },
