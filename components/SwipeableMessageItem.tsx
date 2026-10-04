@@ -1,5 +1,6 @@
 import { avatarColor, initialsOf } from "@/constants/theme";
 import { useSettings } from "@/context/SettingsContext";
+import { useStories } from "@/context/StoriesContext";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { emojiOnlyCount, formatTime, isStickerContent } from "@/utils/chat";
@@ -71,6 +72,9 @@ export interface MessageItemData {
   isSystem?: boolean;
   /** Ім'я першого автора, якщо повідомлення переслане. */
   forwardedFrom?: string;
+  /** Відповідь на історію / пересланa історія. */
+  storyId?: Id<"stories">;
+  storyQuote?: string;
 }
 
 interface SwipeableMessageItemProps {
@@ -699,6 +703,10 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   </TouchableOpacity>
                 )}
 
+                {item.storyId ? (
+                  <StoryChip storyId={item.storyId} quote={item.storyQuote} isOwn={isOwn} style={hasVisual ? { marginHorizontal: 4, marginTop: 4 } : undefined} />
+                ) : null}
+
                 {item.forwardedFrom ? (
                   <Text
                     numberOfLines={1}
@@ -942,6 +950,7 @@ export const SwipeableMessageItem = memo(
     prev.item.senderPremium === next.item.senderPremium &&
     prev.item.senderEmojiStatus === next.item.senderEmojiStatus &&
     prev.item.forwardedFrom === next.item.forwardedFrom &&
+    prev.item.storyId === next.item.storyId &&
     prev.item.senderPhoto === next.item.senderPhoto &&
     prev.item.replyToSender === next.item.replyToSender &&
     prev.item.replyToText === next.item.replyToText &&
@@ -952,3 +961,50 @@ export const SwipeableMessageItem = memo(
     JSON.stringify(prev.item.reactions) === JSON.stringify(next.item.reactions),
 );
 
+
+
+/** Картка історії в повідомленні (відповідь на історію або пересланa історія); тап відкриває її. */
+function StoryChip({
+  storyId,
+  quote,
+  isOwn,
+  style,
+}: {
+  storyId: Id<"stories">;
+  quote?: string;
+  isOwn: boolean;
+  style?: object;
+}) {
+  const c = useChatPalette();
+  const { openStoryById } = useStories();
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={() => void openStoryById(storyId)}
+      accessibilityRole="button"
+      accessibilityLabel="Відкрити історію"
+      style={[
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          marginBottom: 4,
+          paddingHorizontal: 8,
+          paddingVertical: 6,
+          borderRadius: 10,
+          borderLeftWidth: 3,
+          borderLeftColor: isOwn ? c.onAccent : c.accent,
+          backgroundColor: isOwn ? withAlpha(c.onAccent, 0.15) : withAlpha(c.accent, 0.1),
+        },
+        style,
+      ]}
+    >
+      <Ionicons name="albums-outline" size={18} color={isOwn ? c.onAccent : c.accent} />
+      <View style={{ marginLeft: 8, flexShrink: 1 }}>
+        <Text style={{ color: isOwn ? c.onAccent : c.accent, fontWeight: "700", fontSize: 12.5 }}>Історія</Text>
+        <Text numberOfLines={1} style={{ color: isOwn ? c.onAccent : c.text, opacity: 0.8, fontSize: 12.5 }}>
+          {quote || "Відкрити"}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}

@@ -16,6 +16,7 @@ import {
   useRowMenu,
 } from "@/components/ProfileParts";
 import { StretchyProfile, type ProfilePhoto } from "@/components/StretchyProfile";
+import { StoryHighlights } from "@/components/StoryHighlights";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette } from "@/hooks/useChatPalette";
@@ -148,6 +149,7 @@ export default function UserProfileScreen() {
       rightLabel="Меню"
       onRightPress={profile.username ? () => setMenuVisible(true) : undefined}
     >
+      <StoryHighlights userId={profile._id as Id<"users">} />
       {profile.phone || profile.bio || profile.username || birthday ? (
         <Section>
           {profile.phone ? (

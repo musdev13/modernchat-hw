@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { overlayV, privacyV, storyDefaultV } from "./storyValidators";
 
 export default defineSchema({
   users: defineTable({
@@ -41,6 +42,14 @@ export default defineSchema({
     // Анімований аватар (лише premium): відео або GIF/WebP поверх статичного кадру-постера (users.image).
     avatarAnimStorageId: v.optional(v.id("_storage")),
     avatarAnimKind: v.optional(v.union(v.literal("video"), v.literal("gif"))),
+    // Історії: «Близькі друзі», приховані автори, приватність за замовчуванням.
+    closeFriendIds: v.optional(v.array(v.id("users"))),
+    storyHidden: v.optional(v.array(v.id("users"))),
+    storyDefault: v.optional(storyDefaultV),
+    // Режим невидимки для історій (Premium): до stealthUntil перегляди не записуються.
+    stealthUntil: v.optional(v.number()),
+    stealthDay: v.optional(v.string()),
+    stealthUses: v.optional(v.number()),
   })
     .index("by_token", ["tokenIdentifier"])
     .index("by_email", ["email"])
@@ -124,6 +133,11 @@ export default defineSchema({
 
     // Пересланe повідомлення: ім'я першого автора.
     forwardedFrom: v.optional(v.string()),
+
+    // Відповідь на історію / пересилання історії: посилання та короткий опис.
+    storyId: v.optional(v.id("stories")),
+    storyOwnerId: v.optional(v.id("users")),
+    storyQuote: v.optional(v.string()),
   })
     .index("by_chat_room", ["chatRoomId"])
     .index("by_storage", ["storageId"])
@@ -246,9 +260,33 @@ export default defineSchema({
     durationMs: v.optional(v.number()),
     createdAt: v.number(),
     expiresAt: v.number(),
+    // Приватність (порожньо = усі), відповіді, захист від пересилання/збереження.
+    privacy: v.optional(privacyV),
+    allowReplies: v.optional(v.boolean()),
+    protectContent: v.optional(v.boolean()),
+    // Накладки редактора (текст / емодзі-стікери) і згадані користувачі.
+    overlays: v.optional(v.array(overlayV)),
+    mentionIds: v.optional(v.array(v.id("users"))),
+    // «Збережена» історія (підбірка в профілі) — не видаляється після завершення.
+    highlight: v.optional(v.boolean()),
+    // Репост чужої історії: автор оригіналу.
+    repostOfUserId: v.optional(v.id("users")),
+    // Коли крон може прибрати завершену історію (архів: premium/підбірки — зберігаються).
+    purgeAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
-    .index("by_expires", ["expiresAt"]),
+    .index("by_expires", ["expiresAt"])
+    .index("by_storage", ["storageId"])
+    .index("by_purge", ["purgeAt"]),
+
+  storyReactions: defineTable({
+    storyId: v.id("stories"),
+    userId: v.id("users"),
+    emoji: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_story", ["storyId"])
+    .index("by_story_and_user", ["storyId", "userId"]),
 
   storyViews: defineTable({
     storyId: v.id("stories"),
@@ -256,6 +294,7 @@ export default defineSchema({
     viewedAt: v.number(),
   })
     .index("by_story", ["storyId"])
+    .index("by_viewer", ["viewerId", "viewedAt"])
     .index("by_story_and_viewer", ["storyId", "viewerId"]),
 
   // Журнал видачі/відкликання преміуму адміністраторами.

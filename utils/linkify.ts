@@ -132,3 +132,9 @@ export function userNameOf(href: string): string | null {
   const m = href.match(/^(?:modesto|modernchat):\/\/u\/([A-Za-z0-9_]+)/i);
   return m ? m[1] : null;
 }
+
+/** Id історії з modesto://s/<id>. */
+export function storyIdOf(href: string): string | null {
+  const m = href.match(/^(?:modesto|modernchat):\/\/s\/([A-Za-z0-9]+)/i);
+  return m ? m[1] : null;
+}

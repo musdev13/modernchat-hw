@@ -54,6 +54,10 @@ function usePushNotificationsNative() {
 
   const handleNotificationNavigation = (data: any) => {
     if (!data) return;
+    if (data.type === "story" && data.storyId) {
+      router.push(`/s/${data.storyId}` as never);
+      return;
+    }
     const roomId = data.chatRoomId || data.conversationId;
     if (roomId) {
       router.push(`/chat/${roomId}`);

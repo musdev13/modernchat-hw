@@ -80,6 +80,22 @@ export default function AppLayout() {
         }}
       />
       <Stack.Screen
+        name="s/[id]"
+        options={{ headerShown: false, animation: "fade" }}
+      />
+      <Stack.Screen
+        name="prefs/story-privacy"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="prefs/story-users"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
+        name="prefs/stories-archive"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
         name="user/[id]"
         options={{
           headerShown: false,

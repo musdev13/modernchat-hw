@@ -17,7 +17,7 @@ import { getAuthUser, premiumFlags } from "./users";
 const PRESENCE_TTL_MS = 30_000;
 
 // Рядок для списку чатів: у групах з іменем відправника, в особистих чатах — без нього.
-function previewLine(
+export function previewLine(
   room: { isDirect?: boolean; isChannel?: boolean } | null | undefined,
   senderName: string,
   text: string,
@@ -25,7 +25,7 @@ function previewLine(
   return room?.isDirect || room?.isChannel ? text : `${senderName}: ${text}`;
 }
 
-async function assertRoomMember(
+export async function assertRoomMember(
   ctx: any,
   roomId: Id<"chatRooms">,
   userId: Id<"users">,
@@ -54,7 +54,7 @@ async function isUserInRoom(
   return presence.lastSeenAt > Date.now() - PRESENCE_TTL_MS;
 }
 
-async function schedulePushForNewMessage(
+export async function schedulePushForNewMessage(
   ctx: any,
   params: {
     roomId: Id<"chatRooms">;

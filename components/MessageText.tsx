@@ -1,9 +1,11 @@
 import type { SheetAction } from "@/components/ActionSheet";
 import { PopoverMenu } from "@/components/PopoverMenu";
+import { useStories } from "@/context/StoriesContext";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import { copyText } from "@/utils/clipboard";
-import { channelSlugOf, tokenize, userNameOf, type LinkKind } from "@/utils/linkify";
+import { channelSlugOf, storyIdOf, tokenize, userNameOf, type LinkKind } from "@/utils/linkify";
 import { useConvex } from "convex/react";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
@@ -63,13 +65,16 @@ const subscribe = (l: () => void) => {
 /** Відкриття посилання: канал/профіль — всередині застосунку, решта — системою. */
 export function useOpenLink() {
   const convex = useConvex();
+  const { openStoryById } = useStories();
   return useCallback(
     async (t: LinkTarget) => {
       try {
         if (t.kind === "app") {
           const slug = channelSlugOf(t.href);
           const uname = userNameOf(t.href);
-          if (slug) router.push(`/c/${slug}` as never);
+          const storyId = storyIdOf(t.href);
+          if (storyId) await openStoryById(storyId as Id<"stories">);
+          else if (slug) router.push(`/c/${slug}` as never);
           else if (uname) router.push(`/u/${uname}` as never);
           else await Linking.openURL(t.href);
           return;
@@ -85,7 +90,7 @@ export function useOpenLink() {
         Alert.alert("Не вдалося відкрити", t.text);
       }
     },
-    [convex],
+    [convex, openStoryById],
   );
 }
 

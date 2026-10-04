@@ -23,6 +23,7 @@ import {
 } from "@/components/ProfileParts";
 import { useAnimatedAvatar } from "@/hooks/useAnimatedAvatar";
 import { StretchyProfile, type ProfilePhoto } from "@/components/StretchyProfile";
+import { StoryHighlights } from "@/components/StoryHighlights";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette } from "@/hooks/useChatPalette";
@@ -257,6 +258,7 @@ export default function ProfileScreen() {
         }
         bottomInset={tabSpace + 56}
       >
+        <StoryHighlights userId={profile._id as Id<"users">} isSelf />
         <Section>
           <InfoRow
             first
