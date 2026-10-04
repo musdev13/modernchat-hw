@@ -23,6 +23,8 @@ interface Props {
   onClose: () => void;
   onReact: (emoji: string) => void;
   onMoreReactions: () => void;
+  premium?: boolean;
+  onLockedReaction?: () => void;
 }
 
 /** Меню довгого натискання: швидкі реакції + список дій (спільний стиль PopoverMenu). */
@@ -34,6 +36,8 @@ export function MessageActionSheet({
   onClose,
   onReact,
   onMoreReactions,
+  premium,
+  onLockedReaction,
 }: Props) {
   return (
     <PopoverMenu
@@ -49,6 +53,11 @@ export function MessageActionSheet({
             onClose();
           }}
           onMore={onMoreReactions}
+          premium={premium}
+          onLocked={() => {
+            onClose();
+            onLockedReaction?.();
+          }}
         />
       }
       actions={actions}

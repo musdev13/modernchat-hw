@@ -50,6 +50,13 @@ export default defineSchema({
     stealthUntil: v.optional(v.number()),
     stealthDay: v.optional(v.string()),
     stealthUses: v.optional(v.number()),
+    // Modesto Premium: кольори профілю / імені (лише premium) та приватність.
+    nameColor: v.optional(v.string()),
+    profileColor: v.optional(v.string()),
+    profilePattern: v.optional(v.string()),
+    hideReadReceipts: v.optional(v.boolean()),
+    whoCanMessage: v.optional(v.union(v.literal("all"), v.literal("contacts"))),
+    autoArchiveNonContacts: v.optional(v.boolean()),
   })
     .index("by_token", ["tokenIdentifier"])
     .index("by_email", ["email"])
@@ -138,6 +145,11 @@ export default defineSchema({
     storyId: v.optional(v.id("stories")),
     storyOwnerId: v.optional(v.id("users")),
     storyQuote: v.optional(v.string()),
+
+    // Ефект повідомлення (Premium): повноекранна анімація при отриманні.
+    effect: v.optional(v.string()),
+    // Тег «Збереженого» (емодзі, Premium).
+    tag: v.optional(v.string()),
   })
     .index("by_chat_room", ["chatRoomId"])
     .index("by_storage", ["storageId"])
@@ -208,10 +220,25 @@ export default defineSchema({
     hiddenAt: v.optional(v.number()),
     // «Очистити історію» лише для себе: повідомлення, створені до цього моменту, не показуються.
     clearedAt: v.optional(v.number()),
+    // Чат в архіві (вручну або автоматично для нових чатів від незнайомих — Premium).
+    archived: v.optional(v.boolean()),
   })
     .index("by_user_and_room", ["userId", "chatRoomId"])
     .index("by_user", ["userId"])
     .index("by_room", ["chatRoomId"]),
+
+  // Кеш перекладів повідомлень та добовий ліміт запитів (Premium).
+  translations: defineTable({
+    messageId: v.id("messages"),
+    lang: v.string(),
+    source: v.string(),
+    text: v.string(),
+  }).index("by_message_lang", ["messageId", "lang"]),
+  translationUsage: defineTable({
+    userId: v.id("users"),
+    day: v.string(),
+    count: v.number(),
+  }).index("by_user_and_day", ["userId", "day"]),
 
   // Власні папки чатів (Premium розширює кількість папок і чатів у папці).
   chatFolders: defineTable({

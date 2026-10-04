@@ -1,5 +1,5 @@
 import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { MutationCtx, mutation, query } from "./_generated/server";
@@ -9,7 +9,9 @@ import {
   hiddenMessageIds,
   releaseMessageFiles,
 } from "./messageStorage";
-import { limitError, limitsFor } from "./limitHelpers";
+import { assertRecipientAllows, limitError, limitsFor, premiumFlagOn, premiumOnlyError } from "./limitHelpers";
+import { MESSAGE_EFFECTS, isFreeReaction } from "./limits";
+import { patchRoomSetting } from "./roomSettings";
 import { deletePollWithVotes, pollView } from "./polls";
 import { clearedAtOf, isMutedNow } from "./roomSettings";
 import { getAuthUser, premiumFlags } from "./users";
@@ -55,6 +57,44 @@ async function isUserInRoom(
   return presence.lastSeenAt > Date.now() - PRESENCE_TTL_MS;
 }
 
+/**
+ * Архів: власне повідомлення повертає чат із архіву; перше повідомлення від незнайомого в особистий
+ * чат автоматично архівується в одержувача, якщо в нього Premium і ввімкнено «Автоархів нових чатів».
+ */
+async function applyArchiveRules(
+  ctx: any,
+  roomId: Id<"chatRooms">,
+  senderId: Id<"users">,
+  recipientIds: Id<"users">[],
+) {
+  const room = await ctx.db.get(roomId);
+  if (!room) return;
+  const senderSetting = await ctx.db
+    .query("roomSettings")
+    .withIndex("by_user_and_room", (q: any) => q.eq("userId", senderId).eq("chatRoomId", roomId))
+    .first();
+  if (senderSetting?.archived) await patchRoomSetting(ctx, senderId, roomId, { archived: false });
+
+  if (!room.isDirect || room.isSaved) return;
+  for (const rid of recipientIds) {
+    const recipient = await ctx.db.get(rid);
+    if (!recipient || !premiumFlagOn(recipient, recipient.autoArchiveNonContacts)) continue;
+    const setting = await ctx.db
+      .query("roomSettings")
+      .withIndex("by_user_and_room", (q: any) => q.eq("userId", rid).eq("chatRoomId", roomId))
+      .first();
+    if (setting && setting.archived !== undefined) continue;
+    // Незнайомий: одержувач ще не писав у цей чат.
+    const recent = await ctx.db
+      .query("messages")
+      .withIndex("by_chat_room", (q: any) => q.eq("chatRoomId", roomId))
+      .order("desc")
+      .take(200);
+    if (recent.some((m: any) => m.senderId === rid)) continue;
+    await patchRoomSetting(ctx, rid, roomId, { archived: true });
+  }
+}
+
 export async function schedulePushForNewMessage(
   ctx: any,
   params: {
@@ -76,6 +116,7 @@ export async function schedulePushForNewMessage(
   } = params;
 
   const recipientIds = participantIds.filter((id) => id !== senderId);
+  await applyArchiveRules(ctx, roomId, senderId, recipientIds);
   if (recipientIds.length === 0) return;
 
   const recipients = await Promise.all(
@@ -179,11 +220,15 @@ export const getPaginatedMessages = query({
 
     // Преміум-прапорці авторів (бейдж ⭐ біля імені) — один запит на унікального автора.
     const senderIds = Array.from(new Set(paginated.page.map((m) => m.senderId as string)));
-    const senderFlags = new Map<string, { isPremium: boolean; emojiStatus?: string }>();
+    const senderFlags = new Map<string, { isPremium: boolean; emojiStatus?: string; nameColor?: string }>();
     await Promise.all(
       senderIds.map(async (id) => {
         const sender = await ctx.db.get(id as Id<"users">);
-        senderFlags.set(id, premiumFlags(sender));
+        const flags = premiumFlags(sender);
+        senderFlags.set(id, {
+          ...flags,
+          nameColor: flags.isPremium && sender?.nameColor ? sender.nameColor : undefined,
+        });
       }),
     );
 
@@ -218,6 +263,7 @@ export const getPaginatedMessages = query({
           ...message,
           senderPremium: senderFlags.get(message.senderId as string)?.isPremium ?? false,
           senderEmojiStatus: senderFlags.get(message.senderId as string)?.emojiStatus,
+          senderNameColor: senderFlags.get(message.senderId as string)?.nameColor,
           poll,
           reactions: Array.from(grouped, ([emoji, reaction]) => ({
             emoji,
@@ -273,30 +319,46 @@ export const toggleReaction = mutation({
     const message = await ctx.db.get(args.messageId);
     if (!message) throw new Error("Message not found: Повідомлення не знайдено");
     await assertRoomMember(ctx, message.chatRoomId, userId);
+    if (!args.emoji || args.emoji.length > 16) throw new Error("Некоректна реакція");
 
-    const existing = await ctx.db
+    const mine = await ctx.db
       .query("messageReactions")
       .withIndex("by_user_and_message", (q) =>
         q.eq("userId", userId).eq("messageId", args.messageId),
       )
-      .first();
+      .collect();
 
-    if (!existing) {
-      await ctx.db.insert("messageReactions", {
-        messageId: args.messageId,
-        userId,
-        emoji: args.emoji,
-      });
-      return { action: "added", emoji: args.emoji };
-    }
-
-    if (existing.emoji === args.emoji) {
-      await ctx.db.delete(existing._id);
+    // Повторне натискання знімає реакцію.
+    const same = mine.find((r) => r.emoji === args.emoji);
+    if (same) {
+      await ctx.db.delete(same._id);
       return { action: "removed", emoji: args.emoji };
     }
 
-    await ctx.db.patch(existing._id, { emoji: args.emoji });
-    return { action: "updated", emoji: args.emoji };
+    // Не з безкоштовного набору — лише Premium.
+    if (!isFreeReaction(args.emoji) && !premiumFlagOn(me, true)) {
+      throw premiumOnlyError("Ця реакція доступна лише з Modesto Premium.");
+    }
+
+    const max = limitsFor(me).reactionsPerMessage;
+    if (mine.length >= max) {
+      if (max === 1) {
+        // Безкоштовно: одна реакція — нова замінює стару.
+        await ctx.db.patch(mine[0]._id, { emoji: args.emoji });
+        return { action: "updated", emoji: args.emoji };
+      }
+      throw new ConvexError({
+        code: "MAX_REACTIONS",
+        message: `На одне повідомлення можна поставити до ${max} реакцій. Зніміть одну з них.`,
+      });
+    }
+
+    await ctx.db.insert("messageReactions", {
+      messageId: args.messageId,
+      userId,
+      emoji: args.emoji,
+    });
+    return { action: "added", emoji: args.emoji };
   },
 });
 
@@ -517,6 +579,7 @@ export const sendMessage = mutation({
     replyToId: v.optional(v.id("messages")),
     replyToSender: v.optional(v.string()),
     replyToText: v.optional(v.string()),
+    effect: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await getAuthUser(ctx);
@@ -525,12 +588,18 @@ export const sendMessage = mutation({
 
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
     assertCanPost(room, userId);
+    await assertRecipientAllows(ctx, room, userId);
 
     const trimmedContent = args.content.trim();
     if (!trimmedContent) throw new Error("Message content cannot be empty");
     assertTextLength(user, trimmedContent, "message");
+    if (args.effect) {
+      if (!(MESSAGE_EFFECTS as readonly string[]).includes(args.effect)) throw new Error("Невідомий ефект");
+      if (!premiumFlagOn(user, true)) throw premiumOnlyError("Ефекти повідомлень доступні лише з Modesto Premium.");
+    }
 
     const messageId = await ctx.db.insert("messages", {
+      effect: args.effect,
       chatRoomId: args.chatRoomId,
       senderId: userId,
       senderName: user.name ?? user.email ?? "Користувач",
@@ -577,6 +646,7 @@ export const forwardMessage = mutation({
     await assertRoomMember(ctx, message.chatRoomId, user._id);
     const room = await assertRoomMember(ctx, args.targetChatRoomId, user._id);
     assertCanPost(room, user._id);
+    await assertRecipientAllows(ctx, room, user._id);
     if (message.isSystem) throw new Error("Системні повідомлення не пересилаються");
     if (message.pollId) throw new Error("Опитування не можна переслати");
 
@@ -778,6 +848,7 @@ export const sendMediaMessage = mutation({
 
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
     assertCanPost(room, userId);
+    await assertRecipientAllows(ctx, room, userId);
 
     assertTextLength(user, args.caption?.trim(), "caption");
     await assertFileSize(ctx, user, args.storageId);
@@ -833,6 +904,7 @@ export const createPoll = mutation({
     if (!user) throw new Error("Unauthorized: Потрібна авторизація");
     const room = await assertRoomMember(ctx, args.chatRoomId, user._id);
     assertCanPost(room, user._id);
+    await assertRecipientAllows(ctx, room, user._id);
 
     const question = args.question.trim();
     if (!question) throw new Error("Введіть запитання");
@@ -905,6 +977,7 @@ export const sendAttachment = mutation({
     const userId = user._id;
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
     assertCanPost(room, userId);
+    await assertRecipientAllows(ctx, room, userId);
 
     assertTextLength(user, args.caption?.trim(), "caption");
     await assertFileSize(ctx, user, args.storageId);
@@ -992,6 +1065,7 @@ export const sendVoiceMessage = mutation({
 
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
     assertCanPost(room, userId);
+    await assertRecipientAllows(ctx, room, userId);
 
     const audioUrl = await ctx.storage.getUrl(args.audioStorageId);
     if (!audioUrl) throw new Error("Не вдалося отримати посилання на аудіофайл");
@@ -1055,6 +1129,7 @@ export const sendVideoNote = mutation({
 
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
     assertCanPost(room, userId);
+    await assertRecipientAllows(ctx, room, userId);
 
     const videoUrl = await ctx.storage.getUrl(args.videoStorageId);
     if (!videoUrl) throw new Error("Не вдалося отримати посилання на відеофайл");

@@ -81,6 +81,22 @@ export default function AppearanceSettings() {
           }}
         />
       </Group>
+      <Group footer="Ширша картка попереднього перегляду посилань з великим зображенням.">
+        <SwitchRow
+          icon="link"
+          tint="#3B82F6"
+          label="Великі перегляди посилань"
+          sub={premium.isPremium ? undefined : "Лише з Modesto Premium"}
+          value={premium.isPremium && settings.appearance.largeLinkPreview}
+          onChange={(v) => {
+            if (!premium.isPremium) {
+              openUpsell("general", "Великі попередні перегляди посилань доступні з Modesto Premium.");
+              return;
+            }
+            update("appearance", { largeLinkPreview: v });
+          }}
+        />
+      </Group>
     </SettingsPage>
   );
 }

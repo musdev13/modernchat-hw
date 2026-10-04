@@ -195,6 +195,8 @@ export default function ProfileScreen() {
         name={profile.name}
         isPremium={profile.isPremium}
         emojiStatus={profile.emojiStatus}
+        profileColor={profile.isPremium ? profile.profileColor : undefined}
+        profilePattern={profile.isPremium ? profile.profilePattern : undefined}
         imageUrl={profile.image}
         photos={photos}
         viewerActions={viewerActions}

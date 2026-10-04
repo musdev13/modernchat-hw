@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { MutationCtx, mutation, query } from "./_generated/server";
-import { assertCanJoinMore } from "./limitHelpers";
+import { assertCanJoinMore, assertRecipientAllows } from "./limitHelpers";
 import { canPostIn, releaseMessageFiles } from "./messageStorage";
 import { deletePollWithVotes } from "./polls";
 import { isMutedNow, patchRoomSetting } from "./roomSettings";
@@ -118,6 +118,7 @@ export const listRooms = query({
         mutedUntil: isMutedNow(setting, now) ? setting?.mutedUntil : undefined,
         // «Збережене» завжди закріплене нагорі.
         pinned: isSaved || !!setting?.pinned,
+        archived: !isSaved && !!setting?.archived,
       };
     }),
     );
@@ -327,6 +328,7 @@ export const getOrCreateDirectRoom = mutation({
     if (existing) {
       roomId = existing._id;
     } else {
+      await assertRecipientAllows(ctx, null, me._id, other);
       roomId = await ctx.db.insert("chatRooms", {
         title: DIRECT_ROOM_TITLE,
         creatorId: me._id,

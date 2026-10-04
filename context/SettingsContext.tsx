@@ -12,6 +12,8 @@ export interface AppSettings {
     animations: boolean;
     /** Анімовані зірки на тлі чату. */
     chatStars: boolean;
+    /** Premium: великі попередні перегляди посилань (ширша картка та велике зображення). */
+    largeLinkPreview: boolean;
   };
   data: {
     autoPhoto: boolean;
@@ -34,7 +36,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  appearance: { textScale: 1, bubbleRadius: 18, animations: true, chatStars: false },
+  appearance: { textScale: 1, bubbleRadius: 18, animations: true, chatStars: false, largeLinkPreview: false },
   data: { autoPhoto: true, autoVideo: true },
   notifications: { inApp: true },
   privacy: { sendTyping: true },

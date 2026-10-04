@@ -51,6 +51,7 @@ export default function ChatsTab() {
   const hideRoom = useMutation(api.roomSettings.hideRoom);
   const setPinned = useMutation(api.roomSettings.setPinned);
   const setMuted = useMutation(api.roomSettings.setMuted);
+  const setArchived = useMutation(api.roomSettings.setArchived);
 
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -106,8 +107,13 @@ export default function ChatsTab() {
       unread: 0,
     };
     for (const f of customFolders) counts[f.key] = 0;
+    counts.archive = 0;
     for (const r of rooms ?? []) {
       if ((unread?.counts[r._id] ?? 0) <= 0) continue;
+      if (r.archived) {
+        counts.archive += 1;
+        continue;
+      }
       for (const f of customFolders) if (!r.muted && f.roomIds.has(r._id)) counts[f.key] += 1;
       counts.unread += 1;
       if (r.muted) continue;
@@ -119,11 +125,17 @@ export default function ChatsTab() {
     return counts;
   }, [rooms, unread, customFolders]);
 
+  const hasArchived = rooms?.some((r) => r.archived) ?? false;
   const filteredRooms = useMemo(() => {
     if (!rooms) return rooms;
     const q = search.trim().toLowerCase();
     const custom = customFolders.find((f) => f.key === folder);
     return rooms.filter((r) => {
+      if (folder === "archive") {
+        if (!r.archived) return false;
+      } else if (r.archived && !q) {
+        return false;
+      }
       if (custom && !custom.roomIds.has(r._id)) return false;
       if (folder === "direct" && !r.isDirect) return false;
       if (folder === "groups" && (r.isDirect || r.isChannel)) return false;
@@ -227,6 +239,16 @@ export default function ChatsTab() {
           },
         },
         {
+          key: "archive",
+          label: menuRoom.archived ? "Повернути з архіву" : "В архів",
+          icon: menuRoom.archived ? "arrow-undo-outline" : "archive-outline",
+          onPress: () => {
+            setArchived({ chatRoomId: menuRoom._id, archived: !menuRoom.archived })
+              .then(() => Haptics.selectionAsync())
+              .catch((e) => showError(e, "Не вдалося змінити архів"));
+          },
+        },
+        {
           key: "mute",
           label: menuRoom.muted ? "Увімкнути сповіщення" : "Вимкнути сповіщення",
           icon: menuRoom.muted ? "notifications-outline" : "notifications-off-outline",
@@ -318,7 +340,12 @@ export default function ChatsTab() {
           </View>
 
           <SearchField value={search} onChangeText={setSearch} placeholder="Пошук чатів" />
-          <ChatFolderTabs active={folder} onChange={setFolder} counts={folderCounts} custom={customFolders} />
+          <ChatFolderTabs
+            active={folder}
+            onChange={setFolder}
+            counts={folderCounts}
+            custom={[...customFolders, ...(hasArchived || folder === "archive" ? [{ key: "archive", label: "Архів" }] : [])]}
+          />
         </View>
 
         <GlassTarget style={{ flex: 1, backgroundColor: c.bg }}>
@@ -401,6 +428,8 @@ export default function ChatsTab() {
                       ? "Нічого не знайдено"
                       : folder === "unread"
                         ? "Непрочитаних чатів немає"
+                        : folder === "archive"
+                          ? "Архів порожній"
                         : folder === "channels"
                           ? "Ви ще не підписані на канали"
                         : "У цій папці поки немає чатів"}

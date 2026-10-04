@@ -96,6 +96,10 @@ export default function AppLayout() {
         options={{ headerShown: false, animation: "slide_from_right" }}
       />
       <Stack.Screen
+        name="prefs/profile-style"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
         name="prefs/stories-archive"
         options={{ headerShown: false, animation: "slide_from_right" }}
       />

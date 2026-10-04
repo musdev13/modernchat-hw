@@ -1,5 +1,7 @@
 import { noteLinkTouch, showLinkMenu, useOpenLink } from "@/components/MessageText";
+import { useSettings } from "@/context/SettingsContext";
 import { api } from "@/convex/_generated/api";
+import { usePremium } from "@/hooks/usePremium";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { useAction, useQuery } from "convex/react";
 import { Image } from "expo-image";
@@ -54,6 +56,10 @@ function Skeleton({ isOwn }: { isOwn: boolean }) {
 export const LinkPreviewCard = memo(function LinkPreviewCard({ url, isOwn }: { url: string; isOwn: boolean }) {
   const c = useChatPalette();
   const open = useOpenLink();
+  const { settings } = useSettings();
+  const { isPremium } = usePremium();
+  const large = isPremium && settings.appearance.largeLinkPreview;
+  const cardWidth = large ? 280 : CARD_WIDTH;
   const row = useQuery(api.linkPreview.getCached, { url });
   const fetchPreview = useAction(api.linkPreview.fetchLinkPreview);
   const [failed, setFailed] = useState(false);
@@ -84,7 +90,7 @@ export const LinkPreviewCard = memo(function LinkPreviewCard({ url, isOwn }: { u
       onPress={() => void open(target)}
       onLongPress={() => showLinkMenu(target)}
       accessibilityRole="link"
-      style={{ width: CARD_WIDTH, marginTop: 6, paddingLeft: 10 }}
+      style={{ width: cardWidth, marginTop: 6, paddingLeft: 10 }}
     >
       <View
         style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, borderRadius: 2, backgroundColor: bar }}
@@ -112,8 +118,8 @@ export const LinkPreviewCard = memo(function LinkPreviewCard({ url, isOwn }: { u
           cachePolicy="memory-disk"
           recyclingKey={row.image}
           style={{
-            width: CARD_WIDTH - 10,
-            height: 130,
+            width: cardWidth - 10,
+            height: large ? 190 : 130,
             borderRadius: 10,
             marginTop: 6,
             backgroundColor: withAlpha(subColor, 0.2),

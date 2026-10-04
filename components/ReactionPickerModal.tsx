@@ -1,10 +1,12 @@
 import { QUICK_REACTIONS } from "@/constants/emoji";
+import { PREMIUM_REACTIONS } from "@/convex/limits";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import {
   Modal,
   Pressable,
+  ScrollView,
   Text,
   TouchableOpacity,
   View,
@@ -18,13 +20,17 @@ type QuickBarProps = {
   selected?: string[];
   onSelect: (emoji: string) => void;
   onMore: () => void;
+  /** Є Premium: додатковий ряд реакцій доступний; інакше — із замком, тап відкриває пропозицію. */
+  premium?: boolean;
+  onLocked?: () => void;
 };
 
 /** Рядок швидких реакцій + кнопка «ще» (відкриває повну панель емодзі). */
-export function QuickReactionBar({ selected = [], onSelect, onMore }: QuickBarProps) {
+export function QuickReactionBar({ selected = [], onSelect, onMore, premium = false, onLocked }: QuickBarProps) {
   const c = useChatPalette();
 
   return (
+    <View>
     <View
       style={{
         flexDirection: "row",
@@ -79,6 +85,52 @@ export function QuickReactionBar({ selected = [], onSelect, onMore }: QuickBarPr
         <Ionicons name="add" size={20} color={c.muted} />
       </TouchableOpacity>
     </View>
+    <View
+      style={{
+        marginTop: 6,
+        backgroundColor: c.sheet,
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: c.divider,
+        height: 46,
+      }}
+    >
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: "center", paddingHorizontal: 8 }}>
+        {!premium ? (
+          <Ionicons name="lock-closed" size={14} color={c.muted} style={{ marginRight: 4 }} />
+        ) : (
+          <Ionicons name="star" size={14} color="#F5C451" style={{ marginRight: 4 }} />
+        )}
+        {PREMIUM_REACTIONS.map((emoji) => {
+          const active = selected.includes(emoji);
+          return (
+            <TouchableOpacity
+              key={emoji}
+              activeOpacity={0.6}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                if (premium) onSelect(emoji);
+                else onLocked?.();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Premium-реакція ${emoji}`}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: active ? c.field : "transparent",
+                opacity: premium ? 1 : 0.55,
+              }}
+            >
+              <Text style={{ fontSize: 22 }}>{emoji}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+    </View>
   );
 }
 
@@ -86,10 +138,11 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   onSelectEmoji: (emoji: string) => void;
+  title?: string;
 };
 
 /** Повна панель емодзі як нижній лист — вибір реакції на повідомлення. */
-export function ReactionPickerModal({ visible, onClose, onSelectEmoji }: Props) {
+export function ReactionPickerModal({ visible, onClose, onSelectEmoji, title = "Оберіть реакцію" }: Props) {
   const c = useChatPalette();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -109,7 +162,7 @@ export function ReactionPickerModal({ visible, onClose, onSelectEmoji }: Props) 
           <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: c.divider }} />
         </View>
         <Text style={{ color: c.text, fontSize: 15, fontWeight: "700", textAlign: "center", marginBottom: 4 }}>
-          Оберіть реакцію
+          {title}
         </Text>
         <EmojiPanel
           height={panelHeight}

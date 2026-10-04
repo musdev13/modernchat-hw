@@ -138,6 +138,8 @@ export default function UserProfileScreen() {
       name={profile.name}
       isPremium={profile.isPremium}
       emojiStatus={profile.emojiStatus}
+      profileColor={profile.profileColor}
+      profilePattern={profile.profilePattern}
       imageUrl={profile.image}
       status={status}
       statusAccent={profile.online}

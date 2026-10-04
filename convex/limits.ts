@@ -77,3 +77,8 @@ export type ProfilePattern = (typeof PROFILE_PATTERNS)[number];
 /** Ефекти повідомлень (Premium). */
 export const MESSAGE_EFFECTS = ["confetti", "fire", "hearts", "like"] as const;
 export type MessageEffect = (typeof MESSAGE_EFFECTS)[number];
+
+/** Реакції, доступні без Premium. */
+export function isFreeReaction(emoji: string): boolean {
+  return (FREE_REACTIONS as readonly string[]).includes(emoji);
+}

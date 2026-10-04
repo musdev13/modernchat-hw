@@ -21,6 +21,7 @@ import { ForwardSheet } from "@/components/ForwardSheet";
 import { NameBadges } from "@/components/PremiumBadge";
 import { useTheme } from "@/context/ThemeContext";
 import { RoomAvatar } from "@/components/RoomAvatar";
+import { EFFECT_DURATION_MS, EFFECT_META, EffectKey, MessageEffectOverlay } from "@/components/MessageEffects";
 import { ReactionPickerModal } from "@/components/ReactionPickerModal";
 import { ReactorsSheet } from "@/components/ReactorsSheet";
 import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
@@ -36,6 +37,7 @@ import { usePremiumUi } from "@/context/PremiumContext";
 import { api } from "@/convex/_generated/api";
 import { convexErrorText, isLimitError } from "@/utils/convexError";
 import { useLimits } from "@/hooks/useLimits";
+import { MESSAGE_EFFECTS } from "@/convex/limits";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
@@ -62,7 +64,7 @@ import {
   isStickerContent,
 } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
-import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { File, Paths } from "expo-file-system";
 import * as Haptics from "expo-haptics";
@@ -164,7 +166,28 @@ export default function ChatRoomScreen() {
   const sendAttachment = useMutation(api.messages.sendAttachment);
   const discardOversized = useMutation(api.messages.discardOversizedUpload);
   const { openUpsell } = usePremiumUi();
-  const { limits: myLimits } = useLimits();
+  const { limits: myLimits, isPremium: iAmPremium } = useLimits();
+  const translateMessage = useAction(api.translate.translateMessage);
+  const setMessageTag = useMutation(api.premiumFeatures.setMessageTag);
+  const savedTags = useQuery(api.premiumFeatures.savedTags, { chatRoomId });
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [tagPickerFor, setTagPickerFor] = useState<Id<"messages"> | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [effectMenuOpen, setEffectMenuOpen] = useState(false);
+  const [effectRun, setEffectRun] = useState<{ key: number; effect: EffectKey } | null>(null);
+  const effectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playedEffects = useRef(new Set<string>());
+  const playEffect = useCallback((effect: EffectKey) => {
+    if (effectTimer.current) clearTimeout(effectTimer.current);
+    setEffectRun({ key: Date.now(), effect });
+    effectTimer.current = setTimeout(() => setEffectRun(null), EFFECT_DURATION_MS + 600);
+  }, []);
+  useEffect(
+    () => () => {
+      if (effectTimer.current) clearTimeout(effectTimer.current);
+    },
+    [],
+  );
   const createPoll = useMutation(api.messages.createPoll);
   const sendVoiceMessage = useMutation(api.messages.sendVoiceMessage);
   const sendVideoNote = useMutation(api.messages.sendVideoNote);
@@ -575,10 +598,11 @@ export default function ChatRoomScreen() {
       try {
         await toggleReaction({ messageId, emoji });
       } catch (error) {
-        console.error("Не вдалося змінити реакцію:", error);
+        if (isLimitError(error)) openUpsell("reactions", convexErrorText(error));
+        else Alert.alert("Реакція", convexErrorText(error, "Не вдалося змінити реакцію"));
       }
     },
-    [toggleReaction],
+    [toggleReaction, openUpsell],
   );
 
   // Пересилання текстового повідомлення в інший чат.
@@ -712,7 +736,7 @@ export default function ChatRoomScreen() {
     clearTyping({ chatRoomId }).catch(() => {});
   }, [chatRoomId, clearTyping]);
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (effect?: EffectKey) => {
     const text = inputText.trim();
 
     if ((!text && attachments.length === 0) || isSubmitting) return;
@@ -786,6 +810,7 @@ export default function ChatRoomScreen() {
         await sendMessage({
           chatRoomId,
           content: text,
+          effect,
           replyToId: replyTarget
             ? (replyTarget.messageId as Id<"messages">)
             : undefined,
@@ -794,6 +819,7 @@ export default function ChatRoomScreen() {
         });
 
         setReplyTarget(null);
+        if (effect) playEffect(effect);
       }
 
       setInputText(editingMessageId ? getDraft(chatRoomId) : "");
@@ -811,6 +837,7 @@ export default function ChatRoomScreen() {
     }
   }, [
     openUpsell,
+    playEffect,
     discardOversized,
     myLimits.fileMB,
     chatRoomId,
@@ -980,10 +1007,22 @@ export default function ChatRoomScreen() {
     [chatRoomId, replyTarget, sendVideoNote, uploadFile, resetTyping],
   );
 
+  // Ефект повідомлення від співрозмовника: відтворюємо лише для свіжого (<15 с) повідомлення, один раз.
+  useEffect(() => {
+    const m = messages[0] as { _id: string; _creationTime: number; effect?: string; senderId: string } | undefined;
+    if (!m?.effect || playedEffects.current.has(m._id)) return;
+    playedEffects.current.add(m._id);
+    if (m.senderId === currentUser?._id) return;
+    if (Date.now() - m._creationTime > 15000) return;
+    if ((MESSAGE_EFFECTS as readonly string[]).includes(m.effect)) playEffect(m.effect as EffectKey);
+  }, [messages, currentUser?._id, playEffect]);
+
   // ── Список ────────────────────────────────────────────
   // messages[0] — найновіше. «Старіше» повідомлення — наступний елемент масиву.
   const rows = useMemo<MessageRow[]>(() => {
-    const list = messages as unknown as MessageItemData[];
+    const all = messages as unknown as MessageItemData[];
+    // Фільтр за тегом у «Збереженому» (серед уже завантажених повідомлень).
+    const list = tagFilter ? all.filter((m) => m.tag === tagFilter) : all;
     return list.map((m, i) => {
       const older = list[i + 1];
       const newer = list[i - 1];
@@ -1012,7 +1051,7 @@ export default function ChatRoomScreen() {
         dateLabel: label,
       };
     });
-  }, [messages, status]);
+  }, [messages, status, tagFilter]);
 
   // ── Перехід до повідомлення (цитата, закріплене, пошук) ──
   const convex = useConvex();
@@ -1281,6 +1320,7 @@ export default function ChatRoomScreen() {
         isSelected={actionMessage?._id === row.item._id}
         dateLabel={row.dateLabel}
         onLongPress={handleOpenActions}
+        translation={translations[row.item._id]}
         onDoubleTap={(message) => handleToggleReaction(message._id, "❤️")}
         onToggleReaction={(emoji) => handleToggleReaction(row.item._id, emoji)}
         onShowReactors={setReactorsFor}
@@ -1314,6 +1354,7 @@ export default function ChatRoomScreen() {
       isChannel,
       canPost,
       router,
+      translations,
     ],
   );
 
@@ -1595,6 +1636,60 @@ export default function ChatRoomScreen() {
         onPress: () => void handleSaveMedia(m),
       });
     }
+    if (hasContent && !m.isSystem && !m.poll) {
+      list.push({
+        key: "translate",
+        label: translations[m._id] ? "Сховати переклад" : "Перекласти",
+        icon: "language-outline",
+        onPress: () => {
+          if (translations[m._id]) {
+            setTranslations((prev) => {
+              const next = { ...prev };
+              delete next[m._id];
+              return next;
+            });
+            return;
+          }
+          if (!iAmPremium) {
+            openUpsell("translate");
+            return;
+          }
+          setToast("Перекладаємо…");
+          translateMessage({ messageId: m._id, lang: "uk" })
+            .then((res) => {
+              setToast(null);
+              setTranslations((prev) => ({ ...prev, [m._id]: res.text }));
+            })
+            .catch((e) => {
+              setToast(null);
+              if (isLimitError(e)) openUpsell("translate", convexErrorText(e));
+              else Alert.alert("Переклад", convexErrorText(e, "Не вдалося перекласти"));
+            });
+        },
+      });
+    }
+    if (isSaved && !m.isSystem) {
+      list.push({
+        key: "tag",
+        label: m.tag ? "Змінити тег" : "Додати тег",
+        icon: "pricetag-outline",
+        onPress: () => {
+          if (!iAmPremium) {
+            openUpsell("tags");
+            return;
+          }
+          setTimeout(() => setTagPickerFor(m._id), 320);
+        },
+      });
+      if (m.tag) {
+        list.push({
+          key: "untag",
+          label: "Прибрати тег",
+          icon: "close-circle-outline",
+          onPress: () => void setMessageTag({ messageId: m._id, tag: null }).catch(() => {}),
+        });
+      }
+    }
     if (own && hasContent) {
       list.push({
         key: "edit",
@@ -1627,6 +1722,12 @@ export default function ChatRoomScreen() {
     isDirect,
     pinnedIds,
     room?.canManageMembers,
+    translations,
+    iAmPremium,
+    isSaved,
+    openUpsell,
+    translateMessage,
+    setMessageTag,
   ]);
 
   const actionPreview = actionMessage
@@ -1728,7 +1829,7 @@ export default function ChatRoomScreen() {
           <FlatList
             ref={flatListRef}
             data={rows}
-            extraData={`${actionMessage?._id ?? ""}|${flash?.token ?? 0}|${othersLastReadAt}`}
+            extraData={`${actionMessage?._id ?? ""}|${flash?.token ?? 0}|${othersLastReadAt}|${tagFilter ?? ""}`}
             onScrollToIndexFailed={handleScrollToIndexFailed}
             keyExtractor={(row) => row.item._id}
             inverted={true}
@@ -1816,6 +1917,47 @@ export default function ChatRoomScreen() {
               )}
             </View>
           )}
+
+          {isSaved && (savedTags?.length ?? 0) > 0 ? (
+            <View
+              style={{
+                position: "absolute",
+                top: islandBlock + pinBlock + 4,
+                left: 0,
+                right: 0,
+                zIndex: 8,
+                flexDirection: "row",
+                justifyContent: "center",
+                flexWrap: "wrap",
+                gap: 6,
+                paddingHorizontal: 12,
+              }}
+            >
+              {[{ tag: null as string | null, count: 0 }, ...(savedTags ?? [])].map((t) => {
+                const active = tagFilter === t.tag;
+                return (
+                  <TouchableOpacity
+                    key={t.tag ?? "all"}
+                    onPress={() => setTagFilter(t.tag)}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.tag ? `Тег ${t.tag}` : "Усі повідомлення"}
+                    style={{
+                      paddingHorizontal: 10,
+                      height: 28,
+                      borderRadius: 14,
+                      justifyContent: "center",
+                      backgroundColor: active ? c.accent : withAlpha(c.header, 0.92),
+                    }}
+                  >
+                    <Text style={{ color: active ? c.onAccent : c.text, fontSize: 13, fontWeight: "600" }}>
+                      {t.tag ? `${t.tag} ${t.count}` : "Усі"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null}
 
           {toast && (
             <Animated.View
@@ -2241,7 +2383,13 @@ export default function ChatRoomScreen() {
                   {showSendButton ? (
                     <Animated.View style={sendButtonAnimatedStyle}>
                       <TouchableOpacity
-                        onPress={handleSend}
+                        onPress={() => void handleSend()}
+                        onLongPress={() => {
+                          if (editingMessageId || attachments.length > 0 || !inputText.trim()) return;
+                          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          setEffectMenuOpen(true);
+                        }}
+                        delayLongPress={380}
                         onPressIn={() => {
                           sendButtonScale.value = withSpring(0.86);
                         }}
@@ -2555,6 +2703,8 @@ export default function ChatRoomScreen() {
         }}
       />
 
+      {effectRun ? <MessageEffectOverlay key={effectRun.key} effect={effectRun.effect} /> : null}
+
       <ReactorsSheet messageId={reactorsFor} onClose={() => setReactorsFor(null)} />
 
       <ForwardSheet
@@ -2570,6 +2720,8 @@ export default function ChatRoomScreen() {
           ?.filter((r) => r.hasReacted)
           .map((r) => r.emoji)}
         actions={actionList}
+        premium={iAmPremium}
+        onLockedReaction={() => openUpsell("reactions")}
         onClose={() => setActionMessage(null)}
         onReact={(emoji) => {
           if (actionMessage) {
@@ -2592,6 +2744,35 @@ export default function ChatRoomScreen() {
             void handleToggleReaction(pickerMessageId, emoji);
           }
         }}
+      />
+
+      <ReactionPickerModal
+        visible={!!tagPickerFor}
+        title="Оберіть тег"
+        onClose={() => setTagPickerFor(null)}
+        onSelectEmoji={(emoji) => {
+          if (!tagPickerFor) return;
+          setMessageTag({ messageId: tagPickerFor, tag: emoji }).catch((e) => {
+            if (isLimitError(e)) openUpsell("tags", convexErrorText(e));
+            else Alert.alert("Тег", convexErrorText(e));
+          });
+        }}
+      />
+
+      <PopoverMenu
+        visible={effectMenuOpen}
+        onClose={() => setEffectMenuOpen(false)}
+        placement="center"
+        caption={iAmPremium ? "Надіслати з ефектом" : "Ефекти повідомлень — з Modesto Premium"}
+        actions={(Object.keys(EFFECT_META) as EffectKey[]).map((key) => ({
+          key,
+          label: `${EFFECT_META[key].emoji} ${EFFECT_META[key].label}`,
+          icon: "sparkles-outline" as const,
+          onPress: () => {
+            if (!iAmPremium) openUpsell("effects");
+            else void handleSend(key);
+          },
+        }))}
       />
 
       <VideoNoteRecorderModal

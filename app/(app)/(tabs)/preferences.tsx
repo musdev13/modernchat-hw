@@ -209,6 +209,13 @@ export default function PreferencesScreen() {
                 onPress={() => openEdit("username")}
               />
               <NavRow
+                icon="color-fill"
+                tint="#EC4899"
+                label="Колір профілю"
+                sub={premium.isPremium ? undefined : "Premium"}
+                onPress={() => go("/(app)/prefs/profile-style")}
+              />
+              <NavRow
                 icon="information-circle-outline"
                 tint="#F59E0B"
                 label="Про себе"

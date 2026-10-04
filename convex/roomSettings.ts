@@ -38,6 +38,7 @@ export async function patchRoomSetting(
     hidden?: boolean;
     hiddenAt?: number;
     clearedAt?: number;
+    archived?: boolean;
   },
 ) {
   const existing = await ctx.db
@@ -155,6 +156,18 @@ export const setPinned = mutation({
     }
     await patchRoomSetting(ctx, me._id, args.chatRoomId, { pinned: args.pinned });
     return { pinned: args.pinned };
+  },
+});
+
+// Архівувати / повернути чат з архіву (лише для себе).
+export const setArchived = mutation({
+  args: { chatRoomId: v.id("chatRooms"), archived: v.boolean() },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    await requireRoomMember(ctx, args.chatRoomId, me._id);
+    await patchRoomSetting(ctx, me._id, args.chatRoomId, { archived: args.archived });
+    return { archived: args.archived };
   },
 });
 

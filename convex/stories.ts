@@ -12,6 +12,7 @@ import {
   STEALTH_WINDOW_MS,
 } from "./limits";
 import { assertRoomMember, previewLine, schedulePushForNewMessage } from "./messages";
+import { assertRecipientAllows } from "./limitHelpers";
 import { isPremiumNow, premiumView } from "./premiumHelpers";
 import { audienceV, overlayV, privacyV } from "./storyValidators";
 import { getAuthUser } from "./users";
@@ -659,6 +660,7 @@ export const reply = mutation({
     const text = args.text.trim().slice(0, 1000);
     if (!text) throw forbidden("Введіть текст відповіді");
     const room = await assertRoomMember(ctx, args.chatRoomId, me._id);
+    await assertRecipientAllows(ctx, room, me._id);
     if (!room.isDirect || room.directKey !== makeDirectKey(me._id, story.userId)) throw forbidden("Невірний чат");
     return await postStoryMessage(ctx, me, room, story, text);
   },
@@ -675,6 +677,7 @@ export const forwardToChat = mutation({
     if (!(await canSee(makeCache(ctx), story, me._id))) throw forbidden();
     if (story.protectContent && story.userId !== me._id) throw forbidden("Автор заборонив пересилання цієї історії");
     const room = await assertRoomMember(ctx, args.chatRoomId, me._id);
+    await assertRecipientAllows(ctx, room, me._id);
     return await postStoryMessage(ctx, me, room, story, `modesto://s/${story._id}`);
   },
 });

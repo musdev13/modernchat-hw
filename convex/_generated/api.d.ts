@@ -22,6 +22,7 @@ import type * as messages from "../messages.js";
 import type * as photoHelpers from "../photoHelpers.js";
 import type * as polls from "../polls.js";
 import type * as premium from "../premium.js";
+import type * as premiumFeatures from "../premiumFeatures.js";
 import type * as premiumHelpers from "../premiumHelpers.js";
 import type * as presence from "../presence.js";
 import type * as profilePhotos from "../profilePhotos.js";
@@ -32,6 +33,7 @@ import type * as roomSettings from "../roomSettings.js";
 import type * as rooms from "../rooms.js";
 import type * as stories from "../stories.js";
 import type * as storyValidators from "../storyValidators.js";
+import type * as translate from "../translate.js";
 import type * as typing from "../typing.js";
 import type * as users from "../users.js";
 
@@ -56,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   photoHelpers: typeof photoHelpers;
   polls: typeof polls;
   premium: typeof premium;
+  premiumFeatures: typeof premiumFeatures;
   premiumHelpers: typeof premiumHelpers;
   presence: typeof presence;
   profilePhotos: typeof profilePhotos;
@@ -66,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   rooms: typeof rooms;
   stories: typeof stories;
   storyValidators: typeof storyValidators;
+  translate: typeof translate;
   typing: typeof typing;
   users: typeof users;
 }>;

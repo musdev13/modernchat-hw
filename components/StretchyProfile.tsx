@@ -33,6 +33,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ProfilePattern } from "@/components/ProfilePattern";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -325,6 +326,9 @@ interface Props {
   bottomOverlay?: ReactNode;
   /** Додатковий відступ знизу під панель вкладок. */
   bottomInset?: number;
+  /** Premium-оформлення: власний колір обкладинки й візерунок на ній. */
+  profileColor?: string;
+  profilePattern?: string;
   /** Вміст під шапкою (кнопки, картки). */
   children: ReactNode;
 }
@@ -356,6 +360,8 @@ export function StretchyProfile({
   floatingAction,
   bottomOverlay,
   bottomInset = 0,
+  profileColor,
+  profilePattern,
   children,
 }: Props) {
   const c = useChatPalette();
@@ -725,7 +731,8 @@ export function StretchyProfile({
     <BarIconButton icon={icon} label={label} onPress={guardAction(onPress)} expand={expand} />
   );
 
-  const coverColor = avatarColor(name || "?");
+  const coverColor = profileColor ?? avatarColor(name || "?");
+  const coverStrong = !!profileColor;
 
   return (
     <GlassProvider>
@@ -784,12 +791,13 @@ export function StretchyProfile({
                 <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
                   <Defs>
                     <LinearGradient id="profileCover" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={mix(c.header, coverColor, 0.34)} stopOpacity="1" />
-                      <Stop offset="1" stopColor={mix(c.header, coverColor, 0.14)} stopOpacity="1" />
+                      <Stop offset="0" stopColor={mix(c.header, coverColor, coverStrong ? 0.72 : 0.34)} stopOpacity="1" />
+                      <Stop offset="1" stopColor={mix(c.header, coverColor, coverStrong ? 0.4 : 0.14)} stopOpacity="1" />
                     </LinearGradient>
                   </Defs>
                   <Rect x="0" y="0" width="1" height="1" fill="url(#profileCover)" />
                 </Svg>
+                <ProfilePattern pattern={profilePattern} />
               </Animated.View>
 
               <Animated.View

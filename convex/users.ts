@@ -369,6 +369,10 @@ export const getUserProfile = query({
       username: user.username,
       bio: user.bio,
       ...premiumFlags(user),
+      // Оформлення профілю діє лише поки у власника активний Premium.
+      nameColor: premiumView(user).isPremium ? user.nameColor : undefined,
+      profileColor: premiumView(user).isPremium ? user.profileColor : undefined,
+      profilePattern: premiumView(user).isPremium ? user.profilePattern : undefined,
       _creationTime: user._creationTime,
       isSelf,
       inChatNow,

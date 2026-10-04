@@ -40,6 +40,11 @@ export interface MessageItemData {
   /** Автор має Modesto Premium (⭐ біля імені) та його емодзі-статус. */
   senderPremium?: boolean;
   senderEmojiStatus?: string;
+  /** Premium-автор: власний колір імені (також смужки цитати). */
+  senderNameColor?: string;
+  /** Тег у «Збереженому» (Premium) та ефект повідомлення. */
+  tag?: string;
+  effect?: string;
   content?: string;
   imageUrl?: string;
 
@@ -105,6 +110,8 @@ interface SwipeableMessageItemProps {
   canReply?: boolean;
   /** Повідомлення написав поточний користувач (для керування опитуванням). */
   isMine?: boolean;
+  /** Результат перекладу (Premium) — показується під текстом. */
+  translation?: string;
   /** Тап по цитаті відповіді: перейти до оригінального повідомлення. */
   onReplyPress?: (messageId: Id<"messages">) => void;
   /** Лише для власних повідомлень: «sent» — одна галочка, «read» — прочитано іншими. */
@@ -277,6 +284,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   onReplyPress,
   flashToken = 0,
   readStatus,
+  translation,
 }) => {
   const c = useChatPalette();
   const { settings } = useSettings();
@@ -567,7 +575,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     <Text
                       numberOfLines={1}
                       style={{
-                        color: avatarColor(item.senderName),
+                        color: item.senderNameColor ?? avatarColor(item.senderName),
                         fontWeight: "700",
                         fontSize: 13,
                         flexShrink: 1,
@@ -590,14 +598,14 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       paddingRight: 8,
                       paddingVertical: 3,
                       borderLeftWidth: 2,
-                      borderLeftColor: c.accent,
+                      borderLeftColor: item.senderNameColor ?? c.accent,
                       backgroundColor: isOwn ? c.outgoing : c.incoming,
                       borderRadius: 8,
                     }}
                   >
                     <Text
                       numberOfLines={1}
-                      style={{ color: c.accent, fontWeight: "700", fontSize: 12 }}
+                      style={{ color: item.senderNameColor ?? c.accent, fontWeight: "700", fontSize: 12 }}
                     >
                       {item.replyToSender}
                     </Text>
@@ -652,7 +660,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
               <View style={{ alignItems: isOwn ? "flex-end" : "flex-start" }}>
                 {!isOwn && !isDirect && isFirstInSeries && (
                   <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
-                    <Text style={{ color: avatarColor(item.senderName), fontWeight: "700", fontSize: 13, flexShrink: 1 }}>
+                    <Text style={{ color: item.senderNameColor ?? avatarColor(item.senderName), fontWeight: "700", fontSize: 13, flexShrink: 1 }}>
                       {item.senderName}
                     </Text>
                     <NameBadges premium={item.senderPremium} emoji={item.senderEmojiStatus} size={12} />
@@ -694,7 +702,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <Text
                         numberOfLines={1}
-                        style={{ color: avatarColor(item.senderName), fontWeight: "700", fontSize: 13, flexShrink: 1 }}
+                        style={{ color: item.senderNameColor ?? avatarColor(item.senderName), fontWeight: "700", fontSize: 13, flexShrink: 1 }}
                       >
                         {item.senderName}
                       </Text>
@@ -891,6 +899,41 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   )
                 ) : null}
 
+                {translation ? (
+                  <View style={[innerPad, { marginTop: 4, marginBottom: 2 }]}>
+                    <View
+                      style={{
+                        borderLeftWidth: 2,
+                        borderLeftColor: isOwn ? c.outgoingMeta : c.accent,
+                        paddingLeft: 8,
+                      }}
+                    >
+                      <Text style={{ color: isOwn ? c.outgoingMeta : c.accent, fontSize: 11, fontWeight: "700" }}>
+                        Переклад
+                      </Text>
+                      <Text style={{ color: textColor, fontSize: 15 * textScale, lineHeight: 21 * textScale }}>
+                        {translation}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+
+                {item.tag ? (
+                  <View style={[innerPad, { marginTop: 2, flexDirection: "row" }]}>
+                    <View
+                      style={{
+                        paddingHorizontal: 8,
+                        height: 22,
+                        borderRadius: 11,
+                        justifyContent: "center",
+                        backgroundColor: withAlpha(isOwn ? c.outgoingText : c.accent, 0.16),
+                      }}
+                    >
+                      <Text style={{ fontSize: 13 }}>{item.tag}</Text>
+                    </View>
+                  </View>
+                ) : null}
+
                 {previewUrl ? (
                   <View style={[innerPad, { marginBottom: 2 }]}>
                     <LinkPreviewCard url={previewUrl} isOwn={isOwn} />
@@ -949,6 +992,9 @@ export const SwipeableMessageItem = memo(
     prev.item.senderName === next.item.senderName &&
     prev.item.senderPremium === next.item.senderPremium &&
     prev.item.senderEmojiStatus === next.item.senderEmojiStatus &&
+    prev.item.senderNameColor === next.item.senderNameColor &&
+    prev.item.tag === next.item.tag &&
+    prev.translation === next.translation &&
     prev.item.forwardedFrom === next.item.forwardedFrom &&
     prev.item.storyId === next.item.storyId &&
     prev.item.senderPhoto === next.item.senderPhoto &&

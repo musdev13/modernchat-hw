@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { isMutedNow } from "./roomSettings";
+import { premiumFlagOn } from "./limitHelpers";
 import { getAuthUser } from "./users";
 
 // Ліміт лічильника непрочитаних на кімнату (у списку чатів показується «99+»).
@@ -155,9 +156,14 @@ export const getReadState = query({
       .collect();
     const members = participantIdsOf(room);
 
+    // «Приховати час прочитання» (Premium): хто прихував — того читання не видно, і сам не бачить чужих.
+    if (premiumFlagOn(me, me.hideReadReceipts)) return { othersLastReadAt: 0 };
+
     let othersLastReadAt = 0;
     for (const read of reads) {
       if (read.userId === me._id || !members.includes(read.userId)) continue;
+      const reader = await ctx.db.get(read.userId);
+      if (premiumFlagOn(reader, reader?.hideReadReceipts)) continue;
       othersLastReadAt = Math.max(othersLastReadAt, read.lastReadAt);
     }
     return { othersLastReadAt };
