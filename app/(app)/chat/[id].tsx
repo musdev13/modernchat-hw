@@ -11,6 +11,7 @@ import {
   PIN_BAR_HEIGHT,
   PinnedMessageBar,
 } from "@/components/PinnedMessageBar";
+import { RoomAvatar } from "@/components/RoomAvatar";
 import { ReactionPickerModal } from "@/components/ReactionPickerModal";
 import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
 import {
@@ -19,7 +20,6 @@ import {
 } from "@/components/SwipeableMessageItem";
 import { TypingDots } from "@/components/TypingDots";
 import { VideoNoteRecorderModal } from "@/components/VideoNoteRecorderModal";
-import { avatarColor, initialsOf } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
@@ -95,7 +95,13 @@ interface MessageRow {
 }
 
 export default function ChatRoomScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, jumpTo, jumpNonce, openSearch: openSearchParam } =
+    useLocalSearchParams<{
+      id: string;
+      jumpTo?: string;
+      jumpNonce?: string;
+      openSearch?: string;
+    }>();
   const router = useRouter();
   const chatRoomId = id as Id<"chatRooms">;
   const c = useChatPalette();
@@ -951,6 +957,27 @@ export default function ChatRoomScreen() {
     });
     return () => sub.remove();
   }, [closeSearch, searchOpen]);
+
+  // Команди з екрана інформації про кімнату: перейти до повідомлення / відкрити пошук.
+  const handledJumpRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!jumpTo) return;
+    const key = `${jumpTo}:${jumpNonce ?? ""}`;
+    if (handledJumpRef.current === key) return;
+    handledJumpRef.current = key;
+    const timer = setTimeout(() => {
+      void jumpToMessage(jumpTo as Id<"messages">);
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [jumpTo, jumpNonce, jumpToMessage]);
+
+  const handledSearchRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openSearchParam || handledSearchRef.current === openSearchParam) return;
+    handledSearchRef.current = openSearchParam;
+    const timer = setTimeout(() => openSearch(), 350);
+    return () => clearTimeout(timer);
+  }, [openSearchParam, openSearch]);
 
   const handleSelectSearchResult = useCallback(
     (messageId: string) => {
@@ -1815,20 +1842,7 @@ export default function ChatRoomScreen() {
             accessibilityRole="button"
             accessibilityLabel="Інформація про кімнату"
           >
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 17,
-                backgroundColor: avatarColor(roomTitle),
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 13 }}>
-                {initialsOf(roomTitle)}
-              </Text>
-            </View>
+            <RoomAvatar title={roomTitle} imageUrl={room?.avatarUrl} size={34} />
 
             <View style={{ flex: 1, marginLeft: 10, justifyContent: "center" }}>
               <Text
