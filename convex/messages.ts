@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { isMutedNow } from "./roomSettings";
 import { getAuthUser } from "./users";
 
 // TTL presence — если heartbeat старше, считаем что юзер ушёл из чата
@@ -86,7 +87,7 @@ async function schedulePushForNewMessage(
           q.eq("userId", user._id).eq("chatRoomId", roomId),
         )
         .first();
-      return setting?.muted ? null : user;
+      return isMutedNow(setting) ? null : user;
     }),
   );
 
@@ -423,6 +424,54 @@ export const sendMessage = mutation({
       participantIds: (room.participantIds ?? [room.creatorId]) as Id<"users">[],
     });
 
+    return messageId;
+  },
+});
+
+// Переслати текстове повідомлення в іншу (свою) кімнату. Медіа не пересилаємо: файли
+// у storage належать оригіналу й зникли б разом із ним.
+export const forwardMessage = mutation({
+  args: {
+    messageId: v.id("messages"),
+    targetChatRoomId: v.id("chatRooms"),
+  },
+  handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx);
+    if (!user) throw new Error("Unauthorized: Потрібна авторизація");
+
+    const message = await ctx.db.get(args.messageId);
+    if (!message) throw new Error("Повідомлення не знайдено");
+    await assertRoomMember(ctx, message.chatRoomId, user._id);
+    const room = await assertRoomMember(ctx, args.targetChatRoomId, user._id);
+
+    const text = message.content?.trim();
+    const isMedia =
+      !!message.imageUrl || !!message.audioUrl || !!message.videoUrl || !!message.storageId;
+    if (message.isSystem || !text || isMedia || text.startsWith("\u2063\u2063")) {
+      throw new Error("Переслати можна лише текстові повідомлення");
+    }
+
+    const senderName = user.name ?? user.email ?? "Користувач";
+    const messageId = await ctx.db.insert("messages", {
+      chatRoomId: args.targetChatRoomId,
+      senderId: user._id,
+      senderName,
+      senderPhoto: user.image,
+      content: text,
+      forwardedFrom: message.forwardedFrom ?? message.senderName,
+    });
+    await ctx.db.patch(args.targetChatRoomId, {
+      lastMessage: previewLine(room, user.name ?? "Користувач", `↪ ${text}`),
+      lastMessageAt: Date.now(),
+    });
+    await schedulePushForNewMessage(ctx, {
+      roomId: args.targetChatRoomId,
+      senderId: user._id,
+      senderName,
+      previewText: `↪ ${text}`,
+      roomTitle: room.title,
+      participantIds: (room.participantIds ?? [room.creatorId]) as Id<"users">[],
+    });
     return messageId;
   },
 });

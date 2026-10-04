@@ -1,5 +1,51 @@
 import { v } from "convex/values";
+import { Doc, Id } from "./_generated/dataModel";
 import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
+
+/** Онлайн, якщо heartbeat був не пізніше ніж ONLINE_WINDOW_MS тому (клієнт шле його кожні ~40 с). */
+export const ONLINE_WINDOW_MS = 70_000;
+
+type PresenceRow = { lastSeenAt: number; offlineAt?: number } | null | undefined;
+
+export interface UserPresence {
+  online: boolean;
+  lastSeenAt?: number;
+  /** Користувач приховав час останнього входу (бачить лише він сам). */
+  lastSeenHidden: boolean;
+}
+
+/**
+ * Статус користувача для глядача. Онлайн виводиться з часових міток (ніколи не з «застарілого»
+ * булевого прапорця). lastSeenAt враховує і старе поле users.lastActiveAt.
+ */
+export function presenceOf(
+  user: Doc<"users">,
+  row: PresenceRow,
+  viewerId?: Id<"users">,
+  now: number = Date.now(),
+): UserPresence {
+  if (user.hideLastSeen && user._id !== viewerId) {
+    return { online: false, lastSeenAt: undefined, lastSeenHidden: true };
+  }
+  const online =
+    !!row &&
+    row.lastSeenAt > now - ONLINE_WINDOW_MS &&
+    (row.offlineAt ?? 0) < row.lastSeenAt;
+  const stamp = Math.max(row?.lastSeenAt ?? 0, user.lastActiveAt ?? 0);
+  return { online, lastSeenAt: stamp || undefined, lastSeenHidden: false };
+}
+
+export async function getPresenceRow(ctx: QueryCtx | MutationCtx, userId: Id<"users">) {
+  return await ctx.db
+    .query("userPresence")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .first();
+}
+
+export async function getPresenceMap(ctx: QueryCtx | MutationCtx) {
+  const rows = await ctx.db.query("userPresence").collect();
+  return new Map(rows.map((row) => [row.userId as string, row]));
+}
 
 // Допоміжна функція для отримання поточного авторизованого користувача (Clerk)
 export async function getAuthUser(ctx: QueryCtx | MutationCtx) {
@@ -115,31 +161,30 @@ export const listContacts = query({
     const limit = Math.min(Math.max(Math.floor(args.limit ?? 200), 1), 200);
 
     const users = await ctx.db.query("users").collect();
-    const presence = await ctx.db.query("chatPresence").collect();
+    const presenceRows = await getPresenceMap(ctx);
     const now = Date.now();
-    const online = new Set<string>(
-      presence
-        .filter((p) => p.lastSeenAt > now - PRESENCE_TTL_MS)
-        .map((p) => p.userId as string),
-    );
 
     return users
       .filter((user) => user._id !== me._id)
-      .map((user) => ({
-        _id: user._id,
-        name: user.name ?? user.username ?? user.email ?? "Користувач",
-        username: user.username,
-        image: user.image,
-        inChatNow: online.has(user._id),
-        lastActiveAt: user.lastActiveAt,
-      }))
+      .map((user) => {
+        const presence = presenceOf(user, presenceRows.get(user._id), me._id, now);
+        return {
+          _id: user._id,
+          name: user.name ?? user.username ?? user.email ?? "Користувач",
+          username: user.username,
+          image: user.image,
+          online: presence.online,
+          lastSeenAt: presence.lastSeenAt,
+          lastSeenHidden: presence.lastSeenHidden,
+        };
+      })
       .filter((user) => {
         if (!term) return true;
         return `${user.name} ${user.username ?? ""}`.toLowerCase().includes(term);
       })
       .sort((a, b) => {
-        if (a.inChatNow !== b.inChatNow) return a.inChatNow ? -1 : 1;
-        const diff = (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0);
+        if (a.online !== b.online) return a.online ? -1 : 1;
+        const diff = (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0);
         return diff !== 0 ? diff : a.name.localeCompare(b.name, "uk");
       })
       .slice(0, limit);
@@ -154,14 +199,7 @@ export const getUserStatus = query({
     if (!me) return null;
     const user = await ctx.db.get(args.userId);
     if (!user) return null;
-    const presence = await ctx.db
-      .query("chatPresence")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .first();
-    return {
-      inChatNow: !!presence && presence.lastSeenAt > Date.now() - PRESENCE_TTL_MS,
-      lastActiveAt: user.lastActiveAt,
-    };
+    return presenceOf(user, await getPresenceRow(ctx, user._id), me._id);
   },
 });
 
@@ -245,6 +283,7 @@ export const getUserProfile = query({
     ).filter((room) => !room.isDirect);
 
     const isSelf = me?._id === user._id;
+    const status = presenceOf(user, await getPresenceRow(ctx, user._id), me?._id);
     const presence = await ctx.db
       .query("chatPresence")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -264,6 +303,10 @@ export const getUserProfile = query({
       isSelf,
       inChatNow,
       lastActiveAt: user.lastActiveAt,
+      online: status.online,
+      lastSeenAt: status.lastSeenAt,
+      lastSeenHidden: status.lastSeenHidden,
+      hideLastSeen: isSelf ? !!user.hideLastSeen : undefined,
 
       stats: {
         messagesCount: userMessages.length,
@@ -292,6 +335,17 @@ export const getSharedRooms = query({
         avatarUrl: room.avatarUrl,
         memberCount: (room.participantIds ?? [room.creatorId]).length,
       }));
+  },
+});
+
+// Приватність: показувати чи ховати час останнього входу.
+export const setHideLastSeen = mutation({
+  args: { hide: v.boolean() },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    await ctx.db.patch(me._id, { hideLastSeen: args.hide });
+    return { hide: args.hide };
   },
 });
 

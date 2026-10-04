@@ -5,6 +5,15 @@ import { getAuthUser } from "./users";
 
 const MAX_PINNED_CHATS = 5;
 
+/** Чи вимкнено сповіщення зараз (з урахуванням терміну «вимкнути на…»). */
+export function isMutedNow(
+  row: { muted?: boolean; mutedUntil?: number } | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (!row?.muted) return false;
+  return row.mutedUntil === undefined || row.mutedUntil > now;
+}
+
 async function requireRoomMember(
   ctx: MutationCtx,
   roomId: Id<"chatRooms">,
@@ -25,6 +34,7 @@ export async function patchRoomSetting(
   chatRoomId: Id<"chatRooms">,
   patch: {
     muted?: boolean;
+    mutedUntil?: number | undefined;
     pinned?: boolean;
     hidden?: boolean;
     hiddenAt?: number;
@@ -53,14 +63,19 @@ export const getMyRoomSettings = query({
   args: { chatRoomId: v.id("chatRooms") },
   handler: async (ctx, args) => {
     const me = await getAuthUser(ctx);
-    if (!me) return { muted: false, pinned: false };
+    if (!me) return { muted: false, mutedUntil: undefined, pinned: false };
     const row = await ctx.db
       .query("roomSettings")
       .withIndex("by_user_and_room", (q) =>
         q.eq("userId", me._id).eq("chatRoomId", args.chatRoomId),
       )
       .first();
-    return { muted: row?.muted ?? false, pinned: row?.pinned ?? false };
+    const muted = isMutedNow(row);
+    return {
+      muted,
+      mutedUntil: muted ? row?.mutedUntil : undefined,
+      pinned: row?.pinned ?? false,
+    };
   },
 });
 
@@ -74,18 +89,31 @@ export const getMutedRoomIds = query({
       .query("roomSettings")
       .withIndex("by_user", (q) => q.eq("userId", me._id))
       .collect();
-    return rows.filter((row) => row.muted).map((row) => row.chatRoomId);
+    const now = Date.now();
+    return rows.filter((row) => isMutedNow(row, now)).map((row) => row.chatRoomId);
   },
 });
 
 export const setMuted = mutation({
-  args: { chatRoomId: v.id("chatRooms"), muted: v.boolean() },
+  args: {
+    chatRoomId: v.id("chatRooms"),
+    muted: v.boolean(),
+    // Тривалість у мс; без неї сповіщення вимикаються назавжди.
+    durationMs: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const me = await getAuthUser(ctx);
     if (!me) throw new Error("Unauthorized: Потрібна авторизація");
     await requireRoomMember(ctx, args.chatRoomId, me._id);
-    await patchRoomSetting(ctx, me._id, args.chatRoomId, { muted: args.muted });
-    return { muted: args.muted };
+    const mutedUntil =
+      args.muted && args.durationMs && args.durationMs > 0
+        ? Date.now() + args.durationMs
+        : undefined;
+    await patchRoomSetting(ctx, me._id, args.chatRoomId, {
+      muted: args.muted,
+      mutedUntil,
+    });
+    return { muted: args.muted, mutedUntil };
   },
 });
 
@@ -121,7 +149,7 @@ export const hideRoom = mutation({
     const me = await getAuthUser(ctx);
     if (!me) throw new Error("Unauthorized: Потрібна авторизація");
     const room = await requireRoomMember(ctx, args.chatRoomId, me._id);
-    if (!room.isDirect) {
+    if (!room.isDirect || room.isSaved) {
       throw new Error("Приховати можна лише особистий чат");
     }
     await patchRoomSetting(ctx, me._id, args.chatRoomId, {

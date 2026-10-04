@@ -1,8 +1,8 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
-import { patchRoomSetting } from "./roomSettings";
-import { getAuthUser } from "./users";
+import { MutationCtx, mutation, query } from "./_generated/server";
+import { isMutedNow, patchRoomSetting } from "./roomSettings";
+import { getAuthUser, getPresenceRow, presenceOf } from "./users";
 
 const DIRECT_ROOM_TITLE = "Приватний чат";
 
@@ -55,6 +55,7 @@ export const listRooms = query({
       .withIndex("by_user", (q) => q.eq("userId", me._id))
       .collect();
     const settingOf = new Map(settings.map((row) => [row.chatRoomId as string, row]));
+    const now = Date.now();
 
     const result = [];
     for (const room of rooms) {
@@ -62,8 +63,9 @@ export const listRooms = query({
       if (!members.includes(me._id)) continue;
       const setting = settingOf.get(room._id);
 
-      // Порожні особисті чати (ще без повідомлень) у списку не показуємо.
-      if (room.isDirect && !room.lastMessageAt) continue;
+      const isSaved = !!room.isSaved;
+      // Порожні особисті чати (ще без повідомлень) у списку не показуємо; «Збережене» — завжди.
+      if (room.isDirect && !isSaved && !room.lastMessageAt) continue;
       // Прихований чат повертається, коли в ньому з'явилося нове повідомлення.
       if (setting?.hidden && (room.lastMessageAt ?? 0) <= (setting.hiddenAt ?? 0)) {
         continue;
@@ -72,11 +74,18 @@ export const listRooms = query({
       let title = room.title;
       let avatarUrl = room.avatarUrl;
       let otherUserId: Id<"users"> | undefined;
-      if (room.isDirect) {
+      let otherOnline = false;
+      if (isSaved) {
+        title = "Збережене";
+        avatarUrl = undefined;
+      } else if (room.isDirect) {
         otherUserId = members.find((id) => id !== me._id);
         const other = otherUserId ? await ctx.db.get(otherUserId) : null;
         title = displayNameOf(other);
         avatarUrl = other?.image;
+        if (other) {
+          otherOnline = presenceOf(other, await getPresenceRow(ctx, other._id), me._id, now).online;
+        }
       }
 
       result.push({
@@ -84,15 +93,20 @@ export const listRooms = query({
         title,
         avatarUrl,
         isDirect: !!room.isDirect,
+        isSaved,
         otherUserId,
-        muted: !!setting?.muted,
-        pinned: !!setting?.pinned,
+        otherOnline,
+        muted: isMutedNow(setting, now),
+        mutedUntil: isMutedNow(setting, now) ? setting?.mutedUntil : undefined,
+        // «Збережене» завжди закріплене нагорі.
+        pinned: isSaved || !!setting?.pinned,
       });
     }
 
     const stamp = (room: { lastMessageAt?: number; _creationTime: number }) =>
       room.lastMessageAt ?? room._creationTime;
     result.sort((a, b) => {
+      if (a.isSaved !== b.isSaved) return a.isSaved ? -1 : 1;
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       return stamp(b) - stamp(a);
     });
@@ -133,15 +147,23 @@ export const getRoom = query({
       ? participantIds.find((id) => id !== userId)
       : undefined;
     const otherUser = otherUserId ? await ctx.db.get(otherUserId) : null;
+    const isSaved = !!room.isSaved;
+    const otherPresence = otherUser
+      ? presenceOf(otherUser, await getPresenceRow(ctx, otherUser._id), userId)
+      : undefined;
     const isCreator = !isDirect && room.creatorId === userId;
     const isAdmin = !isDirect && (isCreator || adminIds.includes(userId));
     return {
       ...room,
-      ...(isDirect
-        ? { title: displayNameOf(otherUser), avatarUrl: otherUser?.image }
-        : {}),
+      ...(isSaved
+        ? { title: "Збережене", avatarUrl: undefined }
+        : isDirect
+          ? { title: displayNameOf(otherUser), avatarUrl: otherUser?.image }
+          : {}),
       isDirect,
+      isSaved,
       otherUserId,
+      otherPresence,
       participantIds,
       adminIds,
       participants: participants.filter(
@@ -206,15 +228,51 @@ export const createRoom = mutation({
   },
 });
 
+async function getOrCreateSaved(ctx: MutationCtx, userId: Id<"users">) {
+  const directKey = makeDirectKey(userId, userId);
+  const existing = await ctx.db
+    .query("chatRooms")
+    .withIndex("by_direct_key", (q) => q.eq("directKey", directKey))
+    .first();
+  const roomId =
+    existing?._id ??
+    (await ctx.db.insert("chatRooms", {
+      title: "Збережене",
+      creatorId: userId,
+      participantIds: [userId],
+      adminIds: [],
+      isDirect: true,
+      isSaved: true,
+      directKey,
+    }));
+  const read = await ctx.db
+    .query("roomReads")
+    .withIndex("by_user_and_room", (q) => q.eq("userId", userId).eq("chatRoomId", roomId))
+    .first();
+  if (!read) {
+    await ctx.db.insert("roomReads", { userId, chatRoomId: roomId, lastReadAt: Date.now() });
+  }
+  return roomId;
+}
+
+// «Збережене» поточного користувача (створюється при першому зверненні).
+export const getOrCreateSavedRoom = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    return await getOrCreateSaved(ctx, me._id);
+  },
+});
+
 // Особистий (1:1) чат із користувачем: повертає існуючий або створює новий.
 export const getOrCreateDirectRoom = mutation({
   args: { otherUserId: v.id("users") },
   handler: async (ctx, args) => {
     const me = await getAuthUser(ctx);
     if (!me) throw new Error("Unauthorized: Потрібна авторизація");
-    if (args.otherUserId === me._id) {
-      throw new Error("Не можна почати особистий чат із самим собою");
-    }
+    // Чат із самим собою — це «Збережене».
+    if (args.otherUserId === me._id) return await getOrCreateSaved(ctx, me._id);
     const other = await ctx.db.get(args.otherUserId);
     if (!other) throw new Error("Користувача не знайдено");
 
@@ -288,7 +346,7 @@ export const findDirectRoom = query({
         q.eq("userId", me._id).eq("chatRoomId", room._id),
       )
       .first();
-    return { roomId: room._id, muted: !!setting?.muted };
+    return { roomId: room._id, muted: isMutedNow(setting) };
   },
 });
 

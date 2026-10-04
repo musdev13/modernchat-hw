@@ -14,6 +14,8 @@ export default defineSchema({
     pushToken: v.optional(v.string()),
     // Коли користувач востаннє вийшов із чату (для «остання активність»).
     lastActiveAt: v.optional(v.number()),
+    // Приватність: приховати час останнього входу («був(ла) нещодавно»).
+    hideLastSeen: v.optional(v.boolean()),
   })
     .index("by_token", ["tokenIdentifier"])
     .index("by_email", ["email"]),
@@ -29,6 +31,8 @@ export default defineSchema({
     avatarUrl: v.optional(v.string()),
     // Особистий (1:1) чат: рівно двоє учасників, назва й фото беруться від співрозмовника.
     isDirect: v.optional(v.boolean()),
+    // «Збережене»: особистий чат із самим собою (isDirect + рівно один учасник).
+    isSaved: v.optional(v.boolean()),
     // Відсортована пара id користувачів («idA_idB») для пошуку існуючого особистого чату.
     directKey: v.optional(v.string()),
     lastMessage: v.optional(v.string()),
@@ -65,6 +69,9 @@ export default defineSchema({
     replyToId: v.optional(v.id("messages")),
     replyToSender: v.optional(v.string()),
     replyToText: v.optional(v.string()),
+
+    // Пересланe повідомлення: ім'я першого автора.
+    forwardedFrom: v.optional(v.string()),
   }).index("by_chat_room", ["chatRoomId"]),
 
   messageReactions: defineTable({
@@ -89,6 +96,8 @@ export default defineSchema({
     userId: v.id("users"),
     chatRoomId: v.id("chatRooms"),
     muted: v.boolean(),
+    // Вимкнено до цього моменту (без значення при muted = назавжди).
+    mutedUntil: v.optional(v.number()),
     // Закріплено нагорі списку чатів.
     pinned: v.optional(v.boolean()),
     // Чат приховано для цього користувача (повертається, коли з'являється нове повідомлення).
@@ -107,6 +116,15 @@ export default defineSchema({
   })
     .index("by_room", ["chatRoomId"])
     .index("by_user_and_room", ["userId", "chatRoomId"]),
+
+  // Загальний онлайн-статус застосунку (окрема таблиця, щоб heartbeat не перезапускав
+  // усі запити власника, які читають документ users).
+  userPresence: defineTable({
+    userId: v.id("users"),
+    lastSeenAt: v.number(),
+    // Коли користувач явно вийшов із застосунку (фон). Онлайн, лише якщо lastSeenAt > offlineAt.
+    offlineAt: v.optional(v.number()),
+  }).index("by_user", ["userId"]),
 
   // 🔔 Кто сейчас находится в каком чате (для отключения push в активном чате)
   chatPresence: defineTable({

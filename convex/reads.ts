@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { isMutedNow } from "./roomSettings";
 import { getAuthUser } from "./users";
 
 // Ліміт лічильника непрочитаних на кімнату (у списку чатів показується «99+»).
@@ -130,7 +131,7 @@ export const getUnreadCounts = query({
       if (count > 0) {
         const capped = Math.min(count, UNREAD_CAP);
         counts[room._id] = capped;
-        if (!setting?.muted) total += capped;
+        if (!isMutedNow(setting)) total += capped;
       }
     }
     return { counts, missing, total };

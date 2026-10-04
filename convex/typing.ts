@@ -115,3 +115,35 @@ export const getTypingUsers = query({
       .map((indicator) => indicator.userName);
   },
 });
+
+// Хто зараз друкує в моїх кімнатах (для рядків списку чатів): { [roomId]: імена }.
+export const getTypingInMyRooms = query({
+  args: {},
+  handler: async (ctx) => {
+    const me = await getAuthUser(ctx);
+    if (!me) return {} as Record<string, string[]>;
+
+    const threshold = Date.now() - TYPING_TIMEOUT_MS;
+    const indicators = await ctx.db
+      .query("typingIndicators")
+      .filter((q) => q.gt(q.field("lastTypedAt"), threshold))
+      .collect();
+
+    const result: Record<string, string[]> = {};
+    const members = new Map<string, boolean>();
+    for (const indicator of indicators) {
+      if (indicator.userId === me._id) continue;
+      const key = indicator.chatRoomId as string;
+      let isMember = members.get(key);
+      if (isMember === undefined) {
+        const room = await ctx.db.get(indicator.chatRoomId);
+        isMember =
+          !!room && (room.participantIds ?? [room.creatorId]).includes(me._id);
+        members.set(key, isMember);
+      }
+      if (!isMember) continue;
+      (result[key] ??= []).push(indicator.userName);
+    }
+    return result;
+  },
+});
