@@ -70,6 +70,9 @@ export default defineSchema({
     fileSize: v.optional(v.number()),
     fileMime: v.optional(v.string()),
 
+    // Опитування (дані в таблиці polls).
+    pollId: v.optional(v.id("polls")),
+
     // Розміри фото / відео (для правильних пропорцій бульбашки).
     mediaWidth: v.optional(v.number()),
     mediaHeight: v.optional(v.number()),
@@ -89,6 +92,27 @@ export default defineSchema({
     .index("by_audio_storage", ["audioStorageId"])
     .index("by_video_storage", ["videoStorageId"])
     .index("by_file_storage", ["fileStorageId"]),
+
+  polls: defineTable({
+    chatRoomId: v.id("chatRooms"),
+    creatorId: v.id("users"),
+    question: v.string(),
+    options: v.array(v.object({ id: v.string(), text: v.string() })),
+    // Анонімне: не видно, хто за що проголосував.
+    anonymous: v.boolean(),
+    // Можна обрати кілька відповідей.
+    multiple: v.boolean(),
+    closed: v.optional(v.boolean()),
+  }).index("by_room", ["chatRoomId"]),
+
+  // Один рядок на користувача; порожній optionIds = голос скасовано.
+  pollVotes: defineTable({
+    pollId: v.id("polls"),
+    userId: v.id("users"),
+    optionIds: v.array(v.string()),
+  })
+    .index("by_poll", ["pollId"])
+    .index("by_poll_and_user", ["pollId", "userId"]),
 
   // «Видалити для мене»: повідомлення приховане лише для цього користувача.
   messageHides: defineTable({

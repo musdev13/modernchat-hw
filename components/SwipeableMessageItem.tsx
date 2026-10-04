@@ -22,6 +22,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { FileBubble, ratioFrom, VideoBubble } from "./AttachmentBubbles";
 import { MessageReactions, ReactionItem } from "./MessageReactions";
+import { PollBubble, PollData } from "./PollBubble";
 import { VideoNotePlayer } from "./VideoNotePlayer";
 import { VoiceMessagePlayer } from "./VoiceMessagePlayer";
 
@@ -42,6 +43,9 @@ export interface MessageItemData {
   videoStorageId?: Id<"_storage">;
   videoDuration?: number;
   isVideoNote?: boolean;
+
+  /** Опитування (дані підвантажує getPaginatedMessages). */
+  poll?: PollData;
 
   fileUrl?: string;
   fileName?: string;
@@ -311,6 +315,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   const hasImage = !!item.imageUrl;
   const hasVideo = !!(item.videoUrl && !item.isVideoNote);
   const hasFile = !!item.fileUrl;
+  const hasPoll = !!item.poll;
   // Фото або відео: бульбашка без внутрішніх відступів, час поверх картинки.
   const hasVisual = hasImage || hasVideo;
   const hasReactions = !!(item.reactions && item.reactions.length > 0);
@@ -719,6 +724,8 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                   </View>
                 )}
 
+                {hasPoll && <PollBubble poll={item.poll!} isOwn={isOwn} isCreator={isOwn} />}
+
                 {hasFile && (
                   <FileBubble
                     url={item.fileUrl!}
@@ -831,6 +838,7 @@ export const SwipeableMessageItem = memo(
     prev.item.replyToId === next.item.replyToId &&
     prev.flashToken === next.flashToken &&
     prev.readStatus === next.readStatus &&
+    JSON.stringify(prev.item.poll) === JSON.stringify(next.item.poll) &&
     JSON.stringify(prev.item.reactions) === JSON.stringify(next.item.reactions),
 );
 

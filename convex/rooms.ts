@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { MutationCtx, mutation, query } from "./_generated/server";
 import { releaseMessageFiles } from "./messageStorage";
+import { deletePollWithVotes } from "./polls";
 import { isMutedNow, patchRoomSetting } from "./roomSettings";
 import { getAuthUser, getPresenceRow, presenceOf } from "./users";
 
@@ -609,6 +610,7 @@ export const deleteRoom = mutation({
       .collect();
     for (const message of messages) {
       await releaseMessageFiles(ctx, message);
+      if (message.pollId) await deletePollWithVotes(ctx, message.pollId);
       const reactions = await ctx.db
         .query("messageReactions")
         .withIndex("by_message", (q) => q.eq("messageId", message._id))

@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { attachmentLabel, hiddenMessageIds, releaseMessageFiles } from "./messageStorage";
+import { deletePollWithVotes, pollView } from "./polls";
 import { isMutedNow } from "./roomSettings";
 import { getAuthUser } from "./users";
 
@@ -171,8 +172,12 @@ export const getPaginatedMessages = query({
           grouped.set(reaction.emoji, current);
         }
 
+        const pollDoc = message.pollId ? await ctx.db.get(message.pollId) : null;
+        const poll = pollDoc ? await pollView(ctx, pollDoc, userId) : undefined;
+
         return {
           ...message,
+          poll,
           reactions: Array.from(grouped, ([emoji, reaction]) => ({
             emoji,
             ...reaction,
@@ -482,6 +487,7 @@ export const forwardMessage = mutation({
     await assertRoomMember(ctx, message.chatRoomId, user._id);
     const room = await assertRoomMember(ctx, args.targetChatRoomId, user._id);
     if (message.isSystem) throw new Error("Системні повідомлення не пересилаються");
+    if (message.pollId) throw new Error("Опитування не можна переслати");
 
     const text = message.content?.trim();
     const label = attachmentLabel(message);
@@ -586,6 +592,7 @@ export const deleteMessage = mutation({
     }
 
     await releaseMessageFiles(ctx, message);
+    if (message.pollId) await deletePollWithVotes(ctx, message.pollId);
 
     const hides = await ctx.db
       .query("messageHides")
@@ -711,6 +718,71 @@ export const sendMediaMessage = mutation({
     });
 
     return messageId;
+  },
+});
+
+// Нове опитування: 2–10 варіантів, анонімне / публічне, одна або кілька відповідей.
+export const createPoll = mutation({
+  args: {
+    chatRoomId: v.id("chatRooms"),
+    question: v.string(),
+    options: v.array(v.string()),
+    anonymous: v.boolean(),
+    multiple: v.boolean(),
+    replyToId: v.optional(v.id("messages")),
+    replyToSender: v.optional(v.string()),
+    replyToText: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx);
+    if (!user) throw new Error("Unauthorized: Потрібна авторизація");
+    const room = await assertRoomMember(ctx, args.chatRoomId, user._id);
+
+    const question = args.question.trim();
+    if (!question) throw new Error("Введіть запитання");
+    if (question.length > 255) throw new Error("Запитання задовге (до 255 символів)");
+    const options = args.options.map((o) => o.trim()).filter(Boolean);
+    if (options.length < 2) throw new Error("Додайте щонайменше два варіанти відповіді");
+    if (options.length > 10) throw new Error("Максимум 10 варіантів відповіді");
+    if (options.some((o) => o.length > 100)) {
+      throw new Error("Варіант відповіді задовгий (до 100 символів)");
+    }
+
+    const pollId = await ctx.db.insert("polls", {
+      chatRoomId: args.chatRoomId,
+      creatorId: user._id,
+      question,
+      options: options.map((text, index) => ({ id: String(index + 1), text })),
+      anonymous: args.anonymous,
+      multiple: args.multiple,
+    });
+
+    const senderName = user.name ?? user.email ?? "Користувач";
+    await ctx.db.insert("messages", {
+      chatRoomId: args.chatRoomId,
+      senderId: user._id,
+      senderName,
+      senderPhoto: user.image,
+      pollId,
+      replyToId: args.replyToId,
+      replyToSender: args.replyToSender,
+      replyToText: args.replyToText,
+    });
+
+    const label = `📊 ${question}`;
+    await ctx.db.patch(args.chatRoomId, {
+      lastMessage: previewLine(room, senderName, label),
+      lastMessageAt: Date.now(),
+    });
+    await schedulePushForNewMessage(ctx, {
+      roomId: args.chatRoomId,
+      senderId: user._id,
+      senderName,
+      previewText: label,
+      roomTitle: room.title,
+      participantIds: (room.participantIds ?? [room.creatorId]) as Id<"users">[],
+    });
+    return pollId;
   },
 });
 

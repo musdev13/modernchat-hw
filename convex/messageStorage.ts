@@ -45,11 +45,13 @@ export function attachmentLabel(message: {
   imageUrl?: string;
   fileUrl?: string;
   fileName?: string;
+  pollId?: unknown;
 }): string | null {
   if (message.isVideoNote && message.videoUrl) return "📹 Відеоповідомлення";
   if (message.audioUrl) return "🎤 Голосове повідомлення";
   if (message.videoUrl) return "🎥 Відео";
   if (message.fileUrl) return `📎 ${message.fileName?.trim() || "Файл"}`;
   if (message.imageUrl) return "📷 Фотографія";
+  if (message.pollId) return "📊 Опитування";
   return null;
 }

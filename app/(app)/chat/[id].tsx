@@ -12,6 +12,7 @@ import {
   PinnedMessageBar,
 } from "@/components/PinnedMessageBar";
 import { AttachSheet } from "@/components/AttachSheet";
+import { CreatePollModal, NewPoll } from "@/components/CreatePollModal";
 import { ForwardSheet } from "@/components/ForwardSheet";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { ReactionPickerModal } from "@/components/ReactionPickerModal";
@@ -142,6 +143,7 @@ export default function ChatRoomScreen() {
   const forwardMessage = useMutation(api.messages.forwardMessage);
   const sendMediaMessage = useMutation(api.messages.sendMediaMessage);
   const sendAttachment = useMutation(api.messages.sendAttachment);
+  const createPoll = useMutation(api.messages.createPoll);
   const sendVoiceMessage = useMutation(api.messages.sendVoiceMessage);
   const sendVideoNote = useMutation(api.messages.sendVideoNote);
   const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
@@ -171,6 +173,7 @@ export default function ChatRoomScreen() {
 
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [attachSheetOpen, setAttachSheetOpen] = useState(false);
+  const [pollModalOpen, setPollModalOpen] = useState(false);
   const [uploadState, setUploadState] = useState<{
     index: number;
     total: number;
@@ -470,6 +473,8 @@ export default function ChatRoomScreen() {
           ? ` (${Math.round(message.audioDuration)}с)`
           : "";
         preview = `🎤 Голосове повідомлення${dur}`;
+      } else if (message.poll) {
+        preview = `📊 ${message.poll.question}`;
       } else if (message.videoUrl) {
         preview = "🎥 Відео";
       } else if (message.fileUrl) {
@@ -647,6 +652,22 @@ export default function ChatRoomScreen() {
       return storageId as Id<"_storage">;
     },
     [generateUploadUrl],
+  );
+
+  const handleCreatePoll = useCallback(
+    async (poll: NewPoll) => {
+      await createPoll({
+        chatRoomId,
+        ...poll,
+        replyToId: replyTarget ? (replyTarget.messageId as Id<"messages">) : undefined,
+        replyToSender: replyTarget?.senderName,
+        replyToText: replyTarget?.text,
+      });
+      setReplyTarget(null);
+      setPollModalOpen(false);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    [chatRoomId, createPoll, replyTarget],
   );
 
   const resetTyping = useCallback(() => {
@@ -1328,6 +1349,7 @@ export default function ChatRoomScreen() {
     }
     const isForwardable =
       !m.isSystem &&
+      !m.poll &&
       (hasContent || !!(m.imageUrl || m.audioUrl || m.videoUrl || m.fileUrl));
     if (isForwardable) {
       list.push({
@@ -2202,6 +2224,12 @@ export default function ChatRoomScreen() {
 
       <VideoViewerModal url={viewerVideo} onClose={() => setViewerVideo(null)} />
 
+      <CreatePollModal
+        visible={pollModalOpen}
+        onClose={() => setPollModalOpen(false)}
+        onCreate={handleCreatePoll}
+      />
+
       <AttachSheet
         visible={attachSheetOpen}
         onClose={() => setAttachSheetOpen(false)}
@@ -2210,6 +2238,7 @@ export default function ChatRoomScreen() {
         }
         onFile={() => void runPicker(pickDocuments)}
         onCamera={() => void runPicker(captureWithCamera)}
+        onPoll={() => setPollModalOpen(true)}
       />
 
       <ReactorsSheet messageId={reactorsFor} onClose={() => setReactorsFor(null)} />
