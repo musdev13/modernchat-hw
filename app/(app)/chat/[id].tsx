@@ -1088,43 +1088,20 @@ export default function ChatRoomScreen() {
     setShowScrollToBottom(false);
   }, []);
 
-  const renderListEmpty = useCallback(() => {
-    if (status === "LoadingFirstPage") {
-      return (
-        <View
-          className="flex-1 items-center justify-center"
-          style={{ transform: [{ scaleY: -1 }] }}
-        >
-          <ActivityIndicator size="small" color={c.accent} />
-        </View>
-      );
+  // «Привітатися»: надсилаємо 👋 звичайним повідомленням (велике емодзі), як «Say hello» у Telegram.
+  const handleSendGreeting = useCallback(async () => {
+    if (isSubmitting) return;
+    try {
+      setIsSubmitting(true);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await sendMessage({ chatRoomId, content: "👋" });
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Помилка", "Не вдалося надіслати повідомлення");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    return (
-      <View
-        className="flex-1 items-center justify-center px-8"
-        style={{ transform: [{ scaleY: -1 }] }}
-      >
-        <View
-          style={{
-            backgroundColor: withAlpha(c.muted, 0.22),
-            borderRadius: 16,
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ fontSize: 34 }}>👋</Text>
-          <Text style={{ color: c.text, fontWeight: "600", marginTop: 6 }}>
-            Повідомлень ще немає
-          </Text>
-          <Text style={{ color: c.muted, fontSize: 13, marginTop: 2, textAlign: "center" }}>
-            Напишіть перше або надішліть стікер-емодзі чи GIF
-          </Text>
-        </View>
-      </View>
-    );
-  }, [c.accent, c.muted, c.text, status]);
+  }, [chatRoomId, isSubmitting, sendMessage]);
 
   const formatRecordingTime = (millis: number) => {
     const total = Math.floor(millis / 1000);
@@ -1358,13 +1335,63 @@ export default function ChatRoomScreen() {
                 </View>
               ) : null
             }
-            ListEmptyComponent={renderListEmpty}
             initialNumToRender={15}
             maxToRenderPerBatch={10}
             windowSize={10}
             removeClippedSubviews={Platform.OS === "android"}
           />
           </GlassTarget>
+
+          {/* Порожній чат: малюємо ПОЗА інвертованим списком (там тексти віддзеркалюються, а дотики
+              не доходять), між шапкою й полем вводу. */}
+          {rows.length === 0 && (
+            <View
+              pointerEvents="box-none"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                paddingTop: islandBlock,
+                paddingBottom: composerHeight,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingHorizontal: 32,
+                zIndex: 5,
+              }}
+            >
+              {status === "LoadingFirstPage" ? (
+                <ActivityIndicator size="small" color={c.accent} />
+              ) : (
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={handleSendGreeting}
+                  disabled={isSubmitting}
+                  accessibilityRole="button"
+                  accessibilityLabel="Привітатися: надіслати 👋"
+                  style={{
+                    backgroundColor: withAlpha(c.muted, 0.22),
+                    borderRadius: 18,
+                    paddingHorizontal: 20,
+                    paddingVertical: 16,
+                    alignItems: "center",
+                    maxWidth: 300,
+                  }}
+                >
+                  <Text style={{ fontSize: 56 }}>👋</Text>
+                  <Text style={{ color: c.text, fontWeight: "600", marginTop: 8 }}>
+                    Повідомлень ще немає
+                  </Text>
+                  <Text
+                    style={{ color: c.muted, fontSize: 13, marginTop: 2, textAlign: "center" }}
+                  >
+                    Торкніться 👋, щоб привітатися, або напишіть перше повідомлення
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {toast && (
             <Animated.View
