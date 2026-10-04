@@ -157,11 +157,13 @@ function BarIconButton({
   expand: SharedValue<number>;
 }) {
   const c = useChatPalette();
+  // Кольори рахуємо на JS-потоці: withAlpha — звичайна функція, її не можна викликати у воркліті.
+  const idleBg = withAlpha(c.header, 0.9);
   const bgStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
       expand.value,
       [0, 1],
-      [withAlpha(c.header, 0.9), "rgba(0, 0, 0, 0.38)"],
+      [idleBg, "rgba(0, 0, 0, 0.38)"],
     ),
   }));
   const accentLayer = useAnimatedStyle(() => ({ opacity: 1 - expand.value }));
