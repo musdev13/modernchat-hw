@@ -155,8 +155,23 @@ export const getRoom = query({
       : undefined;
     const isCreator = !isDirect && room.creatorId === userId;
     const isAdmin = !isDirect && (isCreator || adminIds.includes(userId));
+    const isChannel = !!room.isChannel;
+    const linkedRoom = room.linkedDiscussionRoomId
+      ? await ctx.db.get(room.linkedDiscussionRoomId)
+      : null;
+    const parentChannel = room.discussionOfChannelId
+      ? await ctx.db.get(room.discussionOfChannelId)
+      : null;
     return {
       ...room,
+      isChannel,
+      isPublic: !!room.isPublic,
+      // У каналі писати можуть лише адміністратори.
+      canPost: !isChannel || isAdmin,
+      discussion: linkedRoom ? { _id: linkedRoom._id, title: linkedRoom.title } : null,
+      parentChannel: parentChannel
+        ? { _id: parentChannel._id, title: parentChannel.title }
+        : null,
       ...(isSaved
         ? { title: "Збережене", avatarUrl: undefined }
         : isDirect
@@ -376,18 +391,22 @@ export const addParticipants = mutation({
     const actor = await ctx.db.get(userId);
     const content = `👋 ${nameOf(actor)} додав(ла) до групи: ${users.map(nameOf).join(", ")}`;
     const now = Date.now();
-    await ctx.db.patch(args.roomId, {
-      participantIds: [...existing, ...toAdd],
-      lastMessage: content,
-      lastMessageAt: now,
-    });
-    await ctx.db.insert("messages", {
-      chatRoomId: args.roomId,
-      senderId: userId,
-      senderName: "Система",
-      content,
-      isSystem: true,
-    });
+    // У каналі підписка не створює службових повідомлень у стрічці.
+    await ctx.db.patch(
+      args.roomId,
+      room.isChannel
+        ? { participantIds: [...existing, ...toAdd] }
+        : { participantIds: [...existing, ...toAdd], lastMessage: content, lastMessageAt: now },
+    );
+    if (!room.isChannel) {
+      await ctx.db.insert("messages", {
+        chatRoomId: args.roomId,
+        senderId: userId,
+        senderName: "Система",
+        content,
+        isSystem: true,
+      });
+    }
     for (const addedId of toAdd) {
       await ctx.db.insert("roomReads", {
         userId: addedId,
@@ -430,6 +449,10 @@ export const updateParticipantRole = mutation({
         ? `🛡️ ${nameOf(target)} тепер адміністратор(ка)`
         : `👤 ${nameOf(target)} більше не адміністратор(ка)`;
     const now = Date.now();
+    if (room.isChannel) {
+      await ctx.db.patch(args.roomId, { adminIds });
+      return { success: true };
+    }
     await ctx.db.patch(args.roomId, { adminIds, lastMessage: content, lastMessageAt: now });
     await ctx.db.insert("messages", {
       chatRoomId: args.roomId,
@@ -510,6 +533,8 @@ export const updateRoom = mutation({
 
     if (Object.keys(patch).length === 0) return { changed: false };
 
+    // У каналі зміни назви/фото не пишемо в стрічку.
+    if (room.isChannel) notes.length = 0;
     if (notes.length > 0) {
       patch.lastMessage = notes[notes.length - 1];
       patch.lastMessageAt = Date.now();
@@ -561,19 +586,22 @@ export const removeParticipant = mutation({
       ? `🚪 ${nameOf(target)} покинув(ла) групу`
       : `🚫 ${nameOf(actor)} вилучив(ла) ${nameOf(target)} з групи`;
     const now = Date.now();
-    await ctx.db.patch(args.roomId, {
+    const remaining = {
       participantIds: participants.filter((id) => id !== args.targetUserId),
       adminIds: admins.filter((id) => id !== args.targetUserId),
-      lastMessage: content,
-      lastMessageAt: now,
-    });
-    await ctx.db.insert("messages", {
-      chatRoomId: args.roomId,
-      senderId: userId,
-      senderName: "Система",
-      content,
-      isSystem: true,
-    });
+    };
+    if (room.isChannel) {
+      await ctx.db.patch(args.roomId, remaining);
+    } else {
+      await ctx.db.patch(args.roomId, { ...remaining, lastMessage: content, lastMessageAt: now });
+      await ctx.db.insert("messages", {
+        chatRoomId: args.roomId,
+        senderId: userId,
+        senderName: "Система",
+        content,
+        isSystem: true,
+      });
+    }
     const removedReads = await ctx.db
       .query("roomReads")
       .withIndex("by_user_and_room", (q) =>
@@ -603,6 +631,16 @@ export const deleteRoom = mutation({
     assertGroupRoom(room);
     if (room.creatorId !== userId)
       throw new Error("Видалити кімнату може лише її творець");
+
+    // Розриваємо звʼязок канал ↔ група обговорення.
+    if (room.linkedDiscussionRoomId) {
+      const group = await ctx.db.get(room.linkedDiscussionRoomId);
+      if (group) await ctx.db.patch(group._id, { discussionOfChannelId: undefined });
+    }
+    if (room.discussionOfChannelId) {
+      const channel = await ctx.db.get(room.discussionOfChannelId);
+      if (channel) await ctx.db.patch(channel._id, { linkedDiscussionRoomId: undefined });
+    }
 
     const messages = await ctx.db
       .query("messages")

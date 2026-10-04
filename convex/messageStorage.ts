@@ -1,5 +1,23 @@
 import { Doc, Id } from "./_generated/dataModel";
 
+/** Чи може користувач публікувати в кімнаті (у каналі — лише творець і адміністратори). */
+export function canPostIn(
+  room: { isChannel?: boolean; creatorId: Id<"users">; adminIds?: Id<"users">[] },
+  userId: Id<"users">,
+): boolean {
+  if (!room.isChannel) return true;
+  return room.creatorId === userId || (room.adminIds ?? []).includes(userId);
+}
+
+export function assertCanPost(
+  room: { isChannel?: boolean; creatorId: Id<"users">; adminIds?: Id<"users">[] },
+  userId: Id<"users">,
+) {
+  if (!canPostIn(room, userId)) {
+    throw new Error("Forbidden: Публікувати в каналі можуть лише адміністратори");
+  }
+}
+
 /** Id повідомлень кімнати, які користувач приховав «для себе». */
 export async function hiddenMessageIds(
   ctx: any,

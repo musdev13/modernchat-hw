@@ -3,7 +3,12 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
-import { attachmentLabel, hiddenMessageIds, releaseMessageFiles } from "./messageStorage";
+import {
+  assertCanPost,
+  attachmentLabel,
+  hiddenMessageIds,
+  releaseMessageFiles,
+} from "./messageStorage";
 import { deletePollWithVotes, pollView } from "./polls";
 import { isMutedNow } from "./roomSettings";
 import { getAuthUser } from "./users";
@@ -13,11 +18,11 @@ const PRESENCE_TTL_MS = 30_000;
 
 // Рядок для списку чатів: у групах з іменем відправника, в особистих чатах — без нього.
 function previewLine(
-  room: { isDirect?: boolean } | null | undefined,
+  room: { isDirect?: boolean; isChannel?: boolean } | null | undefined,
   senderName: string,
   text: string,
 ): string {
-  return room?.isDirect ? text : `${senderName}: ${text}`;
+  return room?.isDirect || room?.isChannel ? text : `${senderName}: ${text}`;
 }
 
 async function assertRoomMember(
@@ -93,9 +98,14 @@ async function schedulePushForNewMessage(
     }),
   );
 
+  const roomDoc = await ctx.db.get(roomId);
   const isGroupChat = participantIds.length > 2;
-  const notificationTitle =
-    isGroupChat && roomTitle ? `${roomTitle} • ${senderName}` : senderName;
+  // Канал: заголовок — назва каналу (автор публікації не показується).
+  const notificationTitle = roomDoc?.isChannel
+    ? (roomTitle ?? senderName)
+    : isGroupChat && roomTitle
+      ? `${roomTitle} • ${senderName}`
+      : senderName;
 
   const notifications = filtered
     .filter((user: any) => user && user.pushToken)
@@ -436,6 +446,7 @@ export const sendMessage = mutation({
     const userId = user._id;
 
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
+    assertCanPost(room, userId);
 
     const trimmedContent = args.content.trim();
     if (!trimmedContent) throw new Error("Message content cannot be empty");
@@ -486,6 +497,7 @@ export const forwardMessage = mutation({
     if (!message) throw new Error("Повідомлення не знайдено");
     await assertRoomMember(ctx, message.chatRoomId, user._id);
     const room = await assertRoomMember(ctx, args.targetChatRoomId, user._id);
+    assertCanPost(room, user._id);
     if (message.isSystem) throw new Error("Системні повідомлення не пересилаються");
     if (message.pollId) throw new Error("Опитування не можна переслати");
 
@@ -685,6 +697,7 @@ export const sendMediaMessage = mutation({
     const userId = user._id;
 
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
+    assertCanPost(room, userId);
 
     const imageUrl = await ctx.storage.getUrl(args.storageId);
     if (!imageUrl) throw new Error("Не вдалося отримати посилання на збережений файл");
@@ -737,6 +750,7 @@ export const createPoll = mutation({
     const user = await getAuthUser(ctx);
     if (!user) throw new Error("Unauthorized: Потрібна авторизація");
     const room = await assertRoomMember(ctx, args.chatRoomId, user._id);
+    assertCanPost(room, user._id);
 
     const question = args.question.trim();
     if (!question) throw new Error("Введіть запитання");
@@ -808,6 +822,7 @@ export const sendAttachment = mutation({
     if (!user) throw new Error("Unauthorized: Потрібна авторизація");
     const userId = user._id;
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
+    assertCanPost(room, userId);
 
     const url = await ctx.storage.getUrl(args.storageId);
     if (!url) throw new Error("Не вдалося отримати посилання на збережений файл");
@@ -892,6 +907,7 @@ export const sendVoiceMessage = mutation({
     const userId = user._id;
 
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
+    assertCanPost(room, userId);
 
     const audioUrl = await ctx.storage.getUrl(args.audioStorageId);
     if (!audioUrl) throw new Error("Не вдалося отримати посилання на аудіофайл");
@@ -954,6 +970,7 @@ export const sendVideoNote = mutation({
     const userId = user._id;
 
     const room = await assertRoomMember(ctx, args.chatRoomId, userId);
+    assertCanPost(room, userId);
 
     const videoUrl = await ctx.storage.getUrl(args.videoStorageId);
     if (!videoUrl) throw new Error("Не вдалося отримати посилання на відеофайл");
@@ -1004,6 +1021,7 @@ export const seedTestMessages = mutation({
     const user = await getAuthUser(ctx);
     if (!user) throw new Error("Unauthorized");
     const userId = user._id;
+    assertCanPost(await assertRoomMember(ctx, args.chatRoomId, userId), userId);
 
     const total = args.count ?? 40;
 

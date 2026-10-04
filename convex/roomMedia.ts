@@ -25,6 +25,16 @@ export type SharedMediaItem = {
   height?: number;
 };
 
+export type SharedPollItem = {
+  _id: Id<"messages">;
+  createdAt: number;
+  senderName: string;
+  question: string;
+  totalVoters: number;
+  anonymous: boolean;
+  closed: boolean;
+};
+
 export type SharedFileItem = {
   _id: Id<"messages">;
   createdAt: number;
@@ -43,6 +53,7 @@ export const getRoomSharedContent = query({
     const empty = {
       media: [] as SharedMediaItem[],
       files: [] as SharedFileItem[],
+      polls: [] as SharedPollItem[],
       voice: [] as {
         _id: Id<"messages">;
         createdAt: number;
@@ -102,6 +113,25 @@ export const getRoomSharedContent = query({
           width: message.mediaWidth,
           height: message.mediaHeight,
         });
+      }
+
+      if (message.pollId) {
+        const poll = await ctx.db.get(message.pollId);
+        if (poll) {
+          const votes = await ctx.db
+            .query("pollVotes")
+            .withIndex("by_poll", (q) => q.eq("pollId", poll._id))
+            .collect();
+          result.polls.push({
+            _id: message._id,
+            createdAt,
+            senderName: message.senderName,
+            question: poll.question,
+            totalVoters: votes.filter((vote) => vote.optionIds.length > 0).length,
+            anonymous: poll.anonymous,
+            closed: !!poll.closed,
+          });
+        }
       }
 
       if (message.fileUrl) {

@@ -33,6 +33,16 @@ export default defineSchema({
     isDirect: v.optional(v.boolean()),
     // «Збережене»: особистий чат із самим собою (isDirect + рівно один учасник).
     isSaved: v.optional(v.boolean()),
+    // Канал: публікують лише творець/адміни, решта — підписники (читають, реагують, голосують).
+    isChannel: v.optional(v.boolean()),
+    // Публічний канал знаходиться пошуком; приватний — лише за запрошувальним посиланням.
+    isPublic: v.optional(v.boolean()),
+    // Унікальний «@username» публічного каналу або код запрошення приватного (a-z0-9_).
+    slug: v.optional(v.string()),
+    // Група для обговорення (коментарів) каналу.
+    linkedDiscussionRoomId: v.optional(v.id("chatRooms")),
+    // Для групи обговорення: канал, до якого вона привʼязана.
+    discussionOfChannelId: v.optional(v.id("chatRooms")),
     // Відсортована пара id користувачів («idA_idB») для пошуку існуючого особистого чату.
     directKey: v.optional(v.string()),
     lastMessage: v.optional(v.string()),
@@ -41,7 +51,9 @@ export default defineSchema({
     pinnedMessageIds: v.optional(v.array(v.id("messages"))),
   })
     .index("by_creator", ["creatorId"])
-    .index("by_direct_key", ["directKey"]),
+    .index("by_direct_key", ["directKey"])
+    .index("by_slug", ["slug"])
+    .index("by_channel", ["isChannel"]),
 
   messages: defineTable({
     chatRoomId: v.id("chatRooms"),
