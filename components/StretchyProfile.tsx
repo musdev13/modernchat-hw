@@ -49,7 +49,13 @@ const FULL_HEIGHT_RATIO = 0.6;
 const ACTION_H = 74;
 /** Відступ між статусом під іменем і рядом кнопок дій. */
 const PILLS_GAP = 10;
-const SPRING = { damping: 22, stiffness: 210, mass: 0.9 } as const;
+const SPRING = { damping: 22, stiffness: 210, mass: 0.9, overshootClamping: true } as const;
+
+/** Прогрес розкриття завжди в 0..1: пружина/жест не можуть вивести шапку, скрім і список із синхронізації. */
+function c01(v: number) {
+  "worklet";
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
 
 /** Змішує два кольори #RRGGBB: t = 0 → a, t = 1 → b. */
 function mix(a: string, b: string, t: number): string {
@@ -84,13 +90,13 @@ function ActionPill({
   const c = useChatPalette();
   const bgStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
-      expand.value,
+      c01(expand.value),
       [0, 1],
       [c.header, "rgba(0, 0, 0, 0.4)"],
     ),
   }));
-  const accentLayer = useAnimatedStyle(() => ({ opacity: 1 - expand.value }));
-  const whiteLayer = useAnimatedStyle(() => ({ opacity: expand.value }));
+  const accentLayer = useAnimatedStyle(() => ({ opacity: 1 - c01(expand.value) }));
+  const whiteLayer = useAnimatedStyle(() => ({ opacity: c01(expand.value) }));
   return (
     <Animated.View
       entering={FadeInDown.delay(120 + index * 70).duration(360)}
@@ -166,13 +172,13 @@ function BarIconButton({
   const idleBg = withAlpha(c.header, 0.9);
   const bgStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
-      expand.value,
+      c01(expand.value),
       [0, 1],
       [idleBg, "rgba(0, 0, 0, 0.38)"],
     ),
   }));
-  const accentLayer = useAnimatedStyle(() => ({ opacity: 1 - expand.value }));
-  const whiteLayer = useAnimatedStyle(() => ({ opacity: expand.value }));
+  const accentLayer = useAnimatedStyle(() => ({ opacity: 1 - c01(expand.value) }));
+  const whiteLayer = useAnimatedStyle(() => ({ opacity: c01(expand.value) }));
   return (
     <PressableScale
       onPress={onPress}
@@ -232,16 +238,16 @@ function HeroPage({
   collapseDistance: number;
 }) {
   const style = useAnimatedStyle(() => {
-    const size = AVATAR + (W - AVATAR) * expand.value;
+    const size = AVATAR + (W - AVATAR) * c01(expand.value);
     // Видно лише поточне фото; сусідні з'являються тільки під час гортання повністю розкритої шапки
     // (інакше збільшений на 14% сусід виглядає з-під краю кружечка).
     const current = Math.round(indexSV.value) === i;
-    const swiping = expand.value > 0.98 && Math.abs(pageDrag.value) > 0.5;
+    const swiping = c01(expand.value) > 0.98 && Math.abs(pageDrag.value) > 0.5;
     return {
       opacity: current || swiping ? 1 : 0,
       transform: [
         { translateX: (i - indexSV.value) * size + pageDrag.value },
-        { scale: 1.14 - 0.14 * expand.value },
+        { scale: 1.14 - 0.14 * c01(expand.value) },
         { translateY: -Math.min(scrollY.value, collapseDistance) * 0.12 },
       ],
     };
@@ -408,7 +414,7 @@ export function StretchyProfile({
   // Поки шапка розкрита, список не прокручується: вертикальний рух належить жесту (згортання свайпом угору).
   const [scrollLocked, setScrollLocked] = useState(false);
   useAnimatedReaction(
-    () => expand.value > 0.02,
+    () => c01(expand.value) > 0.02,
     (locked, prev) => {
       if (locked !== prev) runOnJS(setScrollLocked)(locked);
     },
@@ -458,9 +464,10 @@ export function StretchyProfile({
   }, [count]);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
-    scrollY.value = event.contentOffset.y;
+    // Від'ємний зсув (овер-скрол) не використовуємо: шапка, кнопки й скрім рухаються лише від 0.
+    scrollY.value = Math.max(0, event.contentOffset.y);
     // Прокрутка вгору згортає розкритий аватар.
-    if (event.contentOffset.y > 4 && expand.value > 0 && !pulling.value) {
+    if (event.contentOffset.y > 4 && c01(expand.value) > 0 && !pulling.value) {
       expand.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
     }
   });
@@ -473,8 +480,8 @@ export function StretchyProfile({
       if (!t) return;
       startX.value = t.x;
       startY.value = t.y;
-      startE.value = expand.value;
-      crossed.value = expand.value > 0.45;
+      startE.value = c01(expand.value);
+      crossed.value = c01(expand.value) > 0.45;
       pulling.value = false;
       paging.value = false;
       pageDrag.value = 0;
@@ -497,7 +504,7 @@ export function StretchyProfile({
         if (
           count > 1 &&
           startE.value > 0.9 &&
-          expand.value > 0.9 &&
+          c01(expand.value) > 0.9 &&
           startY.value < fullHeight &&
           dx > 12 &&
           !vertical
@@ -522,7 +529,7 @@ export function StretchyProfile({
       }
       expand.value = Math.min(1, Math.max(0, startE.value + dy / PULL_DISTANCE));
       // Тактильний «клік», коли перетнули поріг прилипання.
-      const past = expand.value > 0.45;
+      const past = c01(expand.value) > 0.45;
       if (past !== crossed.value) {
         crossed.value = past;
         runOnJS(tick)();
@@ -535,7 +542,7 @@ export function StretchyProfile({
       if (!t) return;
       if (Math.abs(t.x - startX.value) > 10 || Math.abs(t.y - startY.value) > 10) return;
       if (scrollY.value > 4) return;
-      const e1 = expand.value;
+      const e1 = c01(expand.value);
       const size = AVATAR + (W - AVATAR) * e1;
       const boxH = AVATAR + (fullHeight - AVATAR) * e1;
       const top = avatarTop * (1 - e1);
@@ -569,7 +576,7 @@ export function StretchyProfile({
         return;
       }
       // Швидкий порух вирішує напрямок, інакше — за положенням (пів шляху).
-      const moved = expand.value - startE.value;
+      const moved = c01(expand.value) - startE.value;
       const open =
         e.velocityY > 600
           ? true
@@ -585,7 +592,7 @@ export function StretchyProfile({
     .onFinalize((_e, success) => {
       // Жест скасовано системою (наприклад, перехопив скрол) — докручуємо шапку до найближчого стану.
       if (!success && pulling.value && !paging.value) {
-        expand.value = withSpring(expand.value > 0.45 ? 1 : 0, SPRING);
+        expand.value = withSpring(c01(expand.value) > 0.45 ? 1 : 0, SPRING);
       }
       if (!success && paging.value) pageDrag.value = withSpring(0, SPRING);
       pulling.value = false;
@@ -595,13 +602,13 @@ export function StretchyProfile({
   const headerStyle = useAnimatedStyle(() => {
     const p = Math.min(1, Math.max(0, scrollY.value / collapseDistance));
     const h = baseHeight + (collapsedHeight - baseHeight) * p;
-    return { height: h + (fullHeight - h) * expand.value };
+    return { height: h + (fullHeight - h) * c01(expand.value) };
   });
 
-  const gradientStyle = useAnimatedStyle(() => ({ opacity: expand.value }));
+  const gradientStyle = useAnimatedStyle(() => ({ opacity: c01(expand.value) }));
 
   const avatarStyle = useAnimatedStyle(() => {
-    const e = expand.value;
+    const e = c01(expand.value);
     const p = Math.min(1, Math.max(0, scrollY.value / collapseDistance));
     const size = AVATAR + (W - AVATAR) * e;
     return {
@@ -622,13 +629,13 @@ export function StretchyProfile({
   });
 
   const initialsStyle = useAnimatedStyle(() => {
-    const size = AVATAR + (Math.min(W, fullHeight) - AVATAR) * expand.value;
+    const size = AVATAR + (Math.min(W, fullHeight) - AVATAR) * c01(expand.value);
     return { fontSize: size * 0.36 };
   });
 
   // Ім'я під круглим аватаром: зникає, коли фото розкривається, і при прокрутці.
   const nameBlockStyle = useAnimatedStyle(() => {
-    const e = expand.value;
+    const e = c01(expand.value);
     const p = Math.min(1, Math.max(0, scrollY.value / collapseDistance));
     return {
       opacity:
@@ -640,7 +647,7 @@ export function StretchyProfile({
 
   // Ім'я знизу-зліва на фото: випливає й трохи збільшується разом з розкриттям.
   const expandedNameStyle = useAnimatedStyle(() => {
-    const e = expand.value;
+    const e = c01(expand.value);
     return {
       opacity: interpolate(e, [0.4, 1], [0, 1], Extrapolation.CLAMP),
       transform: [{ translateY: (1 - e) * 18 }, { scale: 0.9 + 0.1 * e }],
@@ -655,7 +662,7 @@ export function StretchyProfile({
       [1, 0],
       Extrapolation.CLAMP,
     ),
-    transform: [{ translateY: pillsDelta * expand.value - scrollY.value }],
+    transform: [{ translateY: pillsDelta * c01(expand.value) - scrollY.value }],
   }));
 
   // Обкладинка зсувається вдвічі повільніше за прокрутку (паралакс).
@@ -664,14 +671,14 @@ export function StretchyProfile({
   }));
 
   const scrollViewStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: shift * expand.value }],
+    transform: [{ translateY: shift * c01(expand.value) }],
   }));
 
   const barTitleStyle = useAnimatedStyle(() => {
     const p = Math.min(1, Math.max(0, scrollY.value / collapseDistance));
     const t = interpolate(p, [0.7, 1], [0, 1], Extrapolation.CLAMP);
     return {
-      opacity: t * (1 - expand.value),
+      opacity: t * (1 - c01(expand.value)),
       transform: [{ translateY: (1 - t) * 8 }, { scale: 0.94 + 0.06 * t }],
     };
   });
@@ -759,7 +766,8 @@ export function StretchyProfile({
                   {
                     position: "absolute",
                     overflow: "hidden",
-                    backgroundColor: avatarColor(name || "?"),
+                    // Під фото — темний нейтральний фон (а не колір аватара): під час овер-скролу не видно «синього» шару.
+                    backgroundColor: hasImage ? "#0B0B0D" : avatarColor(name || "?"),
                     alignItems: "center",
                     justifyContent: "center",
                   },
