@@ -12,6 +12,8 @@ export default defineSchema({
     bio: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
     pushToken: v.optional(v.string()),
+    // Коли користувач востаннє вийшов із чату (для «остання активність»).
+    lastActiveAt: v.optional(v.number()),
   })
     .index("by_token", ["tokenIdentifier"])
     .index("by_email", ["email"]),

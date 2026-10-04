@@ -56,7 +56,10 @@ export const store = mutation({
     if (user !== null) {
       // Оновлюємо ім'я або фото, якщо вони змінилися в акаунті Clerk
       const newName = identity.name ?? user.name;
-      const newImage = identity.pictureUrl ?? user.image;
+      // Власне завантажене фото не перезаписуємо аватаром з Clerk.
+      const newImage = user.avatarStorageId
+        ? user.image
+        : (identity.pictureUrl ?? user.image);
 
       if (user.name !== newName || user.image !== newImage) {
         await ctx.db.patch(user._id, {
@@ -153,12 +156,15 @@ export const updateUserProfile = mutation({
   },
 });
 
+const PRESENCE_TTL_MS = 30_000;
+
 export const getUserProfile = query({
   args: {
     userId: v.id("users"),
   },
 
   handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
     const user = await ctx.db.get(args.userId);
 
     if (!user) {
@@ -175,20 +181,53 @@ export const getUserProfile = query({
       .filter((q) => q.eq(q.field("creatorId"), args.userId))
       .collect();
 
+    const isSelf = me?._id === user._id;
+    const presence = await ctx.db
+      .query("chatPresence")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .first();
+    const inChatNow =
+      !!presence && presence.lastSeenAt > Date.now() - PRESENCE_TTL_MS;
+
     return {
       _id: user._id,
       name: user.name ?? "Користувач",
-      email: user.email,
+      // Пошту показуємо лише власнику профілю.
+      email: isSelf ? user.email : undefined,
       image: user.image,
       username: user.username,
       bio: user.bio,
       _creationTime: user._creationTime,
+      isSelf,
+      inChatNow,
+      lastActiveAt: user.lastActiveAt,
 
       stats: {
         messagesCount: userMessages.length,
         roomsCreatedCount: createdRooms.length,
       },
     };
+  },
+});
+
+// Кімнати, у яких одночасно є поточний користувач і вказаний.
+export const getSharedRooms = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) return [];
+    const rooms = await ctx.db.query("chatRooms").order("desc").collect();
+    return rooms
+      .filter((room) => {
+        const members = room.participantIds ?? [room.creatorId];
+        return members.includes(me._id) && members.includes(args.userId);
+      })
+      .map((room) => ({
+        _id: room._id,
+        title: room.title,
+        avatarUrl: room.avatarUrl,
+        memberCount: (room.participantIds ?? [room.creatorId]).length,
+      }));
   },
 });
 

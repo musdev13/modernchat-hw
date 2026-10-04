@@ -45,6 +45,7 @@ export const clearActiveChat = mutation({
 
     if (existing) {
       await ctx.db.delete(existing._id);
+      await ctx.db.patch(me._id, { lastActiveAt: Date.now() });
     }
 
     return { success: true };
