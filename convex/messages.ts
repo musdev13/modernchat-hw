@@ -179,6 +179,35 @@ export const getPaginatedMessages = query({
   },
 });
 
+// Хто й якою реакцією відреагував на повідомлення (для листа «Реакції»).
+export const getReactors = query({
+  args: { messageId: v.id("messages") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) return [];
+    const message = await ctx.db.get(args.messageId);
+    if (!message) return [];
+    await assertRoomMember(ctx, message.chatRoomId, me._id);
+
+    const reactions = await ctx.db
+      .query("messageReactions")
+      .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
+      .collect();
+    const result = [];
+    for (const reaction of reactions) {
+      const user = await ctx.db.get(reaction.userId);
+      result.push({
+        emoji: reaction.emoji,
+        userId: reaction.userId,
+        name: user?.name ?? user?.username ?? user?.email ?? "Користувач",
+        image: user?.image,
+        isMe: reaction.userId === me._id,
+      });
+    }
+    return result;
+  },
+});
+
 export const toggleReaction = mutation({
   args: {
     messageId: v.id("messages"),

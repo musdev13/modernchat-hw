@@ -67,6 +67,8 @@ interface SwipeableMessageItemProps {
   onLongPress: (message: MessageItemData) => void;
   onDoubleTap: (message: MessageItemData) => void;
   onToggleReaction: (emoji: string) => void;
+  /** Довге натискання на реакцію — показати, хто відреагував. */
+  onShowReactors?: (messageId: Id<"messages">) => void;
   onReply: (message: MessageItemData) => void;
   onImagePress?: (url: string) => void;
   onAuthorPress?: (userId: Id<"users">) => void;
@@ -175,6 +177,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
   onLongPress,
   onDoubleTap,
   onToggleReaction,
+  onShowReactors,
   onReply,
   onImagePress,
   onAuthorPress,
@@ -527,6 +530,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       reactions={item.reactions}
                       isOwn={false}
                       onToggleReaction={onToggleReaction}
+                      onLongPressReaction={() => onShowReactors?.(item._id)}
                     />
                   </View>
                 )}
@@ -718,6 +722,7 @@ const SwipeableMessageItemComponent: React.FC<SwipeableMessageItemProps> = ({
                       reactions={item.reactions}
                       isOwn={isOwn}
                       onToggleReaction={onToggleReaction}
+                      onLongPressReaction={() => onShowReactors?.(item._id)}
                     />
                   </View>
                 )}

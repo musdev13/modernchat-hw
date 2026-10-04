@@ -12,16 +12,20 @@ type Props = {
   reactions?: ReactionItem[];
   isOwn: boolean;
   onToggleReaction: (emoji: string) => void;
+  /** Довге натискання на пілюлю — показати, хто відреагував. */
+  onLongPressReaction?: () => void;
 };
 
 function ReactionPill({
   item,
   isOwn,
   onToggle,
+  onLongPress,
 }: {
   item: ReactionItem;
   isOwn: boolean;
   onToggle: () => void;
+  onLongPress?: () => void;
 }) {
   const c = useChatPalette();
   const scale = useRef(new Animated.Value(0.5)).current;
@@ -55,6 +59,8 @@ function ReactionPill({
         accessibilityRole="button"
         accessibilityLabel={`Реакція ${item.emoji}, ${item.count}`}
         onPress={onToggle}
+        onLongPress={onLongPress}
+        delayLongPress={300}
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -84,6 +90,7 @@ export function MessageReactions({
   reactions,
   isOwn,
   onToggleReaction,
+  onLongPressReaction,
 }: Props) {
   if (!reactions?.length) return null;
 
@@ -102,6 +109,7 @@ export function MessageReactions({
           item={item}
           isOwn={isOwn}
           onToggle={() => onToggleReaction(item.emoji)}
+          onLongPress={onLongPressReaction}
         />
       ))}
     </View>

@@ -14,6 +14,7 @@ import {
 import { ForwardSheet } from "@/components/ForwardSheet";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { ReactionPickerModal } from "@/components/ReactionPickerModal";
+import { ReactorsSheet } from "@/components/ReactorsSheet";
 import { ReplyPreviewBar, ReplyTarget } from "@/components/ReplyPreviewBar";
 import {
   MessageItemData,
@@ -472,6 +473,7 @@ export default function ChatRoomScreen() {
   );
 
   // Пересилання текстового повідомлення в інший чат.
+  const [reactorsFor, setReactorsFor] = useState<Id<"messages"> | null>(null);
   const [forwardTarget, setForwardTarget] = useState<MessageItemData | null>(null);
   const handleForwardTo = useCallback(
     async (targetChatRoomId: Id<"chatRooms">) => {
@@ -1065,6 +1067,7 @@ export default function ChatRoomScreen() {
         onLongPress={handleOpenActions}
         onDoubleTap={(message) => handleToggleReaction(message._id, "❤️")}
         onToggleReaction={(emoji) => handleToggleReaction(row.item._id, emoji)}
+        onShowReactors={setReactorsFor}
         onReply={handleStartReply}
         onImagePress={setFullscreenImage}
         onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
@@ -2007,6 +2010,8 @@ export default function ChatRoomScreen() {
         imageUrl={fullscreenImage}
         onClose={() => setFullscreenImage(null)}
       />
+
+      <ReactorsSheet messageId={reactorsFor} onClose={() => setReactorsFor(null)} />
 
       <ForwardSheet
         visible={!!forwardTarget}

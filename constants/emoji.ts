@@ -101,4 +101,4 @@ export const EMOJI_CATEGORIES: EmojiCategory[] = [
 ];
 
 /** Швидкі реакції для довгого натискання на повідомлення. */
-export const QUICK_REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🔥", "🎉", "👏"];
+export const QUICK_REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🔥"];
