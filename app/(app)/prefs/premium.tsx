@@ -3,6 +3,7 @@ import { Logo } from "@/components/Logo";
 import { SpaceBackdrop } from "@/components/SpaceBackdrop";
 import {
   PREMIUM_ADMIN_NOTE,
+  PREMIUM_COMPARE,
   PREMIUM_GOLD,
   PREMIUM_GOLD_SOFT,
   PREMIUM_PERKS,
@@ -75,7 +76,7 @@ export default function PremiumScreen() {
             Modesto Premium
           </Text>
           <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 15.5, textAlign: "center", marginTop: 8, lineHeight: 22 }}>
-            Більше можливостей для спілкування: анімований аватар, історії, емодзі-статус і теми з космосу.
+            Повноцінні історії, більші ліміти, ефекти, переклад, кольори профілю, приватність і теми з космосу.
           </Text>
         </View>
 
@@ -119,17 +120,19 @@ export default function PremiumScreen() {
           </View>
         </Animated.View>
 
-        {/* Переваги */}
-        <View style={{ marginTop: 20 }}>
+        {/* Переваги: сітка */}
+        <Text style={{ color: PREMIUM_GOLD, fontSize: 13.5, fontWeight: "700", marginTop: 22, marginLeft: 4 }}>
+          Що входить
+        </Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginTop: 10 }}>
           {PREMIUM_PERKS.map((perk, i) => (
             <Animated.View
               key={perk.title}
-              entering={FadeInDown.delay(180 + i * 70).duration(360)}
+              entering={FadeInDown.delay(120 + Math.min(i, 8) * 45).duration(320)}
               style={{
-                flexDirection: "row",
-                alignItems: "center",
+                width: "48.5%",
                 borderRadius: 18,
-                padding: 14,
+                padding: 12,
                 marginBottom: 10,
                 backgroundColor: "rgba(255,255,255,0.05)",
                 borderWidth: 1,
@@ -138,25 +141,65 @@ export default function PremiumScreen() {
             >
               <View
                 style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 13,
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
                   alignItems: "center",
                   justifyContent: "center",
                   backgroundColor: "rgba(245,196,81,0.14)",
                 }}
               >
-                <Ionicons name={perk.icon} size={22} color={PREMIUM_GOLD} />
+                <Ionicons name={perk.icon} size={20} color={PREMIUM_GOLD} />
               </View>
-              <View style={{ flex: 1, marginLeft: 14 }}>
-                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>{perk.title}</Text>
-                <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 13.5, marginTop: 2, lineHeight: 19 }}>
-                  {perk.text}
-                </Text>
-              </View>
+              <Text style={{ color: "#FFFFFF", fontSize: 14.5, fontWeight: "700", marginTop: 8 }}>{perk.title}</Text>
+              <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 12.5, marginTop: 3, lineHeight: 17 }}>
+                {perk.text}
+              </Text>
             </Animated.View>
           ))}
         </View>
+
+        {/* Порівняння */}
+        <Text style={{ color: PREMIUM_GOLD, fontSize: 13.5, fontWeight: "700", marginTop: 12, marginLeft: 4 }}>
+          Безкоштовно чи Premium
+        </Text>
+        <View
+          style={{
+            marginTop: 10,
+            borderRadius: 18,
+            overflow: "hidden",
+            backgroundColor: "rgba(255,255,255,0.05)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.09)",
+          }}
+        >
+          <View style={{ flexDirection: "row", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,0.06)" }}>
+            <Text style={{ flex: 1.5, color: "rgba(255,255,255,0.6)", fontSize: 12.5, fontWeight: "700" }}>Можливість</Text>
+            <Text style={{ flex: 1, color: "rgba(255,255,255,0.6)", fontSize: 12.5, fontWeight: "700", textAlign: "center" }}>Безкоштовно</Text>
+            <Text style={{ flex: 1, color: PREMIUM_GOLD, fontSize: 12.5, fontWeight: "800", textAlign: "center" }}>Premium</Text>
+          </View>
+          {PREMIUM_COMPARE.map((row, i) => (
+            <View
+              key={row.label}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 9,
+                paddingHorizontal: 12,
+                borderTopWidth: 1,
+                borderTopColor: "rgba(255,255,255,0.06)",
+                backgroundColor: i % 2 ? "rgba(255,255,255,0.02)" : "transparent",
+              }}
+            >
+              <Text style={{ flex: 1.5, color: "#FFFFFF", fontSize: 13.5 }}>{row.label}</Text>
+              <Text style={{ flex: 1, color: "rgba(255,255,255,0.6)", fontSize: 13.5, textAlign: "center" }}>{row.free}</Text>
+              <Text style={{ flex: 1, color: PREMIUM_GOLD_SOFT, fontSize: 13.5, fontWeight: "700", textAlign: "center" }}>{row.premium}</Text>
+            </View>
+          ))}
+        </View>
+        <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 12.5, marginTop: 8, marginLeft: 4, lineHeight: 18 }}>
+          Усі ліміти перевіряє сервер, тому їх не можна обійти зі застосунку. {PREMIUM_ADMIN_NOTE}.
+        </Text>
 
         {/* Мої налаштування Premium */}
         <View style={{ marginTop: 6 }}>
@@ -234,6 +277,29 @@ export default function PremiumScreen() {
               </View>
               <Ionicons name={premium.isPremium ? "chevron-forward" : "lock-closed"} size={18} color="rgba(255,255,255,0.5)" />
             </TouchableOpacity>
+            {[
+              { icon: "color-fill-outline" as const, title: "Колір профілю", sub: "Ім'я, цитати, обкладинка, візерунок", to: "/(app)/prefs/profile-style" },
+              { icon: "checkmark-done-outline" as const, title: "Приватність Premium", sub: "Прочитання, хто пише, автоархів", to: "/(app)/prefs/privacy" },
+              { icon: "eye-off-outline" as const, title: "Історії: невидимка та архів", sub: "Налаштування приватності історій", to: "/(app)/prefs/story-privacy" },
+            ].map((row) => (
+              <View key={row.to}>
+                <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.08)", marginLeft: 70 }} />
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => router.push(row.to as never)}
+                  style={{ flexDirection: "row", alignItems: "center", padding: 14 }}
+                >
+                  <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(245,196,81,0.14)" }}>
+                    <Ionicons name={row.icon} size={22} color={PREMIUM_GOLD} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 14 }}>
+                    <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "600" }}>{row.title}</Text>
+                    <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 13.5, marginTop: 2 }}>{row.sub}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.5)" />
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
           {!premium.isPremium && noteShown ? (
             <Text style={{ color: PREMIUM_GOLD_SOFT, fontSize: 13.5, marginTop: 8, marginLeft: 4 }}>
