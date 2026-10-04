@@ -132,8 +132,6 @@ export default function LoginScreen() {
         path: "oauth-native-callback",
       });
 
-      console.log("[Google OAuth] redirectUrl:", redirectUrl);
-
       const { createdSessionId, setActive } = await startSSOFlow({
         strategy: "oauth_google",
         redirectUrl,
@@ -142,8 +140,6 @@ export default function LoginScreen() {
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
         router.replace("/(app)");
-      } else {
-        console.log("[Google OAuth] No session created");
       }
     } catch (err: any) {
       if (!String(err?.message ?? "").includes("already signed in")) console.error("OAuth error:", err);

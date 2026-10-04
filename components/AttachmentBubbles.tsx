@@ -25,6 +25,47 @@ export function getCachedVideoThumb(url: string): VideoThumbnail | undefined {
   return thumbCache.get(url);
 }
 
+// Не більше двох одночасних генераторів прев'ю: кожен тримає окремий нативний програвач,
+// а у довгому чаті їх могло б створюватись десятки одразу.
+const MAX_THUMB_JOBS = 2;
+const THUMB_SLOT_TTL_MS = 8000;
+let activeThumbJobs = 0;
+const thumbWaiting: (() => void)[] = [];
+
+function pumpThumbQueue() {
+  while (activeThumbJobs < MAX_THUMB_JOBS && thumbWaiting.length > 0) {
+    activeThumbJobs += 1;
+    thumbWaiting.shift()?.();
+  }
+}
+
+/** Займає слот генерації; повертає функцію звільнення (викликається й при розмонтуванні). */
+function acquireThumbSlot(onGranted: () => void): () => void {
+  let granted = false;
+  let released = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (timer) clearTimeout(timer);
+    if (granted) {
+      activeThumbJobs -= 1;
+    } else {
+      const i = thumbWaiting.indexOf(start);
+      if (i >= 0) thumbWaiting.splice(i, 1);
+    }
+    pumpThumbQueue();
+  };
+  const start = () => {
+    granted = true;
+    timer = setTimeout(release, THUMB_SLOT_TTL_MS);
+    onGranted();
+  };
+  thumbWaiting.push(start);
+  pumpThumbQueue();
+  return release;
+}
+
 function ThumbGenerator({ url, onReady }: { url: string; onReady: (t: VideoThumbnail) => void }) {
   const player = useVideoPlayer(url);
   useEffect(() => {
@@ -70,6 +111,11 @@ export function VideoBubble({
   onPress: () => void;
 }) {
   const [thumb, setThumb] = useState<VideoThumbnail | undefined>(() => thumbCache.get(url));
+  const [slot, setSlot] = useState(false);
+  useEffect(() => {
+    if (thumb) return;
+    return acquireThumbSlot(() => setSlot(true));
+  }, [thumb]);
   const ratio = ratioFrom(width, height, 16 / 9);
 
   return (
@@ -91,9 +137,9 @@ export function VideoBubble({
     >
       {thumb ? (
         <Image source={thumb} style={{ position: "absolute", inset: 0 }} contentFit="cover" />
-      ) : (
+      ) : slot ? (
         <ThumbGenerator url={url} onReady={setThumb} />
-      )}
+      ) : null}
       <View
         style={{
           width: 54,

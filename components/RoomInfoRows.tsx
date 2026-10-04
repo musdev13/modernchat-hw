@@ -5,8 +5,8 @@ import { formatFileSize } from "@/utils/attachments";
 import { dayLabel, formatTime } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
 import { ComponentProps, memo, useEffect, useState } from "react";
+import { Image } from "expo-image";
 import {
-  Image,
   Text,
   TextInput,
   TouchableOpacity,
@@ -323,6 +323,10 @@ export const MemberRow = memo(function MemberRow({
         {showImage ? (
           <Image
             source={{ uri: member.image }}
+            contentFit="cover"
+            transition={150}
+            cachePolicy="memory-disk"
+            recyclingKey={member.image}
             onError={() => setImageFailed(true)}
             style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: c.search }}
           />
@@ -494,7 +498,10 @@ export const MediaGridRow = memo(function MediaGridRow({
           ) : (
             <Image
               source={{ uri: item.url }}
-              resizeMode={item.kind === "sticker" ? "contain" : "cover"}
+              contentFit={item.kind === "sticker" ? "contain" : "cover"}
+              transition={120}
+              cachePolicy="memory-disk"
+              recyclingKey={item._id}
               style={{
                 width: item.kind === "sticker" ? cell * 0.8 : cell,
                 height: item.kind === "sticker" ? cell * 0.8 : cell,

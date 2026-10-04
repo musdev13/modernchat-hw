@@ -1,3 +1,4 @@
+import { Image } from "expo-image";
 import { avatarColor, initialsOf } from "@/constants/theme";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import { api } from "@/convex/_generated/api";
@@ -9,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Modal,
   Text,
   TextInput,
@@ -171,7 +171,9 @@ export function AddMembersModal({ visible, roomId, participantIds, onClose }: Pr
                       <Image
                         source={{ uri: item.image }}
                         style={{ marginRight: 12, width: 44, height: 44, borderRadius: 22, backgroundColor: c.search }}
-                        resizeMode="cover"
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                        recyclingKey={item._id}
                       />
                     ) : (
                       <View

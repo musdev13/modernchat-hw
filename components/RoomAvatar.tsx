@@ -2,7 +2,8 @@ import { avatarColor, initialsOf } from "@/constants/theme";
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
-import { Image, StyleProp, Text, View, ViewStyle } from "react-native";
+import { Image } from "expo-image";
+import { StyleProp, Text, View, ViewStyle } from "react-native";
 
 interface Props {
   title: string;
@@ -46,7 +47,10 @@ export function RoomAvatar({ title, imageUrl, size, style, saved }: Props) {
     return (
       <Image
         source={{ uri: imageUrl }}
-        resizeMode="cover"
+        contentFit="cover"
+        transition={150}
+        cachePolicy="memory-disk"
+        recyclingKey={imageUrl}
         onError={() => setFailed(true)}
         style={[
           {

@@ -62,26 +62,6 @@ function useConvexClerkAuth() {
   >;
 }
 
-function AuthDebugger() {
-  const { isSignedIn, isLoaded, getToken, userId } = useAuth();
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    console.log("🔍 [Clerk Auth] isLoaded:", isLoaded, "isSignedIn:", isSignedIn, "userId:", userId);
-    if (isSignedIn) {
-      getToken()
-        .then((token) => {
-          console.log("🔍 [Clerk Auth] Token for template 'convex':", token ? `VALID (length ${token.length})` : "NULL");
-        })
-        .catch((err) => {
-          console.error("❌ [Clerk Auth] Error getting 'convex' token (перевірте чи створено JWT Template 'convex' у Clerk):", err);
-        });
-    }
-  }, [isLoaded, isSignedIn, userId, getToken]);
-
-  return null;
-}
-
 function UserSync() {
   const { isSignedIn } = useAuth();
   const storeUser = useMutation(api.users.store);
@@ -90,9 +70,6 @@ function UserSync() {
     if (!isSignedIn) return;
 
     storeUser()
-      .then((userId) => {
-        console.log("✅ [UserSync] Користувача успішно синхронізовано з Convex:", userId);
-      })
       .catch((err) => {
         console.error("❌ [UserSync] Помилка синхронізації з Convex:", err);
       });
@@ -110,7 +87,6 @@ function AppContent() {
   return (
     <>
       <ThemedStatusBar />
-      <AuthDebugger />
       <UserSync />
       <InitialLayout />
     </>

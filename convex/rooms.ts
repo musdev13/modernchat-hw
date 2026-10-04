@@ -59,18 +59,19 @@ export const listRooms = query({
     const settingOf = new Map(settings.map((row) => [row.chatRoomId as string, row]));
     const now = Date.now();
 
-    const result = [];
-    for (const room of rooms) {
+    // Рядки кімнат будуємо паралельно: Convex читає незалежні документи одночасно (без N+1 по черзі).
+    const built = await Promise.all(
+      rooms.map(async (room) => {
       const members = participantIdsOf(room);
-      if (!members.includes(me._id)) continue;
+      if (!members.includes(me._id)) return null;
       const setting = settingOf.get(room._id);
 
       const isSaved = !!room.isSaved;
       // Порожні особисті чати (ще без повідомлень) у списку не показуємо; «Збережене» — завжди.
-      if (room.isDirect && !isSaved && !room.lastMessageAt) continue;
+      if (room.isDirect && !isSaved && !room.lastMessageAt) return null;
       // Прихований чат повертається, коли в ньому з'явилося нове повідомлення.
       if (setting?.hidden && (room.lastMessageAt ?? 0) <= (setting.hiddenAt ?? 0)) {
-        continue;
+        return null;
       }
 
       let title = room.title;
@@ -90,7 +91,7 @@ export const listRooms = query({
         }
       }
 
-      result.push({
+      return {
         ...room,
         title,
         avatarUrl,
@@ -103,8 +104,11 @@ export const listRooms = query({
         mutedUntil: isMutedNow(setting, now) ? setting?.mutedUntil : undefined,
         // «Збережене» завжди закріплене нагорі.
         pinned: isSaved || !!setting?.pinned,
-      });
-    }
+      };
+    }),
+    );
+    const result = built.filter((r): r is NonNullable<typeof r> => r !== null);
+
 
     const stamp = (room: { lastMessageAt?: number; _creationTime: number }) =>
       room.lastMessageAt ?? room._creationTime;
