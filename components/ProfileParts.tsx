@@ -19,45 +19,6 @@ const CARD_MARGIN = 12;
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
-/** Ряд круглих кнопок дій під шапкою профілю. */
-export function ActionButtons({
-  items,
-}: {
-  items: { key: string; icon: IconName; label: string; onPress: () => void }[];
-}) {
-  const c = useChatPalette();
-  if (items.length === 0) return null;
-  return (
-    <View style={{ flexDirection: "row", paddingHorizontal: 8, paddingBottom: 4 }}>
-      {items.map((item) => (
-        <TouchableOpacity
-          key={item.key}
-          activeOpacity={0.7}
-          onPress={item.onPress}
-          accessibilityRole="button"
-          accessibilityLabel={item.label}
-          style={{
-            flex: 1,
-            marginHorizontal: 4,
-            paddingVertical: 12,
-            borderRadius: 16,
-            backgroundColor: c.header,
-            alignItems: "center",
-          }}
-        >
-          <Ionicons name={item.icon} size={24} color={c.accent} />
-          <Text
-            numberOfLines={1}
-            style={{ color: c.accent, fontSize: 12, fontWeight: "600", marginTop: 5 }}
-          >
-            {item.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}
-
 /** Секція-картка (фон c.header, скруглена) із заголовком над карткою. */
 export function Section({
   title,

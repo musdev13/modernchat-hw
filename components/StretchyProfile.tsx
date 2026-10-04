@@ -7,7 +7,7 @@ import { avatarColor, initialsOf } from "@/constants/theme";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { Children, ComponentProps, ReactNode, useCallback, useEffect, useState } from "react";
+import { Children, ComponentProps, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Text,
@@ -295,8 +295,34 @@ export function StretchyProfile({
     [collapseDistance],
   );
 
+  // Щойно натиснута кнопка (пілюля дії / кнопка шапки): дотик на ній не має відкривати перегляд фото.
+  const lastActionAt = useRef(0);
+  const viewerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (viewerTimer.current) clearTimeout(viewerTimer.current);
+    },
+    [],
+  );
+  const guardAction = useCallback((fn: () => void) => {
+    return () => {
+      lastActionAt.current = Date.now();
+      if (viewerTimer.current) clearTimeout(viewerTimer.current);
+      setViewerUrl(null);
+      fn();
+    };
+  }, []);
+
   const openViewer = useCallback(() => {
-    if (imageUrl && !imageFailed) setViewerUrl(imageUrl);
+    if (!imageUrl || imageFailed) return;
+    const at = Date.now();
+    if (viewerTimer.current) clearTimeout(viewerTimer.current);
+    // Невелика затримка: якщо в цей самий момент спрацює кнопка, перегляд не відкриваємо.
+    viewerTimer.current = setTimeout(() => {
+      viewerTimer.current = null;
+      if (lastActionAt.current > at - 400) return;
+      setViewerUrl(imageUrl);
+    }, 90);
   }, [imageFailed, imageUrl]);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
@@ -358,6 +384,12 @@ export function StretchyProfile({
       const boxH = AVATAR + (fullHeight - AVATAR) * e1;
       const top = avatarTop * (1 - e1);
       const left = (W - size) / 2;
+      // Кнопки в шапці й пілюлі дій лежать поверх розкритого фото — дотики по них не відкривають фото.
+      if (t.y < barBottom + 4) return;
+      if (hasActions) {
+        const pillsTop = pillsTopCollapsed + pillsDelta * e1;
+        if (t.y >= pillsTop - 6 && t.y <= pillsTop + ACTION_H + 6) return;
+      }
       if (t.x >= left && t.x <= left + size && t.y >= top && t.y <= top + boxH) {
         runOnJS(openViewer)();
       }
@@ -468,7 +500,7 @@ export function StretchyProfile({
     overflow: "hidden" as const,
   };
   const barButton = (icon: IconName, label: string, onPress: () => void) => (
-    <BarIconButton icon={icon} label={label} onPress={onPress} expand={expand} />
+    <BarIconButton icon={icon} label={label} onPress={guardAction(onPress)} expand={expand} />
   );
 
   const coverColor = avatarColor(name || "?");
@@ -699,7 +731,12 @@ export function StretchyProfile({
                 ]}
               >
                 {actions!.map((item, index) => (
-                  <ActionPill key={item.key} item={item} expand={expand} index={index} />
+                  <ActionPill
+                    key={item.key}
+                    item={{ ...item, onPress: guardAction(item.onPress) }}
+                    expand={expand}
+                    index={index}
+                  />
                 ))}
               </Animated.View>
             ) : null}
