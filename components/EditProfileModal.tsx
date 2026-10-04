@@ -28,6 +28,9 @@ interface EditProfileModalProps {
   initialUsername?: string;
   initialBio?: string;
   initialImage?: string;
+  /** ISO «YYYY-MM-DD». */
+  initialBirthday?: string;
+  initialPhone?: string;
   /** Яке поле одразу активувати (для швидких переходів із налаштувань). */
   focusField?: ProfileField;
   onClose: () => void;
@@ -44,6 +47,8 @@ export function EditProfileModal({
   initialUsername,
   initialBio,
   initialImage,
+  initialBirthday,
+  initialPhone,
   focusField,
   onClose,
   onSaved,
@@ -57,6 +62,10 @@ export function EditProfileModal({
   const [username, setUsername] = useState(initialUsername ?? "");
   const [bio, setBio] = useState(initialBio ?? "");
   const [image, setImage] = useState<string | undefined>(initialImage);
+  const [bDay, setBDay] = useState("");
+  const [bMonth, setBMonth] = useState("");
+  const [bYear, setBYear] = useState("");
+  const [phone, setPhone] = useState(initialPhone ?? "");
   const [picked, setPicked] = useState<PickedImage | undefined>();
   const [saving, setSaving] = useState(false);
 
@@ -71,6 +80,11 @@ export function EditProfileModal({
     setBio(initialBio ?? "");
     setImage(initialImage);
     setPicked(undefined);
+    const m = initialBirthday?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    setBYear(m ? m[1] : "");
+    setBMonth(m ? String(Number(m[2])) : "");
+    setBDay(m ? String(Number(m[3])) : "");
+    setPhone(initialPhone ?? "");
 
     if (!focusField) return;
     const timer = setTimeout(() => {
@@ -78,7 +92,7 @@ export function EditProfileModal({
       ref.current?.focus();
     }, 380);
     return () => clearTimeout(timer);
-  }, [visible, initialName, initialUsername, initialBio, initialImage, focusField]);
+  }, [visible, initialName, initialUsername, initialBio, initialImage, initialBirthday, initialPhone, focusField]);
 
   const pickImage = async () => {
     const result = await pickSquareImage();
@@ -102,6 +116,31 @@ export function EditProfileModal({
       return;
     }
 
+    // День народження: або всі три поля, або жодного.
+    let birthday = "";
+    if (bDay || bMonth || bYear) {
+      const d = Number(bDay);
+      const mo = Number(bMonth);
+      const y = Number(bYear);
+      const iso = `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const probe = new Date(`${iso}T00:00:00Z`);
+      if (
+        !(d >= 1 && mo >= 1 && mo <= 12 && y >= 1900) ||
+        Number.isNaN(probe.getTime()) ||
+        probe.toISOString().slice(0, 10) !== iso ||
+        probe.getTime() > Date.now()
+      ) {
+        Alert.alert("День народження", "Вкажіть коректну дату: день, місяць і рік.");
+        return;
+      }
+      birthday = iso;
+    }
+    const cleanPhone = phone.trim();
+    if (cleanPhone && !/^\+?[0-9][0-9\s().-]{5,20}$/.test(cleanPhone)) {
+      Alert.alert("Телефон", "Вкажіть номер у форматі +380 XX XXX XX XX.");
+      return;
+    }
+
     try {
       setSaving(true);
       let avatarStorageId;
@@ -113,6 +152,8 @@ export function EditProfileModal({
         name: trimmedName,
         username: cleanUsername || undefined,
         bio: bio.trim() || undefined,
+        birthday,
+        phone: cleanPhone,
         ...(avatarStorageId ? { avatarStorageId } : {}),
       });
       onSaved();
@@ -283,6 +324,71 @@ export function EditProfileModal({
               <Text style={{ color: c.muted, fontSize: 12, marginTop: 6, textAlign: "right" }}>
                 {bio.length}/{BIO_MAX}
               </Text>
+
+              {label("Телефон", { marginTop: 10 })}
+              <TextInput
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="+380 XX XXX XX XX"
+                placeholderTextColor={withAlpha(c.muted, 0.8)}
+                editable={!saving}
+                keyboardType="phone-pad"
+                maxLength={24}
+                selectionColor={c.accent}
+                style={field}
+              />
+              <Text style={{ color: c.muted, fontSize: 12, marginTop: 6, marginLeft: 4 }}>
+                Видимість номера — у Налаштуваннях → Конфіденційність.
+              </Text>
+
+              {label("День народження", { marginTop: 16 })}
+              <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+                <TextInput
+                  value={bDay}
+                  onChangeText={(t) => setBDay(t.replace(/\D/g, "").slice(0, 2))}
+                  placeholder="ДД"
+                  placeholderTextColor={withAlpha(c.muted, 0.8)}
+                  editable={!saving}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  selectionColor={c.accent}
+                  style={[field, { flex: 1, textAlign: "center" }]}
+                />
+                <TextInput
+                  value={bMonth}
+                  onChangeText={(t) => setBMonth(t.replace(/\D/g, "").slice(0, 2))}
+                  placeholder="ММ"
+                  placeholderTextColor={withAlpha(c.muted, 0.8)}
+                  editable={!saving}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  selectionColor={c.accent}
+                  style={[field, { flex: 1, textAlign: "center" }]}
+                />
+                <TextInput
+                  value={bYear}
+                  onChangeText={(t) => setBYear(t.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="РРРР"
+                  placeholderTextColor={withAlpha(c.muted, 0.8)}
+                  editable={!saving}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  selectionColor={c.accent}
+                  style={[field, { flex: 1.4, textAlign: "center" }]}
+                />
+                {bDay || bMonth || bYear ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setBDay("");
+                      setBMonth("");
+                      setBYear("");
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="close-circle" size={22} color={c.muted} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </ScrollView>
           </Pressable>
         </Pressable>

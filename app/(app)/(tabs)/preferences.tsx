@@ -143,6 +143,8 @@ export default function PreferencesScreen() {
 
   const currentUser = useQuery(api.users.currentUser);
   const setHideLastSeen = useMutation(api.users.setHideLastSeen);
+  const setPhoneVisible = useMutation(api.users.setPhoneVisible);
+  const [phonePrivacyVisible, setPhonePrivacyVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [focusField, setFocusField] = useState<ProfileField | undefined>();
@@ -309,6 +311,13 @@ export default function PreferencesScreen() {
                 label="Час останнього входу"
                 value={currentUser?.hideLastSeen ? "Ніхто" : "Усі"}
                 onPress={() => setPrivacyVisible(true)}
+              />
+              <SettingsRow
+                icon="call-outline"
+                tint="#3B82F6"
+                label="Номер телефону"
+                value={currentUser?.phoneVisible ? "Усі" : "Ніхто"}
+                onPress={() => setPhonePrivacyVisible(true)}
               />
             </View>
 
@@ -500,12 +509,29 @@ export default function PreferencesScreen() {
           }))}
         />
 
+        <ActionSheet
+          visible={phonePrivacyVisible}
+          onClose={() => setPhonePrivacyVisible(false)}
+          title="Хто бачить мій номер телефону"
+          subtitle="За замовчуванням номер приховано від усіх"
+          actions={[true, false].map((visible) => ({
+            key: visible ? "everybody" : "nobody",
+            label: visible ? "Усі" : "Ніхто",
+            icon: (!!currentUser?.phoneVisible === visible ? "checkmark-circle" : "ellipse-outline") as any,
+            onPress: () => {
+              setPhoneVisible({ visible }).catch(() => {});
+            },
+          }))}
+        />
+
         <EditProfileModal
           visible={editVisible}
           initialName={currentUser?.name ?? ""}
           initialUsername={currentUser?.username}
           initialBio={currentUser?.bio}
           initialImage={currentUser?.image}
+          initialBirthday={currentUser?.birthday}
+          initialPhone={currentUser?.phone}
           focusField={focusField}
           onClose={() => setEditVisible(false)}
           onSaved={() => setEditVisible(false)}

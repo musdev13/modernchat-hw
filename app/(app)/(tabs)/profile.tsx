@@ -1,18 +1,36 @@
 import { useUser } from "@clerk/clerk-expo";
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
 
-import { EditProfileModal, ProfileField } from "@/components/EditProfileModal";
-import { InfoRow, ProfileSkeleton, Section, StatsRow, useCopyToast } from "@/components/ProfileParts";
+import { ActionSheet } from "@/components/ActionSheet";
+import { EditProfileModal } from "@/components/EditProfileModal";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
-import { StretchyProfile } from "@/components/StretchyProfile";
+import type { ViewerAction } from "@/components/MediaViewer";
+import {
+  InfoRow,
+  PhotoGrid,
+  ProfileSkeleton,
+  ProfileTabs,
+  RoomsList,
+  Section,
+  useCopyToast,
+  useRowMenu,
+} from "@/components/ProfileParts";
+import { StretchyProfile, type ProfilePhoto } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette } from "@/hooks/useChatPalette";
-import { dayLabel } from "@/utils/chat";
+import { formatBirthday, userLink } from "@/utils/profileFormat";
 import { pickSquareImage, uploadImageToStorage } from "@/utils/upload";
+
+const TABS = [
+  { key: "photos", label: "Фото" },
+  { key: "groups", label: "Групи" },
+];
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -25,13 +43,111 @@ export default function ProfileScreen() {
     api.users.getUserProfile,
     currentUser?._id ? { userId: currentUser._id } : "skip",
   );
+  const photoRows = useQuery(
+    api.profilePhotos.list,
+    currentUser?._id ? { userId: currentUser._id } : "skip",
+  );
+  const rooms = useQuery(
+    api.users.getSharedRooms,
+    currentUser?._id ? { userId: currentUser._id } : "skip",
+  );
   const generateUploadUrl = useMutation(api.users.generateAvatarUploadUrl);
-  const updateProfile = useMutation(api.users.updateUserProfile);
+  const addPhoto = useMutation(api.profilePhotos.add);
+  const setCurrent = useMutation(api.profilePhotos.setCurrent);
+  const removePhoto = useMutation(api.profilePhotos.remove);
 
   const [editVisible, setEditVisible] = useState(false);
-  const [focusField, setFocusField] = useState<ProfileField | undefined>();
+  const [menuVisible, setMenuVisible] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [tab, setTab] = useState("photos");
+  const [viewerReq, setViewerReq] = useState<{ index: number; key: number } | null>(null);
   const { copy: handleCopy, toast: copyToast } = useCopyToast();
+  const { open: openRowMenu, sheet: rowMenuSheet } = useRowMenu();
+
+  const photos = useMemo<ProfilePhoto[]>(
+    () => (photoRows ?? []).map((p) => ({ id: p._id, url: p.url, createdAt: p.createdAt })),
+    [photoRows],
+  );
+
+  const handleSetPhoto = useCallback(async () => {
+    if (uploading) return;
+    try {
+      const picked = await pickSquareImage();
+      if (!picked) return;
+      setUploading(true);
+      const uploadUrl = await generateUploadUrl();
+      const storageId = await uploadImageToStorage(uploadUrl, picked);
+      await addPhoto({ storageId });
+      setTab("photos");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error: any) {
+      console.error("Не вдалося встановити фото:", error);
+      Alert.alert("Помилка", error?.message ?? "Не вдалося встановити фото.");
+    } finally {
+      setUploading(false);
+    }
+  }, [uploading, generateUploadUrl, addPhoto]);
+
+  const viewerActions = useMemo<ViewerAction[]>(
+    () => [
+      {
+        key: "make-main",
+        label: "Зробити головним",
+        icon: "person-circle-outline",
+        closeFirst: true,
+        onPress: (item, index) => {
+          const row = photoRows?.find((p) => p._id === item.id);
+          if (!row || row._id === ("legacy" as string) || row.isCurrent || index === 0) {
+            Alert.alert("Головне фото", "Це фото вже головне.");
+            return;
+          }
+          setCurrent({ photoId: item.id as Id<"profilePhotos"> }).catch((e: any) =>
+            Alert.alert("Помилка", e?.message ?? "Не вдалося змінити фото."),
+          );
+        },
+      },
+      {
+        key: "delete",
+        label: "Видалити",
+        icon: "trash-outline",
+        destructive: true,
+        closeFirst: true,
+        onPress: (item) => {
+          if (item.id === "legacy" || item.id === "main") {
+            Alert.alert("Видалення", "Додайте нове фото — тоді можна буде видалити поточне.");
+            return;
+          }
+          Alert.alert("Видалити фото?", "Фото буде видалено з вашого профілю.", [
+            { text: "Скасувати", style: "cancel" },
+            {
+              text: "Видалити",
+              style: "destructive",
+              onPress: () => {
+                removePhoto({ photoId: item.id as Id<"profilePhotos"> }).catch((e: any) =>
+                  Alert.alert("Помилка", e?.message ?? "Не вдалося видалити фото."),
+                );
+              },
+            },
+          ]);
+        },
+      },
+    ],
+    [photoRows, setCurrent, removePhoto],
+  );
+
+  const actions = useMemo(
+    () => [
+      { key: "photo", icon: "camera-outline" as const, label: "Встановити фото", onPress: handleSetPhoto },
+      { key: "edit", icon: "create-outline" as const, label: "Змінити", onPress: () => setEditVisible(true) },
+      {
+        key: "settings",
+        icon: "settings-outline" as const,
+        label: "Налаштування",
+        onPress: () => router.navigate("/(app)/(tabs)/preferences" as any),
+      },
+    ],
+    [handleSetPhoto, router],
+  );
 
   if (currentUser === undefined || (currentUser && profile === undefined)) {
     return <ProfileSkeleton />;
@@ -55,112 +171,184 @@ export default function ProfileScreen() {
     );
   }
 
-  const openEdit = (field?: ProfileField) => {
-    setFocusField(field);
-    setEditVisible(true);
-  };
-
-  const handleSetPhoto = async () => {
-    if (uploading) return;
-    const picked = await pickSquareImage();
-    if (!picked) return;
-    try {
-      setUploading(true);
-      const uploadUrl = await generateUploadUrl();
-      const avatarStorageId = await uploadImageToStorage(uploadUrl, picked);
-      await updateProfile({
-        name: profile.name,
-        username: profile.username,
-        bio: profile.bio,
-        avatarStorageId,
-      });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error: any) {
-      console.error("Не вдалося встановити фото:", error);
-      Alert.alert("Помилка", error?.message ?? "Не вдалося встановити фото.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const phone = clerkUser?.primaryPhoneNumber?.phoneNumber;
+  const phone = profile.phone || clerkUser?.primaryPhoneNumber?.phoneNumber || undefined;
+  const birthday = formatBirthday(profile.birthday);
+  const username = profile.username ? `@${profile.username}` : undefined;
+  const link = profile.username ? userLink(profile.username) : undefined;
+  const edit = { key: "edit", label: "Змінити", icon: "create-outline" as const, onPress: () => setEditVisible(true) };
 
   return (
     <>
       <StretchyProfile
         name={profile.name}
         imageUrl={profile.image}
+        photos={photos}
+        viewerActions={viewerActions}
+        openViewerRequest={viewerReq}
         status="в мережі"
         statusAccent
         busy={uploading}
-        actions={[
-          { key: "photo", icon: "camera-outline", label: "Встановити фото", onPress: handleSetPhoto },
-          { key: "edit", icon: "create-outline", label: "Редагувати", onPress: () => openEdit() },
-          {
-            key: "settings",
-            icon: "settings-outline",
-            label: "Налаштування",
-            onPress: () => router.navigate("/(app)/(tabs)/preferences" as any),
-          },
-        ]}
-        rightIcon="create-outline"
-        rightLabel="Редагувати профіль"
-        onRightPress={() => openEdit()}
-        bottomOverlay={<MainTabBar active="profile" />}
-        bottomInset={tabSpace}
+        actions={actions}
+        leftIcon="qr-code-outline"
+        leftLabel="QR-код"
+        onLeftPress={() => router.push("/qr" as any)}
+        rightIcon="ellipsis-vertical"
+        rightLabel="Меню"
+        onRightPress={() => setMenuVisible(true)}
+        bottomOverlay={
+          <>
+            {tab === "photos" ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                disabled={uploading}
+                onPress={() => void handleSetPhoto()}
+                accessibilityRole="button"
+                accessibilityLabel="Додати фото"
+                style={{
+                  position: "absolute",
+                  alignSelf: "center",
+                  bottom: tabSpace + 6,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  height: 46,
+                  paddingHorizontal: 20,
+                  borderRadius: 23,
+                  backgroundColor: c.accent,
+                  opacity: uploading ? 0.7 : 1,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.25,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 3 },
+                  elevation: 6,
+                }}
+              >
+                <Ionicons name="camera" size={20} color={c.onAccent} />
+                <Text style={{ color: c.onAccent, fontSize: 15, fontWeight: "700" }}>
+                  {uploading ? "Завантаження…" : "Додати фото"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <MainTabBar active="profile" />
+          </>
+        }
+        bottomInset={tabSpace + 56}
       >
-        <Section title="Інформація">
-          {phone ? (
-            <InfoRow
-              first
-              icon="call-outline"
-              value={phone}
-              label="Телефон"
-              onPress={() => handleCopy(phone)}
-            />
-          ) : null}
-          {profile.email ? (
-            <InfoRow
-              first={!phone}
-              icon="mail-outline"
-              value={profile.email}
-              label="Пошта"
-              onPress={() => handleCopy(profile.email!)}
-            />
-          ) : null}
+        <Section>
           <InfoRow
-            first={!phone && !profile.email}
-            icon="at"
-            value={profile.username ? `@${profile.username}` : undefined}
-            placeholder="Додати ім'я користувача"
-            label="Ім'я користувача"
-            onPress={profile.username ? () => handleCopy(`@${profile.username}`) : () => openEdit("username")}
-            onLongPress={profile.username ? () => openEdit("username") : undefined}
+            first
+            icon="call-outline"
+            value={phone}
+            placeholder="Додати номер телефону"
+            label="Мобільний"
+            onPress={phone ? () => handleCopy(phone) : () => setEditVisible(true)}
+            onLongPress={
+              phone
+                ? () =>
+                    openRowMenu("Мобільний", [
+                      { key: "copy", label: "Копіювати", icon: "copy-outline", onPress: () => handleCopy(phone) },
+                      edit,
+                    ])
+                : undefined
+            }
           />
           <InfoRow
             icon="information-circle-outline"
             value={profile.bio}
             placeholder="Розкажіть про себе"
             label="Про себе"
-            onPress={() => openEdit("bio")}
+            onPress={profile.bio ? () => handleCopy(profile.bio!) : () => setEditVisible(true)}
+            onLongPress={
+              profile.bio
+                ? () =>
+                    openRowMenu("Про себе", [
+                      { key: "copy", label: "Копіювати", icon: "copy-outline", onPress: () => handleCopy(profile.bio!) },
+                      edit,
+                    ])
+                : undefined
+            }
+          />
+          <InfoRow
+            icon="at"
+            value={username}
+            placeholder="Додати ім'я користувача"
+            label="Ім'я користувача"
+            onPress={username ? () => handleCopy(username) : () => setEditVisible(true)}
+            onLongPress={
+              username
+                ? () =>
+                    openRowMenu("Ім'я користувача", [
+                      { key: "copy", label: "Копіювати", icon: "copy-outline", onPress: () => handleCopy(username) },
+                      {
+                        key: "link",
+                        label: "Скопіювати посилання",
+                        icon: "link-outline",
+                        onPress: () => handleCopy(link!, "Посилання скопійовано"),
+                      },
+                      edit,
+                    ])
+                : undefined
+            }
+          />
+          <InfoRow
+            icon="gift-outline"
+            value={birthday}
+            placeholder="Додати день народження"
+            label="День народження"
+            onPress={birthday ? () => handleCopy(birthday) : () => setEditVisible(true)}
+            onLongPress={
+              birthday
+                ? () =>
+                    openRowMenu("День народження", [
+                      { key: "copy", label: "Копіювати", icon: "copy-outline", onPress: () => handleCopy(birthday) },
+                      edit,
+                    ])
+                : undefined
+            }
           />
         </Section>
 
-        <Section title="Активність">
-          <StatsRow
-            items={[
-              { value: profile.stats.messagesCount, label: "Повідомлень" },
-              { value: profile.stats.roomsCreatedCount, label: "Кімнат створено" },
-            ]}
+        <ProfileTabs tabs={TABS} active={tab} onChange={setTab} />
+        {tab === "photos" ? (
+          <PhotoGrid
+            photos={photos}
+            emptyText="Додайте перше фото профілю"
+            onPress={(index) => setViewerReq((r) => ({ index, key: (r?.key ?? 0) + 1 }))}
           />
-          <InfoRow
-            icon="calendar-outline"
-            value={dayLabel(profile._creationTime)}
-            label="Дата реєстрації"
+        ) : (
+          <RoomsList
+            rooms={rooms ?? []}
+            emptyText="Ви ще не в жодній групі"
+            onPress={(id) => router.push(`/chat/${id}` as any)}
           />
-        </Section>
+        )}
       </StretchyProfile>
       {copyToast}
+      {rowMenuSheet}
+
+      <ActionSheet
+        visible={menuVisible}
+        onClose={() => setMenuVisible(false)}
+        title={profile.name}
+        actions={[
+          ...(link
+            ? [
+                {
+                  key: "link",
+                  label: "Скопіювати посилання",
+                  icon: "link-outline" as const,
+                  onPress: () => handleCopy(link, "Посилання скопійовано"),
+                },
+              ]
+            : []),
+          {
+            key: "settings",
+            label: "Налаштування",
+            icon: "settings-outline" as const,
+            onPress: () => router.navigate("/(app)/(tabs)/preferences" as any),
+          },
+        ]}
+      />
 
       <EditProfileModal
         visible={editVisible}
@@ -168,7 +356,8 @@ export default function ProfileScreen() {
         initialUsername={profile.username}
         initialBio={profile.bio}
         initialImage={profile.image}
-        focusField={focusField}
+        initialBirthday={profile.birthday}
+        initialPhone={profile.phone}
         onClose={() => setEditVisible(false)}
         onSaved={() => setEditVisible(false)}
       />

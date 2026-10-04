@@ -2,7 +2,7 @@ import { ActionSheet, type SheetAction } from "@/components/ActionSheet";
 import { api } from "@/convex/_generated/api";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import { copyText } from "@/utils/clipboard";
-import { channelSlugOf, tokenize, type LinkKind } from "@/utils/linkify";
+import { channelSlugOf, tokenize, userNameOf, type LinkKind } from "@/utils/linkify";
 import { useConvex } from "convex/react";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
@@ -67,7 +67,9 @@ export function useOpenLink() {
       try {
         if (t.kind === "app") {
           const slug = channelSlugOf(t.href);
+          const uname = userNameOf(t.href);
           if (slug) router.push(`/c/${slug}` as never);
+          else if (uname) router.push(`/u/${uname}` as never);
           else await Linking.openURL(t.href);
           return;
         }

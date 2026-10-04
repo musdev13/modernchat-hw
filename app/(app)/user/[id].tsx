@@ -1,17 +1,27 @@
 import { useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
 
 import { MuteSheet } from "@/components/MuteSheet";
-import { InfoRow, ProfileSkeleton, Section, StatsRow, useCopyToast } from "@/components/ProfileParts";
-import { RoomAvatar } from "@/components/RoomAvatar";
-import { StretchyProfile } from "@/components/StretchyProfile";
+import { ActionSheet } from "@/components/ActionSheet";
+import {
+  InfoRow,
+  PhotoGrid,
+  ProfileSkeleton,
+  ProfileTabs,
+  RoomsList,
+  Section,
+  useCopyToast,
+  useRowMenu,
+} from "@/components/ProfileParts";
+import { StretchyProfile, type ProfilePhoto } from "@/components/StretchyProfile";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import { useOpenDirectChat } from "@/hooks/useOpenDirectChat";
-import { dayLabel, formatLastSeen, membersLabel } from "@/utils/chat";
+import { formatLastSeen } from "@/utils/chat";
+import { formatBirthday, userLink } from "@/utils/profileFormat";
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,6 +36,19 @@ export default function UserProfileScreen() {
     api.users.getSharedRooms,
     id ? { userId: id as Id<"users"> } : "skip",
   );
+
+  const photoRows = useQuery(
+    api.profilePhotos.list,
+    id ? { userId: id as Id<"users"> } : "skip",
+  );
+  const photos = useMemo<ProfilePhoto[]>(
+    () => (photoRows ?? []).map((p) => ({ id: p._id, url: p.url, createdAt: p.createdAt })),
+    [photoRows],
+  );
+  const [tab, setTab] = useState("photos");
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [viewerReq, setViewerReq] = useState<{ index: number; key: number } | null>(null);
+  const { open: openRowMenu, sheet: rowMenuSheet } = useRowMenu();
 
   // Власний профіль відкриваємо в повному вигляді з редагуванням.
   const isSelf = profile?.isSelf === true;
@@ -66,6 +89,8 @@ export default function UserProfileScreen() {
   }
 
   const status = formatLastSeen(profile.lastSeenAt, profile.online, profile.lastSeenHidden);
+
+  const birthday = formatBirthday(profile.birthday);
 
   const actions: { key: string; icon: any; label: string; onPress: () => void }[] = [
     {
@@ -109,75 +134,121 @@ export default function UserProfileScreen() {
       statusAccent={profile.online}
       actions={actions}
       onBack={() => router.back()}
+      photos={photos}
+      openViewerRequest={viewerReq}
+      rightIcon={profile.username ? "ellipsis-vertical" : undefined}
+      rightLabel="Меню"
+      onRightPress={profile.username ? () => setMenuVisible(true) : undefined}
     >
-      {profile.username || profile.bio ? (
-        <Section title="Інформація">
-          {profile.username ? (
+      {profile.phone || profile.bio || profile.username || birthday ? (
+        <Section>
+          {profile.phone ? (
             <InfoRow
               first
-              icon="at"
-              value={`@${profile.username}`}
-              label="Ім'я користувача"
-              onPress={() => handleCopy(`@${profile.username}`)}
+              icon="call-outline"
+              value={profile.phone}
+              label="Мобільний"
+              onPress={() => handleCopy(profile.phone!)}
+              onLongPress={() =>
+                openRowMenu("Мобільний", [
+                  { key: "copy", label: "Копіювати", icon: "copy-outline", onPress: () => handleCopy(profile.phone!) },
+                ])
+              }
             />
           ) : null}
           {profile.bio ? (
             <InfoRow
-              first={!profile.username}
+              first={!profile.phone}
               icon="information-circle-outline"
               value={profile.bio}
               label="Про себе"
               onPress={() => handleCopy(profile.bio!)}
+              onLongPress={() =>
+                openRowMenu("Про себе", [
+                  { key: "copy", label: "Копіювати", icon: "copy-outline", onPress: () => handleCopy(profile.bio!) },
+                ])
+              }
+            />
+          ) : null}
+          {profile.username ? (
+            <InfoRow
+              first={!profile.phone && !profile.bio}
+              icon="at"
+              value={`@${profile.username}`}
+              label="Ім'я користувача"
+              onPress={() => handleCopy(`@${profile.username}`)}
+              onLongPress={() =>
+                openRowMenu("Ім'я користувача", [
+                  { key: "copy", label: "Копіювати", icon: "copy-outline", onPress: () => handleCopy(`@${profile.username}`) },
+                  {
+                    key: "link",
+                    label: "Скопіювати посилання",
+                    icon: "link-outline",
+                    onPress: () => handleCopy(userLink(profile.username!), "Посилання скопійовано"),
+                  },
+                ])
+              }
+            />
+          ) : null}
+          {birthday ? (
+            <InfoRow
+              first={!profile.phone && !profile.bio && !profile.username}
+              icon="gift-outline"
+              value={birthday}
+              label="День народження"
+              onPress={() => handleCopy(birthday)}
+              onLongPress={() =>
+                openRowMenu("День народження", [
+                  { key: "copy", label: "Копіювати", icon: "copy-outline", onPress: () => handleCopy(birthday) },
+                ])
+              }
             />
           ) : null}
         </Section>
       ) : null}
 
-      <Section title="Активність">
-        <StatsRow
-          items={[
-            { value: profile.stats.messagesCount, label: "Повідомлень" },
-            { value: profile.stats.roomsCreatedCount, label: "Кімнат створено" },
-          ]}
+      <ProfileTabs
+        tabs={[
+          { key: "photos", label: "Фото" },
+          { key: "groups", label: "Спільні групи" },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+      {tab === "photos" ? (
+        <PhotoGrid
+          photos={photos}
+          emptyText="Фото ще немає"
+          onPress={(index) => setViewerReq((r) => ({ index, key: (r?.key ?? 0) + 1 }))}
         />
-        <InfoRow
-          icon="calendar-outline"
-          value={dayLabel(profile._creationTime)}
-          label="Дата реєстрації"
+      ) : (
+        <RoomsList
+          rooms={sharedRooms ?? []}
+          emptyText="Спільних груп немає"
+          onPress={(rid) => router.push(`/chat/${rid}` as any)}
         />
-      </Section>
-
-      {sharedRooms && sharedRooms.length > 0 ? (
-        <Section title={`Спільні кімнати · ${sharedRooms.length}`}>
-          {sharedRooms.map((room, i) => (
-            <TouchableOpacity
-              key={room._id}
-              activeOpacity={0.6}
-              onPress={() => router.push(`/chat/${room._id}` as any)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingHorizontal: 16,
-                paddingVertical: 9,
-                borderTopWidth: i === 0 ? 0 : 1,
-                borderTopColor: c.divider,
-              }}
-            >
-              <RoomAvatar title={room.title} imageUrl={room.avatarUrl} size={44} />
-              <View style={{ flex: 1, marginLeft: 14 }}>
-                <Text numberOfLines={1} style={{ color: c.text, fontSize: 16, fontWeight: "600" }}>
-                  {room.title}
-                </Text>
-                <Text style={{ color: c.muted, fontSize: 13, marginTop: 1 }}>
-                  {membersLabel(room.memberCount)}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </Section>
-      ) : null}
+      )}
     </StretchyProfile>
     {copyToast}
+    {rowMenuSheet}
+
+    <ActionSheet
+      visible={menuVisible}
+      onClose={() => setMenuVisible(false)}
+      title={profile.name}
+      actions={
+        profile.username
+          ? [
+              {
+                key: "link",
+                label: "Скопіювати посилання",
+                icon: "link-outline",
+                onPress: () => handleCopy(userLink(profile.username!), "Посилання скопійовано"),
+              },
+            ]
+          : []
+      }
+    />
 
     <MuteSheet
       visible={muteVisible}

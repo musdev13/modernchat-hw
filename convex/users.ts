@@ -341,8 +341,6 @@ export const getUserProfile = query({
       // Телефон бачить лише власник; іншим — лише коли власник дозволив (за замовчуванням прихований).
       phone: isSelf || user.phoneVisible ? user.phone : undefined,
       phoneVisible: isSelf ? !!user.phoneVisible : undefined,
-      // Застаріле (більше не рахуємо — це були повні скани таблиць); прибрати разом зі старим UI.
-      stats: { messagesCount: 0, roomsCreatedCount: 0 },
     };
   },
 });

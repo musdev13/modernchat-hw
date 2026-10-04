@@ -126,3 +126,9 @@ export function channelSlugOf(href: string): string | null {
   const m = href.match(/^modernchat:\/\/c\/([A-Za-z0-9_]+)/i);
   return m ? m[1].toLowerCase() : null;
 }
+
+/** Нік з modernchat://u/<username>. */
+export function userNameOf(href: string): string | null {
+  const m = href.match(/^modernchat:\/\/u\/([A-Za-z0-9_]+)/i);
+  return m ? m[1] : null;
+}

@@ -268,6 +268,8 @@ interface Props {
   photos?: ProfilePhoto[];
   /** Додаткові пункти меню ⋮ у повноекранному перегляді (для власного профілю). */
   viewerActions?: ViewerAction[];
+  /** Запит відкрити повноекранний перегляд на фото №index (зі «Сітки фото»); новий key = новий запит. */
+  openViewerRequest?: { index: number; key: number } | null;
   /** Ліва кнопка шапки, коли немає «Назад» (на вкладці). */
   leftIcon?: IconName;
   leftLabel?: string;
@@ -302,6 +304,7 @@ export function StretchyProfile({
   imageUrl,
   photos,
   viewerActions,
+  openViewerRequest,
   leftIcon,
   leftLabel,
   onLeftPress,
@@ -358,6 +361,13 @@ export function StretchyProfile({
     indexSV.value = 0;
     pageDrag.value = 0;
   }, [firstId, indexSV, pageDrag]);
+  const lastRequestKey = useRef(0);
+  useEffect(() => {
+    if (!openViewerRequest || openViewerRequest.key === lastRequestKey.current) return;
+    lastRequestKey.current = openViewerRequest.key;
+    setPhotoIndex(openViewerRequest.index);
+    setViewerOpen(true);
+  }, [openViewerRequest]);
   const safeIndex = Math.min(photoIndex, Math.max(0, count - 1));
   useEffect(() => {
     indexSV.value = safeIndex;
