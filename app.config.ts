@@ -1,4 +1,5 @@
 import { ConfigContext, ExpoConfig } from "expo/config";
+import { withAndroidManifest } from "expo/config-plugins";
 
 const EAS_PROJECT_ID = "f82645fd-9092-483c-9b48-d445b0a4a071";
 
@@ -15,6 +16,24 @@ const ADAPTIVE_ICON_FOREGROUND = "./assets/images/android-icon-foreground.png";
 const ADAPTIVE_ICON_BACKGROUND = "./assets/images/android-icon-background.png";
 const ADAPTIVE_ICON_MONOCHROME = "./assets/images/android-icon-monochrome.png";
 
+/**
+ * Вимикає плаваючу круглу кнопку dev-меню (шестерня) у dev-клієнті: вона малюється поверх усіх
+ * екранів і виглядає як «примарна» напівпрозора кнопка над іконками у шапках.
+ * Тільки manifest meta-data (діє після наступної збірки/prebuild); у release-збірці її й так немає.
+ */
+const withoutDevMenuFab = (config: ExpoConfig): ExpoConfig =>
+  withAndroidManifest(config, (mod) => {
+    const NAME = "EXDevMenuShowFloatingActionButton";
+    const app = mod.modResults.manifest.application?.[0];
+    if (app) {
+      const meta = (app["meta-data"] ??= []);
+      const existing = meta.find((item) => item.$["android:name"] === NAME);
+      if (existing) existing.$["android:value"] = "false";
+      else meta.push({ $: { "android:name": NAME, "android:value": "false" } });
+    }
+    return mod;
+  });
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const environment =
     (process.env.APP_ENV as "development" | "preview" | "production") ||
@@ -25,7 +44,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   const dynamicConfig = getDynamicAppConfig(environment);
 
-  return {
+  const expoConfig: ExpoConfig = {
     ...config,
 
     name: dynamicConfig.name,
@@ -182,6 +201,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
     owner: OWNER,
   };
+
+  return withoutDevMenuFab(expoConfig);
 };
 
 export const getDynamicAppConfig = (
