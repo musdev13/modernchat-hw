@@ -52,7 +52,7 @@ export const PREMIUM_REASONS: Record<PremiumFeature, string> = {
   stories: "Розширені можливості історій доступні лише з Modesto Premium.",
 };
 
-/** Ліміти історій (дзеркало серверних значень у convex/storyLimits.ts). */
+/** Ліміти історій (дзеркало серверних значень у convex/stories.ts (STORY_LIMITS)). */
 export const STORY_LIMITS = {
   free: { active: 3, videoSec: 15, lifespansH: [24] as number[] },
   premium: { active: 30, videoSec: 60, lifespansH: [6, 12, 24, 48] as number[] },

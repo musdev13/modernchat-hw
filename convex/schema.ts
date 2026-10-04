@@ -237,6 +237,27 @@ export default defineSchema({
     fetchedAt: v.number(),
   }).index("by_url", ["url"]),
 
+  // Історії (як у Telegram): живуть до expiresAt, потім ховаються й видаляються кроном.
+  stories: defineTable({
+    userId: v.id("users"),
+    kind: v.union(v.literal("photo"), v.literal("video")),
+    storageId: v.id("_storage"),
+    caption: v.optional(v.string()),
+    durationMs: v.optional(v.number()),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_expires", ["expiresAt"]),
+
+  storyViews: defineTable({
+    storyId: v.id("stories"),
+    viewerId: v.id("users"),
+    viewedAt: v.number(),
+  })
+    .index("by_story", ["storyId"])
+    .index("by_story_and_viewer", ["storyId", "viewerId"]),
+
   // Журнал видачі/відкликання преміуму адміністраторами.
   premiumGrants: defineTable({
     userId: v.id("users"),

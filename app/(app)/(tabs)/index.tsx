@@ -8,6 +8,7 @@ import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
 import { MuteSheet } from "@/components/MuteSheet";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { SearchField } from "@/components/SearchField";
+import { StoryRow } from "@/components/StoryRow";
 import { SwipeableRoomItem } from "@/components/SwipeableRoomItem";
 import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/convex/_generated/api";
@@ -308,6 +309,8 @@ export default function ChatsTab() {
               </Text>
             </View>
           ) : isEmpty ? (
+            <View style={{ flex: 1 }}>
+            <StoryRow myName={profileName} myImage={currentUser?.image} />
             <View
               style={{
                 flex: 1,
@@ -337,6 +340,7 @@ export default function ChatsTab() {
                 Напишіть комусь із вкладки «Контакти» або створіть групу кнопкою внизу праворуч
               </Text>
             </View>
+            </View>
           ) : (
             <FlatList
               data={filteredRooms}
@@ -346,6 +350,9 @@ export default function ChatsTab() {
               contentContainerStyle={{ paddingBottom: tabSpace + 80 }}
               refreshControl={
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />
+              }
+              ListHeaderComponent={
+                search.trim() ? null : <StoryRow myName={profileName} myImage={currentUser?.image} />
               }
               ListFooterComponent={
                 <>

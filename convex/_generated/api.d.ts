@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as channels from "../channels.js";
+import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as linkPreview from "../linkPreview.js";
 import type * as messageStorage from "../messageStorage.js";
@@ -25,6 +26,7 @@ import type * as reads from "../reads.js";
 import type * as roomMedia from "../roomMedia.js";
 import type * as roomSettings from "../roomSettings.js";
 import type * as rooms from "../rooms.js";
+import type * as stories from "../stories.js";
 import type * as typing from "../typing.js";
 import type * as users from "../users.js";
 
@@ -37,6 +39,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   channels: typeof channels;
+  crons: typeof crons;
   http: typeof http;
   linkPreview: typeof linkPreview;
   messageStorage: typeof messageStorage;
@@ -52,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   roomMedia: typeof roomMedia;
   roomSettings: typeof roomSettings;
   rooms: typeof rooms;
+  stories: typeof stories;
   typing: typeof typing;
   users: typeof users;
 }>;
