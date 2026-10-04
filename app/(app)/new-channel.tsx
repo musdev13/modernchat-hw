@@ -265,7 +265,7 @@ export default function NewChannelScreen() {
                   height: 36,
                 }}
               >
-                <RoomAvatar title={user.name} imageUrl={user.image} size={30} />
+                <RoomAvatar title={user.name} imageUrl={user.image} size={30} animUrl={user.avatarAnimUrl} animKind={user.avatarAnimKind} />
                 <Text
                   numberOfLines={1}
                   style={{ color: c.text, fontSize: 14, marginHorizontal: 8, maxWidth: 120 }}

@@ -17,6 +17,9 @@ interface RoomData {
   title: string;
   description?: string;
   avatarUrl?: string;
+  /** Анімований аватар співрозмовника (особисті чати, лише з активним преміумом). */
+  avatarAnimUrl?: string;
+  avatarAnimKind?: "video" | "gif";
   creatorId: Id<"users">;
   lastMessage?: string;
   lastMessageAt?: number;
@@ -211,6 +214,8 @@ export const SwipeableRoomItem: React.FC<SwipeableRoomItemProps> = ({
                 imageUrl={room.avatarUrl}
                 size={54}
                 saved={room.isSaved}
+                animUrl={room.avatarAnimUrl}
+                animKind={room.avatarAnimKind}
               />
               {room.isChannel ? (
                 <View

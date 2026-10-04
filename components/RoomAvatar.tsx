@@ -2,6 +2,7 @@ import { avatarColor, initialsOf } from "@/constants/theme";
 import { useTheme } from "@/context/ThemeContext";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
+import { AnimatedAvatar } from "@/components/AnimatedAvatar";
 import { Image } from "expo-image";
 import { StyleProp, Text, View, ViewStyle } from "react-native";
 
@@ -12,10 +13,13 @@ interface Props {
   style?: StyleProp<ViewStyle>;
   /** «Збережене»: акцентне коло із закладкою замість літери. */
   saved?: boolean;
+  /** Анімований аватар (лише якщо у власника діє преміум — сервер сам віддає або не віддає). */
+  animUrl?: string | null;
+  animKind?: "video" | "gif" | null;
 }
 
 /** Аватар кімнати: фото, а якщо його немає (або воно не завантажилось) — кольорова літера. */
-export function RoomAvatar({ title, imageUrl, size, style, saved }: Props) {
+export function RoomAvatar({ title, imageUrl, size, style, saved, animUrl, animKind }: Props) {
   const [failed, setFailed] = useState(false);
   const { colors } = useTheme();
 
@@ -41,6 +45,10 @@ export function RoomAvatar({ title, imageUrl, size, style, saved }: Props) {
         <Ionicons name="bookmark" size={Math.round(size * 0.5)} color={colors.onAccent} />
       </View>
     );
+  }
+
+  if (imageUrl && !failed && animUrl && animKind) {
+    return <AnimatedAvatar posterUrl={imageUrl} animUrl={animUrl} kind={animKind} size={size} title={title} style={style} />;
   }
 
   if (imageUrl && !failed) {

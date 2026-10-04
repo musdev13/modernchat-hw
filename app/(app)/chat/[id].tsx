@@ -2400,7 +2400,14 @@ export default function ChatRoomScreen() {
             accessibilityRole="button"
             accessibilityLabel={isDirect ? "Профіль користувача" : "Інформація про кімнату"}
           >
-            <RoomAvatar title={roomTitle} imageUrl={room?.avatarUrl} size={34} saved={isSaved} />
+            <RoomAvatar
+              title={roomTitle}
+              imageUrl={room?.avatarUrl}
+              size={34}
+              saved={isSaved}
+              animUrl={room?.avatarAnimUrl}
+              animKind={room?.avatarAnimKind}
+            />
 
             <View style={{ flex: 1, marginLeft: 10, justifyContent: "center" }}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, MutationCtx, query } from "./_generated/server";
+import { internalMutation, mutation, MutationCtx, query } from "./_generated/server";
 import { registerProfilePhoto } from "./photoHelpers";
 import { isPremiumNow } from "./premiumHelpers";
 import { getAuthUser } from "./users";
@@ -58,8 +58,10 @@ export const list = query({
       /** Анімований файл; лише поки у власника діє преміум (інакше — тільки постер). */
       animUrl?: string;
     }[] = [];
-    // Постер анімованого аватара — це те саме зображення, що й звичайне фото: дубль у списку ховаємо.
-    const posterOfAnim = new Set(rows.filter((r) => r.animStorageId).map((r) => r.storageId as string));
+    // Постер поточного анімованого аватара — це те саме зображення, що й звичайне фото: дубль у списку ховаємо.
+    const posterOfAnim = new Set(
+      rows.filter((r) => r.animStorageId && isCurrentRow(user, r)).map((r) => r.storageId as string),
+    );
     for (const row of rows) {
       if (!row.animStorageId && posterOfAnim.has(row.storageId as string)) continue;
       const url = await ctx.storage.getUrl(row.storageId);
@@ -151,20 +153,25 @@ export const addAnimated = mutation({
       throw new Error("Постер має бути зображенням");
     }
 
-    // Поточне фото без запису в історії зберігаємо (як і при звичайному додаванні).
-    if (me.avatarStorageId) {
-      const existing = await ctx.db
-        .query("profilePhotos")
-        .withIndex("by_user", (q) => q.eq("userId", me._id))
-        .collect();
-      if (!existing.some((p) => p.storageId === me.avatarStorageId)) {
-        await ctx.db.insert("profilePhotos", {
-          userId: me._id,
-          storageId: me.avatarStorageId,
-          createdAt: Date.now() - 1,
-        });
-      }
+    const rows = await ctx.db
+      .query("profilePhotos")
+      .withIndex("by_user", (q) => q.eq("userId", me._id))
+      .collect();
+
+    // Анімований аватар ЗАМІНЮЄ головне фото: запис, з якого взято постер (звичайне поточне фото),
+    // і попередній поточний анімований запис прибираємо — у списку лишається один запис (анімований).
+    const replaced = rows.filter((r) =>
+      r.animStorageId ? isCurrentRow(me, r) : r.storageId === posterId,
+    );
+    // Інше поточне фото (якщо постер власний) без запису в історії зберігаємо.
+    if (me.avatarStorageId && me.avatarStorageId !== posterId && !rows.some((p) => p.storageId === me.avatarStorageId)) {
+      await ctx.db.insert("profilePhotos", {
+        userId: me._id,
+        storageId: me.avatarStorageId,
+        createdAt: Date.now() - 1,
+      });
     }
+    for (const r of replaced) await ctx.db.delete(r._id);
 
     const photoId = await ctx.db.insert("profilePhotos", {
       userId: me._id,
@@ -180,6 +187,26 @@ export const addAnimated = mutation({
       avatarAnimStorageId: args.animStorageId,
       avatarAnimKind: args.kind,
     });
+
+    // Файли замінених записів, на які більше ніхто не посилається, видаляємо.
+    const kept = rows.filter((r) => !replaced.some((x) => x._id === r._id));
+    const used = new Set<string>([posterId, args.animStorageId]);
+    for (const r of kept) {
+      used.add(r.storageId);
+      if (r.animStorageId) used.add(r.animStorageId);
+    }
+    if (me.avatarStorageId === posterId) used.add(posterId);
+    for (const r of replaced) {
+      for (const id of [r.storageId, r.animStorageId]) {
+        if (!id || used.has(id)) continue;
+        used.add(id);
+        try {
+          await ctx.storage.delete(id);
+        } catch {
+          // файл міг бути вже видалений
+        }
+      }
+    }
     return { photoId };
   },
 });
@@ -237,5 +264,50 @@ export const remove = mutation({
       }
     }
     return { success: true };
+  },
+});
+
+/**
+ * Одноразова міграція (запуск: `npx convex run profilePhotos:dedupeAnimated`): для кожного поточного
+ * анімованого запису прибирає окремий звичайний запис із тим самим зображенням (постер) та дублікати
+ * анімованих записів з однаковим файлом. Файли не видаляє — постер лишається в анімованому записі.
+ */
+export const dedupeAnimated = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("profilePhotos").collect();
+    const byUser = new Map<string, Doc<"profilePhotos">[]>();
+    for (const row of all) {
+      const list = byUser.get(row.userId as string) ?? [];
+      list.push(row);
+      byUser.set(row.userId as string, list);
+    }
+    let removedStatic = 0;
+    let removedAnim = 0;
+    for (const [userId, rows] of byUser) {
+      const user = await ctx.db.get(userId as Id<"users">);
+      if (!user) continue;
+      const seenAnim = new Set<string>();
+      const animRows = rows
+        .filter((r) => r.animStorageId)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      for (const r of animRows) {
+        const key = r.animStorageId as string;
+        if (seenAnim.has(key)) {
+          await ctx.db.delete(r._id);
+          removedAnim++;
+        } else {
+          seenAnim.add(key);
+        }
+      }
+      const currentAnim = animRows.find((r) => isCurrentRow(user, r));
+      if (!currentAnim) continue;
+      for (const r of rows) {
+        if (r.animStorageId || r.storageId !== currentAnim.storageId) continue;
+        await ctx.db.delete(r._id);
+        removedStatic++;
+      }
+    }
+    return { removedStatic, removedAnim };
   },
 });

@@ -19,6 +19,9 @@ export interface Contact {
   name: string;
   username?: string;
   image?: string;
+  /** Анімований аватар (лише якщо у власника діє преміум). */
+  avatarAnimUrl?: string;
+  avatarAnimKind?: "video" | "gif";
   online: boolean;
   lastSeenAt?: number;
   lastSeenHidden: boolean;
@@ -64,7 +67,13 @@ export function ContactRow({
       }}
     >
       <View>
-        <RoomAvatar title={contact.name} imageUrl={contact.image} size={50} />
+        <RoomAvatar
+          title={contact.name}
+          imageUrl={contact.image}
+          size={50}
+          animUrl={contact.avatarAnimUrl}
+          animKind={contact.avatarAnimKind}
+        />
         {contact.online ? (
           <View
             style={{

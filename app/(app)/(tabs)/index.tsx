@@ -273,6 +273,8 @@ export default function ChatsTab() {
               <RoomAvatar
                 title={profileName || "me"}
                 imageUrl={currentUser?.image}
+                animUrl={currentUser?.avatarAnimUrl}
+                animKind={currentUser?.avatarAnimKind}
                 size={40}
                 style={{ marginRight: 10 }}
               />

@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { mutation, MutationCtx, query, QueryCtx } from "./_generated/server";
 import { registerProfilePhoto } from "./photoHelpers";
-import { applyBootstrapAdmin, premiumView } from "./premiumHelpers";
+import { animAvatarFields, applyBootstrapAdmin, premiumView } from "./premiumHelpers";
 
 /** Онлайн, якщо heartbeat був не пізніше ніж ONLINE_WINDOW_MS тому (клієнт шле його кожні ~40 с). */
 export const ONLINE_WINDOW_MS = 70_000;
@@ -86,7 +86,9 @@ export async function getAuthUser(ctx: QueryCtx | MutationCtx) {
 export const currentUser = query({
   args: {},
   handler: async (ctx) => {
-    return await getAuthUser(ctx);
+    const user = await getAuthUser(ctx);
+    if (!user) return null;
+    return { ...user, ...(await animAvatarFields(ctx, user)) };
   },
 });
 
@@ -146,20 +148,23 @@ export const searchUsers = query({
 
     const term = args.query.trim().toLowerCase();
     const users = await ctx.db.query("users").collect();
-    return users
+    const found = users
       .filter((user) => user._id !== me._id)
       .filter((user) => {
         const value = `${user.name ?? ""} ${user.username ?? ""} ${user.email ?? ""}`.toLowerCase();
         return !term || value.includes(term);
       })
-      .slice(0, 50)
-      .map((user) => ({
+      .slice(0, 50);
+    return await Promise.all(
+      found.map(async (user) => ({
         _id: user._id,
         name: user.name ?? user.email ?? "Користувач",
         username: user.username,
         image: user.image,
         ...premiumFlags(user),
-      }));
+        ...(await animAvatarFields(ctx, user)),
+      })),
+    );
   },
 });
 
@@ -177,9 +182,10 @@ export const listContacts = query({
     const presenceRows = await getPresenceMap(ctx);
     const now = Date.now();
 
-    return users
-      .filter((user) => user._id !== me._id)
-      .map((user) => {
+    const contacts = await Promise.all(
+      users
+        .filter((user) => user._id !== me._id)
+        .map(async (user) => {
         const presence = presenceOf(user, presenceRows.get(user._id), me._id, now);
         return {
           _id: user._id,
@@ -187,11 +193,14 @@ export const listContacts = query({
           username: user.username,
           image: user.image,
           ...premiumFlags(user),
+          ...(await animAvatarFields(ctx, user)),
           online: presence.online,
           lastSeenAt: presence.lastSeenAt,
           lastSeenHidden: presence.lastSeenHidden,
         };
-      })
+      }),
+    );
+    return contacts
       .filter((user) => {
         if (!term) return true;
         return `${user.name} ${user.username ?? ""}`.toLowerCase().includes(term);
@@ -338,17 +347,14 @@ export const getUserProfile = query({
     const inChatNow =
       !!presence && presence.lastSeenAt > Date.now() - PRESENCE_TTL_MS;
 
-    // Анімований аватар віддаємо лише поки діє преміум (інакше клієнт бачить тільки постер = image).
-    const avatarAnimUrl =
-      premiumView(user).isPremium && user.avatarAnimStorageId
-        ? ((await ctx.storage.getUrl(user.avatarAnimStorageId)) ?? undefined)
-        : undefined;
+    // Анімований аватар видно всім, але лише поки у власника діє преміум (інакше — тільки постер = image).
+    const { avatarAnimUrl, avatarAnimKind } = await animAvatarFields(ctx, user);
 
     return {
       _id: user._id,
       name: user.name ?? "Користувач",
       avatarAnimUrl,
-      avatarAnimKind: avatarAnimUrl ? user.avatarAnimKind : undefined,
+      avatarAnimKind,
       // Пошту показуємо лише власнику профілю.
       email: isSelf ? user.email : undefined,
       image: user.image,

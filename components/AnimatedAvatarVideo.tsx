@@ -20,17 +20,28 @@ function release(id: string) {
 let counter = 0;
 
 /** Стан «екран у фокусі й застосунок активний» — інакше анімацію зупиняємо. */
-function useScreenActive(): boolean {
-  const navigation = useNavigation();
+type NavLike = { addListener: (type: "focus" | "blur", cb: () => void) => () => void };
+
+/** Поза навігатором (напр. у модальному вікні) useNavigation кидає помилку — тоді повертаємо null. */
+function useNavigationSafe(): NavLike | null {
+  try {
+    return useNavigation() as unknown as NavLike;
+  } catch {
+    return null;
+  }
+}
+
+export function useScreenActive(): boolean {
+  const navigation = useNavigationSafe();
   const [focused, setFocused] = useState(true);
   const [appActive, setAppActive] = useState(AppState.currentState === "active");
   useEffect(() => {
-    const a = navigation.addListener("focus", () => setFocused(true));
-    const b = navigation.addListener("blur", () => setFocused(false));
+    const a = navigation?.addListener("focus", () => setFocused(true));
+    const b = navigation?.addListener("blur", () => setFocused(false));
     const sub = AppState.addEventListener("change", (s) => setAppActive(s === "active"));
     return () => {
-      a();
-      b();
+      a?.();
+      b?.();
       sub.remove();
     };
   }, [navigation]);
@@ -89,6 +100,7 @@ function VideoLayer({ url, playing, visible }: { url: string; playing: boolean; 
     p.loop = true;
     p.muted = true;
     p.volume = 0;
+    if (playing) p.play();
   });
   const [ready, setReady] = useState(false);
 

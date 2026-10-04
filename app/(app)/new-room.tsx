@@ -193,7 +193,7 @@ export default function NewRoomScreen() {
                   height: 36,
                 }}
               >
-                <RoomAvatar title={user.name} imageUrl={user.image} size={30} />
+                <RoomAvatar title={user.name} imageUrl={user.image} size={30} animUrl={user.avatarAnimUrl} animKind={user.avatarAnimKind} />
                 <Text
                   numberOfLines={1}
                   style={{ color: c.text, fontSize: 14, marginHorizontal: 8, maxWidth: 120 }}
@@ -318,7 +318,7 @@ export default function NewRoomScreen() {
                 key={user._id}
                 style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8 }}
               >
-                <RoomAvatar title={user.name} imageUrl={user.image} size={42} />
+                <RoomAvatar title={user.name} imageUrl={user.image} size={42} animUrl={user.avatarAnimUrl} animKind={user.avatarAnimKind} />
                 <Text
                   numberOfLines={1}
                   style={{ flex: 1, color: c.text, fontSize: 16, marginLeft: 14 }}

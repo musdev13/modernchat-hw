@@ -1,5 +1,5 @@
 import type { Doc } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 /** Єдиний «суперадмін» за замовчуванням: отримує преміум назавжди й права адміністратора. */
 export const BOOTSTRAP_ADMIN_USERNAME = "rinoksegodnya";
@@ -53,4 +53,18 @@ export async function applyBootstrapAdmin(ctx: MutationCtx, user: Doc<"users">):
     createdAt: Date.now(),
   });
   return true;
+}
+
+/**
+ * Анімований аватар для малих кіл (список чатів, контакти, учасники): лише поки діє преміум власника.
+ * Без преміуму повертає порожній обʼєкт — клієнт покаже статичний постер (users.image).
+ */
+export async function animAvatarFields(
+  ctx: Pick<QueryCtx, "storage">,
+  user: Doc<"users"> | null | undefined,
+): Promise<{ avatarAnimUrl?: string; avatarAnimKind?: "video" | "gif" }> {
+  if (!user || !user.avatarAnimStorageId || !isPremiumNow(user)) return {};
+  const url = await ctx.storage.getUrl(user.avatarAnimStorageId);
+  if (!url) return {};
+  return { avatarAnimUrl: url, avatarAnimKind: user.avatarAnimKind === "gif" ? "gif" : "video" };
 }

@@ -4,6 +4,7 @@ import { MutationCtx, mutation, query } from "./_generated/server";
 import { canPostIn, releaseMessageFiles } from "./messageStorage";
 import { deletePollWithVotes } from "./polls";
 import { isMutedNow, patchRoomSetting } from "./roomSettings";
+import { animAvatarFields } from "./premiumHelpers";
 import { getAuthUser, getPresenceRow, premiumFlags, presenceOf } from "./users";
 
 const DIRECT_ROOM_TITLE = "Приватний чат";
@@ -79,6 +80,7 @@ export const listRooms = query({
       let otherUserId: Id<"users"> | undefined;
       let otherOnline = false;
       let otherFlags: { isPremium: boolean; emojiStatus?: string } = { isPremium: false };
+      let otherAnim: Awaited<ReturnType<typeof animAvatarFields>> = {};
       if (isSaved) {
         title = "Збережене";
         avatarUrl = undefined;
@@ -88,6 +90,7 @@ export const listRooms = query({
         title = displayNameOf(other);
         avatarUrl = other?.image;
         otherFlags = premiumFlags(other);
+        otherAnim = await animAvatarFields(ctx, other);
         if (other) {
           otherOnline = presenceOf(other, await getPresenceRow(ctx, other._id), me._id, now).online;
         }
@@ -102,6 +105,7 @@ export const listRooms = query({
         ...(clearedPreview ? { lastMessage: "" } : {}),
         title,
         avatarUrl,
+        ...otherAnim,
         isDirect: !!room.isDirect,
         isSaved,
         canPost: canPostIn(room, me._id),
@@ -150,6 +154,7 @@ export const getRoom = query({
           name: nameOf(user),
           image: user.image,
           ...premiumFlags(user),
+          ...(await animAvatarFields(ctx, user)),
           role:
             id === room.creatorId
               ? ("creator" as const)
@@ -190,7 +195,7 @@ export const getRoom = query({
       ...(isSaved
         ? { title: "Збережене", avatarUrl: undefined }
         : isDirect
-          ? { title: displayNameOf(otherUser), avatarUrl: otherUser?.image }
+          ? { title: displayNameOf(otherUser), avatarUrl: otherUser?.image, ...(await animAvatarFields(ctx, otherUser)) }
           : {}),
       isDirect,
       isSaved,

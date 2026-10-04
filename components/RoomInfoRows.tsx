@@ -6,6 +6,7 @@ import { formatFileSize } from "@/utils/attachments";
 import { dayLabel, formatTime } from "@/utils/chat";
 import { Ionicons } from "@expo/vector-icons";
 import { ComponentProps, memo, useEffect, useState } from "react";
+import { AnimatedAvatar } from "@/components/AnimatedAvatar";
 import { Image } from "expo-image";
 import {
   Text,
@@ -26,6 +27,8 @@ export interface MemberItem {
   _id: Id<"users">;
   name: string;
   image?: string;
+  avatarAnimUrl?: string;
+  avatarAnimKind?: "video" | "gif";
   role: "creator" | "admin" | "member";
   isPremium?: boolean;
   emojiStatus?: string;
@@ -323,7 +326,15 @@ export const MemberRow = memo(function MemberRow({
       style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8 }}
     >
       <View style={{ marginRight: 14 }}>
-        {showImage ? (
+        {showImage && member.avatarAnimUrl && member.avatarAnimKind ? (
+          <AnimatedAvatar
+            posterUrl={member.image as string}
+            animUrl={member.avatarAnimUrl}
+            kind={member.avatarAnimKind}
+            size={46}
+            title={member.name}
+          />
+        ) : showImage ? (
           <Image
             source={{ uri: member.image }}
             contentFit="cover"
