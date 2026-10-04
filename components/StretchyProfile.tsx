@@ -2,7 +2,7 @@ import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { avatarColor, initialsOf } from "@/constants/theme";
-import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
+import { useChatPalette } from "@/hooks/useChatPalette";
 import { Ionicons } from "@expo/vector-icons";
 import { ComponentProps, ReactNode, useCallback, useEffect, useState } from "react";
 import {
@@ -40,11 +40,16 @@ const PULL_DISTANCE = 220;
 const FULL_HEIGHT_RATIO = 0.6;
 const SPRING = { damping: 22, stiffness: 210, mass: 0.9 } as const;
 
-/** Затемнює колір #RRGGBB (f < 1 — темніше). */
-function shade(hex: string, f: number): string {
-  const h = hex.replace("#", "");
-  const ch = (i: number) =>
-    Math.max(0, Math.min(255, Math.round(parseInt(h.slice(i, i + 2), 16) * f)));
+/** Змішує два кольори #RRGGBB: t = 0 → a, t = 1 → b. */
+function mix(a: string, b: string, t: number): string {
+  const pa = a.replace("#", "");
+  const pb = b.replace("#", "");
+  if (pa.length !== 6 || pb.length !== 6) return a;
+  const ch = (i: number) => {
+    const x = parseInt(pa.slice(i, i + 2), 16);
+    const y = parseInt(pb.slice(i, i + 2), 16);
+    return Math.round(x + (y - x) * t);
+  };
   return `rgb(${ch(0)}, ${ch(2)}, ${ch(4)})`;
 }
 
@@ -226,6 +231,18 @@ export function StretchyProfile({
   });
 
 
+  // На світлій/кольоровій обкладинці — кольори теми; у розкритому стані (поверх фото) — білі.
+  const nameColorStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(expand.value, [0, 1], [c.text, "#FFFFFF"]),
+  }));
+  const statusColorStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      expand.value,
+      [0, 1],
+      [statusAccent ? c.accent : c.muted, "rgba(255,255,255,0.88)"],
+    ),
+  }));
+
   const scrollViewStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: extra * expand.value }],
   }));
@@ -292,38 +309,17 @@ export function StretchyProfile({
                 headerStyle,
               ]}
             >
-              {/* Обкладинка: розмите й збільшене фото аватара (або градієнт кольору аватара) */}
+              {/* Обкладинка: рівний колір теми з ледь помітним відтінком кольору аватара */}
               <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
-                {hasImage ? (
-                  <>
-                    <Image
-                      source={{ uri: imageUrl! }}
-                      blurRadius={22}
-                      resizeMode="cover"
-                      style={{ position: "absolute", top: -48, left: -48, right: -48, bottom: -48 }}
-                    />
-                    <View
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: "rgba(0,0,0,0.36)",
-                      }}
-                    />
-                  </>
-                ) : (
-                  <Svg width="100%" height="100%">
-                    <Defs>
-                      <LinearGradient id="profileCover" x1="0" y1="0" x2="0" y2="1">
-                        <Stop offset="0" stopColor={shade(coverColor, 0.92)} stopOpacity="1" />
-                        <Stop offset="1" stopColor={shade(coverColor, 0.6)} stopOpacity="1" />
-                      </LinearGradient>
-                    </Defs>
-                    <Rect x="0" y="0" width="100%" height="100%" fill="url(#profileCover)" />
-                  </Svg>
-                )}
+                <Svg width="100%" height="100%">
+                  <Defs>
+                    <LinearGradient id="profileCover" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0" stopColor={mix(c.header, coverColor, 0.34)} stopOpacity="1" />
+                      <Stop offset="1" stopColor={mix(c.header, coverColor, 0.14)} stopOpacity="1" />
+                    </LinearGradient>
+                  </Defs>
+                  <Rect x="0" y="0" width="100%" height="100%" fill="url(#profileCover)" />
+                </Svg>
               </View>
 
               <Animated.View
@@ -394,20 +390,14 @@ export function StretchyProfile({
               >
                 <Animated.Text
                   numberOfLines={1}
-                  style={{ fontSize: 25, fontWeight: "800", textAlign: "center", color: "#FFFFFF" }}
+                  style={[{ fontSize: 25, fontWeight: "800", textAlign: "center" }, nameColorStyle]}
                 >
                   {name}
                 </Animated.Text>
                 {status ? (
                   <Animated.Text
                     numberOfLines={1}
-                    style={{
-                      fontSize: 14,
-                      marginTop: 4,
-                      textAlign: "center",
-                      color: statusAccent ? "#FFFFFF" : "rgba(255,255,255,0.78)",
-                      fontWeight: statusAccent ? "700" : "400",
-                    }}
+                    style={[{ fontSize: 14, marginTop: 4, textAlign: "center" }, statusColorStyle]}
                   >
                     {status}
                   </Animated.Text>
