@@ -1,22 +1,26 @@
+import { RoomAvatar } from "@/components/RoomAvatar";
+import { api } from "@/convex/_generated/api";
+import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
+import { PickedImage, pickSquareImage, uploadImageToStorage } from "@/utils/upload";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation } from "convex/react";
-import { File } from "expo-file-system";
-import * as ImagePicker from "expo-image-picker";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  Pressable,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { COLORS } from "@/constants/theme";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+export type ProfileField = "name" | "username" | "bio";
 
 interface EditProfileModalProps {
   visible: boolean;
@@ -24,178 +28,120 @@ interface EditProfileModalProps {
   initialUsername?: string;
   initialBio?: string;
   initialImage?: string;
+  /** Яке поле одразу активувати (для швидких переходів із налаштувань). */
+  focusField?: ProfileField;
   onClose: () => void;
   onSaved: () => void;
 }
 
+const BIO_MAX = 140;
+const USERNAME_RE = /^[A-Za-z0-9_]{3,32}$/;
+
+/** Редагування профілю: фото, ім'я, ім'я користувача та «про себе». */
 export function EditProfileModal({
   visible,
   initialName,
   initialUsername,
   initialBio,
   initialImage,
+  focusField,
   onClose,
   onSaved,
 }: EditProfileModalProps) {
+  const c = useChatPalette();
+  const insets = useSafeAreaInsets();
   const updateProfile = useMutation(api.users.updateUserProfile);
   const generateUploadUrl = useMutation(api.users.generateAvatarUploadUrl);
 
   const [name, setName] = useState(initialName);
   const [username, setUsername] = useState(initialUsername ?? "");
   const [bio, setBio] = useState(initialBio ?? "");
-
   const [image, setImage] = useState<string | undefined>(initialImage);
-  const [imageError, setImageError] = useState(false);
-
-  const [selectedImageUri, setSelectedImageUri] = useState<
-    string | undefined
-  >();
-
-  const [selectedImageMimeType, setSelectedImageMimeType] =
-    useState<string>("image/jpeg");
-
+  const [picked, setPicked] = useState<PickedImage | undefined>();
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
+  const nameRef = useRef<TextInput>(null);
+  const usernameRef = useRef<TextInput>(null);
+  const bioRef = useRef<TextInput>(null);
 
+  useEffect(() => {
+    if (!visible) return;
     setName(initialName);
     setUsername(initialUsername ?? "");
     setBio(initialBio ?? "");
     setImage(initialImage);
-    setImageError(false);
-    setSelectedImageUri(undefined);
-    setSelectedImageMimeType("image/jpeg");
-  }, [visible, initialName, initialUsername, initialBio, initialImage]);
+    setPicked(undefined);
+
+    if (!focusField) return;
+    const timer = setTimeout(() => {
+      const ref = focusField === "name" ? nameRef : focusField === "username" ? usernameRef : bioRef;
+      ref.current?.focus();
+    }, 380);
+    return () => clearTimeout(timer);
+  }, [visible, initialName, initialUsername, initialBio, initialImage, focusField]);
 
   const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert(
-        "Нет доступа",
-        "Разреши доступ к галерее, чтобы выбрать аватар.",
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (result.canceled || !result.assets[0]) {
-      return;
-    }
-
-    const asset = result.assets[0];
-
-    setImage(asset.uri);
-    setImageError(false);
-    setSelectedImageUri(asset.uri);
-    setSelectedImageMimeType(asset.mimeType ?? "image/jpeg");
-  };
-
-  const uploadAvatar = async (
-    uri: string,
-    mimeType: string,
-  ): Promise<Id<"_storage">> => {
-    const uploadUrl = await generateUploadUrl();
-
-    const file = new File(uri);
-
-    if (!file.exists) {
-      throw new Error("Выбранное изображение не найдено.");
-    }
-
-    const base64 = await file.base64();
-
-    if (!base64) {
-      throw new Error("Не удалось прочитать изображение.");
-    }
-
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-
-    const uploadResponse = await fetch(uploadUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": mimeType,
-      },
-      body: bytes,
-    });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-
-      console.error(
-        "Convex avatar upload error:",
-        uploadResponse.status,
-        errorText,
-      );
-
-      throw new Error(`Не удалось загрузить аватар (${uploadResponse.status})`);
-    }
-
-    const result = await uploadResponse.json();
-
-    if (!result.storageId) {
-      throw new Error("Convex не вернул storageId.");
-    }
-
-    return result.storageId as Id<"_storage">;
+    const result = await pickSquareImage();
+    if (!result) return;
+    setImage(result.uri);
+    setPicked(result);
   };
 
   const handleSave = async () => {
     const trimmedName = name.trim();
-
     if (!trimmedName) {
-      Alert.alert("Ошибка", "Имя пользователя не может быть пустым.");
+      Alert.alert("Помилка", "Ім'я не може бути порожнім.");
+      return;
+    }
+    const cleanUsername = username.trim().replace(/^@/, "");
+    if (cleanUsername && !USERNAME_RE.test(cleanUsername)) {
+      Alert.alert(
+        "Ім'я користувача",
+        "Використовуйте від 3 до 32 символів: латинські літери, цифри та підкреслення.",
+      );
       return;
     }
 
     try {
       setSaving(true);
-
-      let avatarStorageId: Id<"_storage"> | undefined;
-
-      if (selectedImageUri) {
-        avatarStorageId = await uploadAvatar(
-          selectedImageUri,
-          selectedImageMimeType,
-        );
+      let avatarStorageId;
+      if (picked) {
+        const uploadUrl = await generateUploadUrl();
+        avatarStorageId = await uploadImageToStorage(uploadUrl, picked);
       }
-
       await updateProfile({
         name: trimmedName,
-        username: username.trim() || undefined,
+        username: cleanUsername || undefined,
         bio: bio.trim() || undefined,
         ...(avatarStorageId ? { avatarStorageId } : {}),
       });
-
       onSaved();
       onClose();
     } catch (error) {
       console.error("Profile save error:", error);
-
       Alert.alert(
-        "Ошибка",
-        error instanceof Error
-          ? error.message
-          : "Не удалось сохранить профиль.",
+        "Помилка",
+        error instanceof Error ? error.message : "Не вдалося зберегти профіль.",
       );
     } finally {
       setSaving(false);
     }
   };
+
+  const label = (text: string, extra?: object) => (
+    <Text style={[{ color: c.muted, fontSize: 13, marginBottom: 6, marginLeft: 4 }, extra]}>
+      {text}
+    </Text>
+  );
+
+  const field = {
+    backgroundColor: c.field,
+    color: c.text,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+  } as const;
 
   return (
     <Modal
@@ -203,103 +149,144 @@ export function EditProfileModal({
       transparent
       animationType="slide"
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <View className="flex-1 bg-black/70 justify-end">
-        <View
-          className="rounded-t-3xl px-5 pt-5 pb-8"
-          style={{
-            backgroundColor: COLORS.background,
-            borderTopWidth: 1,
-            borderTopColor: COLORS.surface,
-          }}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: c.overlay, justifyContent: "flex-end" }}
+          onPress={saving ? undefined : onClose}
         >
-          <View className="flex-row items-center justify-between mb-6">
-            <Text className="text-white text-xl font-bold">
-              Редактировать профиль
-            </Text>
-
-            <TouchableOpacity
-              onPress={onClose}
-              disabled={saving}
-              className="w-9 h-9 rounded-full bg-surface items-center justify-center"
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: c.sheet,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              maxHeight: "94%",
+              paddingBottom: Math.max(insets.bottom, 12),
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: 12,
+                paddingTop: 14,
+                paddingBottom: 8,
+              }}
             >
-              <Ionicons name="close" size={22} color={COLORS.white} />
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                onPress={onClose}
+                disabled={saving}
+                style={{ paddingHorizontal: 8, paddingVertical: 6 }}
+              >
+                <Text style={{ color: c.accent, fontSize: 16 }}>Скасувати</Text>
+              </TouchableOpacity>
+              <Text style={{ color: c.text, fontSize: 17, fontWeight: "700" }}>
+                Редагування профілю
+              </Text>
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={saving}
+                style={{ paddingHorizontal: 8, paddingVertical: 6, minWidth: 80, alignItems: "flex-end" }}
+              >
+                {saving ? (
+                  <ActivityIndicator color={c.accent} />
+                ) : (
+                  <Text style={{ color: c.accent, fontSize: 16, fontWeight: "700" }}>
+                    Зберегти
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
 
-          <TouchableOpacity
-            onPress={pickImage}
-            disabled={saving}
-            className="items-center mb-6"
-          >
-            {image && !imageError ? (
-              <Image
-                source={{ uri: image }}
-                className="w-24 h-24 rounded-full"
-                resizeMode="cover"
-                onError={() => setImageError(true)}
-              />
-            ) : (
-              <View className="w-24 h-24 rounded-full bg-secondary items-center justify-center">
-                <Ionicons name="person" size={42} color={COLORS.textMuted} />
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 12 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={{ alignItems: "center", marginVertical: 14 }}>
+                <TouchableOpacity onPress={pickImage} disabled={saving} activeOpacity={0.8}>
+                  <RoomAvatar title={name || initialName} imageUrl={image} size={104} />
+                  <View
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      bottom: 0,
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      backgroundColor: c.accent,
+                      borderWidth: 3,
+                      borderColor: c.sheet,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="camera" size={16} color={c.onAccent} />
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={pickImage} disabled={saving} style={{ padding: 8, marginTop: 4 }}>
+                  <Text style={{ color: c.accent, fontWeight: "600" }}>Змінити фото</Text>
+                </TouchableOpacity>
               </View>
-            )}
 
-            <Text className="text-primary font-semibold mt-2">
-              Изменить аватар
-            </Text>
-          </TouchableOpacity>
+              {label("Ім'я")}
+              <TextInput
+                ref={nameRef}
+                value={name}
+                onChangeText={setName}
+                placeholder="Ваше ім'я"
+                placeholderTextColor={withAlpha(c.muted, 0.8)}
+                editable={!saving}
+                maxLength={64}
+                selectionColor={c.accent}
+                style={field}
+              />
 
-          <Text className="text-textMuted text-sm mb-2">Имя</Text>
+              {label("Ім'я користувача", { marginTop: 16 })}
+              <View style={[field, { flexDirection: "row", alignItems: "center", paddingVertical: 0 }]}>
+                <Text style={{ color: c.muted, fontSize: 16 }}>@</Text>
+                <TextInput
+                  ref={usernameRef}
+                  value={username}
+                  onChangeText={(t) => setUsername(t.replace(/^@/, ""))}
+                  placeholder="username"
+                  placeholderTextColor={withAlpha(c.muted, 0.8)}
+                  editable={!saving}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={32}
+                  selectionColor={c.accent}
+                  style={{ flex: 1, color: c.text, fontSize: 16, paddingVertical: 12, marginLeft: 2 }}
+                />
+              </View>
 
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Твоё имя"
-            placeholderTextColor={COLORS.textMuted}
-            editable={!saving}
-            className="bg-surface border border-surfaceLight text-white rounded-xl px-4 py-3 mb-4"
-          />
-
-          <Text className="text-textMuted text-sm mb-2">Username</Text>
-
-          <TextInput
-            value={username}
-            onChangeText={setUsername}
-            placeholder="@username"
-            placeholderTextColor={COLORS.textMuted}
-            editable={!saving}
-            autoCapitalize="none"
-            className="bg-surface border border-surfaceLight text-white rounded-xl px-4 py-3 mb-4"
-          />
-
-          <Text className="text-textMuted text-sm mb-2">Описание</Text>
-
-          <TextInput
-            value={bio}
-            onChangeText={setBio}
-            placeholder="Расскажи что-нибудь о себе"
-            placeholderTextColor={COLORS.textMuted}
-            editable={!saving}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-            className="bg-surface border border-surfaceLight text-white rounded-xl px-4 py-3 mb-6 min-h-[100px]"
-          />
-
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={saving}
-            className="bg-primary rounded-xl py-3.5 items-center"
-          >
-            {saving ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text className="text-white font-bold text-base">Сохранить</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
+              {label("Про себе", { marginTop: 16 })}
+              <TextInput
+                ref={bioRef}
+                value={bio}
+                onChangeText={setBio}
+                placeholder="Розкажіть кілька слів про себе"
+                placeholderTextColor={withAlpha(c.muted, 0.8)}
+                editable={!saving}
+                multiline
+                maxLength={BIO_MAX}
+                textAlignVertical="top"
+                selectionColor={c.accent}
+                style={[field, { minHeight: 96 }]}
+              />
+              <Text style={{ color: c.muted, fontSize: 12, marginTop: 6, textAlign: "right" }}>
+                {bio.length}/{BIO_MAX}
+              </Text>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
