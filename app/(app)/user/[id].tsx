@@ -12,8 +12,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { getThemeColors, useAppTheme } from "@/components/AppThemeProvider";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
-import { COLORS } from "@/constants/theme";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 
@@ -21,6 +21,8 @@ export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{
     id: string;
   }>();
+  const { theme } = useAppTheme();
+  const colors = getThemeColors(theme);
 
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
@@ -38,10 +40,9 @@ export default function UserProfileScreen() {
   if (currentUser === undefined || userProfile === undefined) {
     return (
       <SafeAreaView
-        className="flex-1 items-center justify-center"
-        style={{ backgroundColor: COLORS.background }}
+        className="flex-1 items-center justify-center bg-background"
       >
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -49,8 +50,7 @@ export default function UserProfileScreen() {
   if (!userProfile) {
     return (
       <SafeAreaView
-        className="flex-1 items-center justify-center px-6"
-        style={{ backgroundColor: COLORS.background }}
+        className="flex-1 items-center justify-center bg-background px-6"
       >
         <Text className="text-white text-lg text-center">
           Пользователь не найден
@@ -70,12 +70,11 @@ export default function UserProfileScreen() {
 
   return (
     <SafeAreaView
-      className="flex-1"
+      className="flex-1 bg-background"
       edges={["bottom"]}
-      style={{ backgroundColor: COLORS.background }}
     >
       <ScrollView
-        style={{ backgroundColor: COLORS.background }}
+        className="bg-background"
         contentContainerStyle={{
           padding: 20,
           paddingBottom: 40,
@@ -96,12 +95,12 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
           ) : (
             <View className="w-28 h-28 rounded-full bg-secondary items-center justify-center mb-4">
-              <Ionicons name="person" size={52} color={COLORS.textMuted} />
+              <Ionicons name="person" size={52} color={colors.textMuted} />
             </View>
           )}
 
           <Text className="text-white text-2xl font-bold">
-            {userProfile.name}
+            {userProfile.name} {userProfile.profileEmoji}
           </Text>
 
           {userProfile.username && (

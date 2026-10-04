@@ -1,11 +1,11 @@
 import { ConfigContext, ExpoConfig } from "expo/config";
 
-const EAS_PROJECT_ID = "f82645fd-9092-483c-9b48-d445b0a4a071";
+const EAS_PROJECT_ID = "9c5b6d3f-5ad1-41f0-9c68-4a8f7b44112a";
 
-const PROJECT_SLUG = "moderntalking-chat";
-const OWNER = "meduster";
+const PROJECT_SLUG = "modernchat";
+const OWNER = "bukwa";
 
-const APP_NAME = "Modern Talking Chat";
+const APP_NAME = "SuperMegaModernChat";
 const BUNDLE_IDENTIFIER = `com.${OWNER}.modernchat`;
 const PACKAGE_NAME = `com.${OWNER}.modernchat`;
 const SCHEME = "modernchat";
@@ -20,7 +20,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     (process.env.APP_ENV as "development" | "preview" | "production") ||
     "development";
 
-  console.log("⚙️ Сборка Modern Chat для среды:", environment);
+  console.log("⚙️ Сборка SuperMegaModernChat для среды:", environment);
   console.log("📦 Convex URL:", process.env.EXPO_PUBLIC_CONVEX_URL);
 
   const dynamicConfig = getDynamicAppConfig(environment);
@@ -46,13 +46,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
       infoPlist: {
         NSCameraUsageDescription:
-          "Додатку Modern Chat потрібен доступ до камери для запису відеокружечків та фотографій.",
+          "Додатку SuperMegaModernChat потрібен доступ до камери для запису відеокружечків та фотографій.",
         NSPhotoLibraryUsageDescription:
-          "Додатку Modern Chat потрібен доступ до медіатеки для вибору та надсилання фотографій.",
+          "Додатку SuperMegaModernChat потрібен доступ до медіатеки для вибору та надсилання фотографій.",
         NSPhotoLibraryAddUsageDescription:
-          "Додатку Modern Chat потрібен доступ для збереження фотографій у вашу галерею.",
+          "Додатку SuperMegaModernChat потрібен доступ для збереження фотографій у вашу галерею.",
         NSMicrophoneUsageDescription:
-          "Додатку Modern Chat потрібен доступ до мікрофона для запису голосових повідомлень та відеокружечків.",
+          "Додатку SuperMegaModernChat потрібен доступ до мікрофона для запису голосових повідомлень та відеокружечків.",
       },
     },
 
@@ -109,8 +109,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-image-picker",
         {
           photosPermission:
-            "Додатку Modern Chat потрібен доступ до ваших фотографій.",
-          cameraPermission: "Додатку Modern Chat потрібен доступ до камери.",
+            "Додатку SuperMegaModernChat потрібен доступ до ваших фотографій.",
+          cameraPermission: "Додатку SuperMegaModernChat потрібен доступ до камери.",
         },
       ],
 
@@ -121,9 +121,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-camera",
         {
           cameraPermission:
-            "Додатку Modern Chat потрібен доступ до камери для запису відеокружечків.",
+            "Додатку SuperMegaModernChat потрібен доступ до камери для запису відеокружечків.",
           microphonePermission:
-            "Додатку Modern Chat потрібен доступ до мікрофона для запису звуку у відеокружечках.",
+            "Додатку SuperMegaModernChat потрібен доступ до мікрофона для запису звуку у відеокружечках.",
           recordAudioAndroid: true,
         },
       ],
@@ -142,7 +142,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-audio",
         {
           microphonePermission:
-            "Додатку Modern Chat потрібен доступ до мікрофона для запису голосових повідомлень.",
+            "Додатку SuperMegaModernChat потрібен доступ до мікрофона для запису голосових повідомлень.",
         },
       ],
 
@@ -200,18 +200,18 @@ export const getDynamicAppConfig = (
       scheme: `${SCHEME}-dev`,
     };
   }
-
+  
   if (environment === "preview") {
     return {
       name: `${APP_NAME} Preview`,
-      bundleIdentifier: `${BUNDLE_IDENTIFIER}.preview`,
-      packageName: `${PACKAGE_NAME}.preview`,
+      bundleIdentifier: BUNDLE_IDENTIFIER,   
+      packageName: PACKAGE_NAME,             
       icon: "./assets/images/icons/icon-preview.png",
       adaptiveIconForeground:
         "./assets/images/icons/android-icon-foreground-preview.png",
       adaptiveIconBackground: ADAPTIVE_ICON_BACKGROUND,
       adaptiveIconMonochrome: ADAPTIVE_ICON_MONOCHROME,
-      scheme: `${SCHEME}-preview`,
+      scheme: SCHEME,                        
     };
   }
 

@@ -1,4 +1,6 @@
 import { ImageViewerModal } from "@/components/ImageViewerModal";
+import { HeartBurst } from "@/components/HeartBurst";
+import { ForwardMessageModal } from "@/components/ForwardMessageModal";
 import {
   ReactionPickerModal,
   ReactionPickerPosition,
@@ -32,6 +34,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -64,12 +67,14 @@ export default function ChatRoomScreen() {
   const typingUsers = useQuery(api.typing.getTypingUsers, { chatRoomId });
 
   const sendMessage = useMutation(api.messages.sendMessage);
+  const deleteMessage = useMutation(api.messages.deleteMessage);
   const sendMediaMessage = useMutation(api.messages.sendMediaMessage);
   const sendVoiceMessage = useMutation(api.messages.sendVoiceMessage);
   const sendVideoNote = useMutation(api.messages.sendVideoNote);
   const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
   const editMessage = useMutation(api.messages.editMessage);
   const toggleReaction = useMutation(api.messages.toggleReaction);
+  const toggleSavedMessage = useMutation(api.messages.toggleSavedMessage);
   const setTyping = useMutation(api.typing.setTyping);
   const clearTyping = useMutation(api.typing.clearTyping);
 
@@ -89,9 +94,17 @@ export default function ChatRoomScreen() {
     messageId: Id<"messages">;
     position: ReactionPickerPosition;
   } | null>(null);
+  const [heartBurst, setHeartBurst] = useState<{
+    id: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const [inputMode, setInputMode] = useState<"audio" | "video">("audio");
   const [isVideoModalVisible, setIsVideoModalVisible] = useState(false);
+  const [forwardingMessageId, setForwardingMessageId] =
+    useState<Id<"messages"> | null>(null);
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   const {
     isRecording,
@@ -221,6 +234,61 @@ export default function ChatRoomScreen() {
       }
     },
     [toggleReaction],
+  );
+
+  const handleToggleSavedMessage = useCallback(
+    async (message: MessageItemData) => {
+      try {
+        await toggleSavedMessage({ messageId: message._id });
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch (error) {
+        console.error("Не вдалося зберегти повідомлення:", error);
+        Alert.alert(
+          "Помилка",
+          error instanceof Error
+            ? error.message
+            : "Не вдалося зберегти повідомлення.",
+        );
+      }
+    },
+    [toggleSavedMessage],
+  );
+
+  const handleForwardMessage = useCallback((message: MessageItemData) => {
+    setForwardingMessageId(message._id);
+  }, []);
+
+  const handleDeleteMessage = useCallback(
+    (message: MessageItemData) => {
+      Alert.alert(
+        "Видалити повідомлення?",
+        "Повідомлення буде видалено для всіх учасників кімнати.",
+        [
+          { text: "Скасувати", style: "cancel" },
+          {
+            text: "Видалити",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await deleteMessage({ messageId: message._id });
+                void Haptics.notificationAsync(
+                  Haptics.NotificationFeedbackType.Success,
+                );
+              } catch (error) {
+                console.error("Не вдалося видалити повідомлення:", error);
+                Alert.alert(
+                  "Помилка",
+                  error instanceof Error
+                    ? error.message
+                    : "Не вдалося видалити повідомлення.",
+                );
+              }
+            },
+          },
+        ],
+      );
+    },
+    [deleteMessage],
   );
 
   const uploadFile = useCallback(
@@ -426,17 +494,41 @@ export default function ChatRoomScreen() {
       <SwipeableMessageItem
         item={item}
         isOwn={item.senderId === currentUser?._id}
+        canDelete={
+          item.senderId === currentUser?._id || room?.canManageMembers === true
+        }
+        onDelete={handleDeleteMessage}
+        onToggleSaved={handleToggleSavedMessage}
+        onForward={handleForwardMessage}
         onLongPress={(position) =>
           setPickerState({ messageId: item._id, position })
         }
-        onDoubleTap={(message) => handleToggleReaction(message._id, "❤️")}
+        onDoubleTap={(message) => {
+          handleToggleReaction(message._id, "❤️");
+          setHeartBurst({
+            id: Date.now(),
+            x: screenWidth / 2,
+            y: screenHeight / 2,
+          });
+        }}
         onToggleReaction={(emoji) => handleToggleReaction(item._id, emoji)}
         onReply={handleStartReply}
         onImagePress={setFullscreenImage}
         onAuthorPress={(authorId) => router.push(`/user/${authorId}` as any)}
       />
     ),
-    [currentUser?._id, handleStartReply, handleToggleReaction, router],
+    [
+      currentUser?._id,
+      room?.canManageMembers,
+      handleDeleteMessage,
+      handleToggleSavedMessage,
+      handleForwardMessage,
+      handleStartReply,
+      handleToggleReaction,
+      router,
+      screenHeight,
+      screenWidth,
+    ],
   );
 
   const handleLoadMore = useCallback(() => {
@@ -490,28 +582,33 @@ export default function ChatRoomScreen() {
   const bottomInset = Math.max(insets.bottom, 12);
 
   return (
-    <View className="flex-1 bg-surface">
+    <View className="flex-1 bg-background">
       {/* HEADER — вне KeyboardAvoidingView, чтобы не сжимался при клавиатуре */}
       <View
-        className="flex-row items-center border-b border-surfaceLight bg-surface px-4"
+        className="flex-row items-center border-b border-surfaceLight/60 bg-background px-4"
         style={{ height: insets.top + 56, paddingTop: insets.top }}
       >
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-secondary"
+          className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-surface"
           accessibilityRole="button"
           accessibilityLabel="Назад"
         >
           <Ionicons name="arrow-back" size={22} color={COLORS.white} />
         </TouchableOpacity>
 
-        <Text numberOfLines={1} className="flex-1 text-lg font-bold text-white">
-          {room?.title ?? "Чат"}
-        </Text>
+        <View className="flex-1">
+          <Text numberOfLines={1} className="text-base font-bold text-white">
+            {room?.title ?? "Чат"}
+          </Text>
+          <Text className="mt-0.5 text-[10px] font-semibold tracking-[1.5px] text-accent">
+            ВАШ ПРОСТІР
+          </Text>
+        </View>
 
         <TouchableOpacity
           onPress={() => router.push(`/settings/${chatRoomId}`)}
-          className="ml-3 h-10 w-10 items-center justify-center rounded-full bg-secondary"
+          className="ml-3 h-10 w-10 items-center justify-center rounded-full bg-surface"
           accessibilityRole="button"
           accessibilityLabel="Інформація про кімнату"
         >
@@ -526,7 +623,7 @@ export default function ChatRoomScreen() {
       {/* CONTENT + INPUT — внутри KeyboardAvoidingView */}
       <KeyboardAvoidingView
         className="flex-1"
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
         <View className="flex-1">
@@ -583,7 +680,7 @@ export default function ChatRoomScreen() {
         )}
 
         {editingMessageId && (
-          <View className="flex-row items-center justify-between px-4 py-2 bg-surfaceLight border-t border-surface">
+          <View className="flex-row items-center justify-between px-4 py-2 bg-secondary border-t border-surfaceLight">
             <View className="flex-row items-center flex-1 mr-2">
               <Ionicons
                 name="pencil"
@@ -622,7 +719,7 @@ export default function ChatRoomScreen() {
 
         {isRecording ? (
           <View
-            className="flex-row items-center px-3 pt-3 bg-surface border-t border-surfaceLight"
+            className="flex-row items-center px-3 pt-3 bg-background border-t border-surfaceLight/70"
             style={{ paddingBottom: bottomInset }}
           >
             <TouchableOpacity
@@ -691,7 +788,7 @@ export default function ChatRoomScreen() {
           </View>
         ) : (
           <View
-            className="flex-row items-center px-3 pt-3 bg-surface border-t border-surfaceLight"
+            className="flex-row items-center px-3 pt-3 bg-background border-t border-surfaceLight/70"
             style={{ paddingBottom: bottomInset }}
           >
             <TouchableOpacity
@@ -724,10 +821,10 @@ export default function ChatRoomScreen() {
                 <TouchableOpacity
                   onPress={handleSend}
                   onPressIn={() => {
-                    sendButtonScale.value = withSpring(0.86);
+                    sendButtonScale.set(withSpring(0.86));
                   }}
                   onPressOut={() => {
-                    sendButtonScale.value = withSpring(1);
+                    sendButtonScale.set(withSpring(1));
                   }}
                   disabled={(!inputText.trim() && !selectedImageUri) || isSubmitting}
                   className={`w-11 h-11 rounded-full items-center justify-center bg-primary ${
@@ -774,6 +871,23 @@ export default function ChatRoomScreen() {
         onClose={() => setFullscreenImage(null)}
       />
 
+      {heartBurst && (
+        <View
+          pointerEvents="none"
+          className="absolute inset-0"
+          style={{ zIndex: 50 }}
+        >
+          <HeartBurst
+            key={heartBurst.id}
+            id={heartBurst.id}
+            x={heartBurst.x}
+            y={heartBurst.y}
+            width={screenWidth}
+            height={screenHeight}
+          />
+        </View>
+      )}
+
       <ReactionPickerModal
         visible={!!pickerState}
         position={pickerState?.position ?? null}
@@ -781,8 +895,22 @@ export default function ChatRoomScreen() {
         onSelectEmoji={(emoji) => {
           if (pickerState) {
             void handleToggleReaction(pickerState.messageId, emoji);
+            if (emoji === "❤️") {
+              setHeartBurst({
+                id: Date.now(),
+                x: pickerState.position.x,
+                y: pickerState.position.y,
+              });
+            }
           }
         }}
+      />
+
+      <ForwardMessageModal
+        visible={forwardingMessageId !== null}
+        messageId={forwardingMessageId}
+        sourceRoomId={chatRoomId}
+        onClose={() => setForwardingMessageId(null)}
       />
 
       <VideoNoteRecorderModal

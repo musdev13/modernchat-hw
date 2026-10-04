@@ -5,13 +5,16 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: "#3B82F6",
-        primaryDark: "#1D4ED8",
-        secondary: "#1E293B",
-        surface: "#0F172A",
-        surfaceLight: "#334155",
-        textMuted: "#94A3B8",
-        danger: "#EF4444",
+        primary: "rgb(var(--color-primary) / <alpha-value>)",
+        primaryDark: "rgb(var(--color-primary-dark) / <alpha-value>)",
+        secondary: "rgb(var(--color-secondary) / <alpha-value>)",
+        background: "rgb(var(--color-background) / <alpha-value>)",
+        surface: "rgb(var(--color-surface) / <alpha-value>)",
+        surfaceLight: "rgb(var(--color-surface-light) / <alpha-value>)",
+        textMuted: "rgb(var(--color-text-muted) / <alpha-value>)",
+        danger: "rgb(var(--color-danger) / <alpha-value>)",
+        accent: "rgb(var(--color-accent) / <alpha-value>)",
+        white: "rgb(var(--color-white) / <alpha-value>)",
       },
     },
   },

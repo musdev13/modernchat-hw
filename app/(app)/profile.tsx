@@ -16,11 +16,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { EditProfileModal } from "@/components/EditProfileModal";
-import { COLORS } from "@/constants/theme";
+import { getThemeColors, useAppTheme } from "@/components/AppThemeProvider";
 import { api } from "@/convex/_generated/api";
 
 export default function ProfileScreen() {
   const { signOut } = useClerk();
+  const { theme } = useAppTheme();
+  const colors = getThemeColors(theme);
 
   const currentUser = useQuery(api.users.currentUser);
   const removePushToken = useMutation(api.users.removePushToken);
@@ -35,10 +37,9 @@ export default function ProfileScreen() {
   if (currentUser === undefined || profileDetails === undefined) {
     return (
       <SafeAreaView
-        className="flex-1 items-center justify-center"
-        style={{ backgroundColor: COLORS.background }}
+        className="flex-1 items-center justify-center bg-background"
       >
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -46,8 +47,7 @@ export default function ProfileScreen() {
   if (!currentUser || !profileDetails) {
     return (
       <SafeAreaView
-        className="flex-1 items-center justify-center px-6"
-        style={{ backgroundColor: COLORS.background }}
+        className="flex-1 items-center justify-center bg-background px-6"
       >
         <Text className="text-white text-lg text-center">
           Не вдалося завантажити профіль
@@ -90,12 +90,10 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView
-      className="flex-1"
-      style={{ backgroundColor: COLORS.background }}
+      className="flex-1 bg-background"
     >
       <ScrollView
-        className="flex-1"
-        style={{ backgroundColor: COLORS.background }}
+        className="flex-1 bg-background"
         contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
       >
         <View className="flex-row items-center justify-between mb-8">
@@ -103,7 +101,7 @@ export default function ProfileScreen() {
             onPress={() => router.back()}
             className="w-10 h-10 rounded-full bg-surface items-center justify-center"
           >
-            <Ionicons name="arrow-back" size={22} color={COLORS.white} />
+            <Ionicons name="arrow-back" size={22} color={colors.white} />
           </TouchableOpacity>
 
           <Text className="text-white text-xl font-bold">Профіль</Text>
@@ -112,7 +110,7 @@ export default function ProfileScreen() {
             onPress={() => setEditVisible(true)}
             className="w-10 h-10 rounded-full bg-surface items-center justify-center"
           >
-            <Ionicons name="pencil" size={20} color={COLORS.primary} />
+            <Ionicons name="pencil" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -124,12 +122,12 @@ export default function ProfileScreen() {
             />
           ) : (
             <View className="w-28 h-28 rounded-full bg-secondary items-center justify-center mb-4">
-              <Ionicons name="person" size={52} color={COLORS.textMuted} />
+              <Ionicons name="person" size={52} color={colors.textMuted} />
             </View>
           )}
 
           <Text className="text-white text-2xl font-bold">
-            {profileDetails.name}
+            {profileDetails.name} {profileDetails.profileEmoji}
           </Text>
 
           {profileDetails.username && (
@@ -177,6 +175,22 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          onPress={() => router.push("/preferences")}
+          className="flex-row items-center justify-center bg-surface border border-surfaceLight rounded-xl py-3.5 mt-3"
+          accessibilityRole="button"
+          accessibilityLabel="Налаштування теми та обраного"
+        >
+          <Ionicons
+            name="color-palette-outline"
+            size={19}
+            color={colors.primary}
+          />
+          <Text className="ml-2 text-white font-bold text-base">
+            Тема та обране
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           onPress={handleSignOut}
           className="border border-danger rounded-xl py-3.5 items-center mt-3"
         >
@@ -186,15 +200,18 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      <EditProfileModal
-        visible={editVisible}
-        initialName={profileDetails.name}
-        initialUsername={profileDetails.username}
-        initialBio={profileDetails.bio}
-        initialImage={profileDetails.image}
-        onClose={() => setEditVisible(false)}
-        onSaved={() => setEditVisible(false)}
-      />
+      {editVisible && (
+        <EditProfileModal
+          visible
+          initialName={profileDetails.name}
+          initialUsername={profileDetails.username}
+          initialProfileEmoji={profileDetails.profileEmoji}
+          initialBio={profileDetails.bio}
+          initialImage={profileDetails.image}
+          onClose={() => setEditVisible(false)}
+          onSaved={() => setEditVisible(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }

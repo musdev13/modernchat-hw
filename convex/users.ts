@@ -36,6 +36,23 @@ export const currentUser = query({
   },
 });
 
+export const setThemePreference = mutation({
+  args: {
+    theme: v.union(
+      v.literal("glass"),
+      v.literal("violet"),
+      v.literal("ocean"),
+      v.literal("sunset"),
+      v.literal("light"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    await ctx.db.patch(me._id, { themePreference: args.theme });
+  },
+});
+
 // Мутація синхронізації: створює або оновлює запис користувача в базі після входу через Clerk
 export const store = mutation({
   args: {},
@@ -56,7 +73,9 @@ export const store = mutation({
     if (user !== null) {
       // Оновлюємо ім'я або фото, якщо вони змінилися в акаунті Clerk
       const newName = identity.name ?? user.name;
-      const newImage = identity.pictureUrl ?? user.image;
+      const newImage = user.avatarStorageId
+        ? user.image
+        : identity.pictureUrl ?? user.image;
 
       if (user.name !== newName || user.image !== newImage) {
         await ctx.db.patch(user._id, {
@@ -97,6 +116,7 @@ export const searchUsers = query({
         name: user.name ?? user.email ?? "Користувач",
         username: user.username,
         image: user.image,
+        profileEmoji: user.profileEmoji,
       }));
   },
 });
@@ -115,6 +135,7 @@ export const updateUserProfile = mutation({
   args: {
     name: v.string(),
     username: v.optional(v.string()),
+    profileEmoji: v.optional(v.string()),
     bio: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
   },
@@ -138,13 +159,22 @@ export const updateUserProfile = mutation({
       bio: args.bio?.trim(),
     };
 
+    const allowedProfileEmojis = ["✨", "💜", "🔥", "🌙", "🦋", "🌸", "⚡", "💎"];
+    if (
+      args.profileEmoji !== undefined &&
+      args.profileEmoji !== "" &&
+      !allowedProfileEmojis.includes(args.profileEmoji)
+    ) {
+      throw new Error("Недопустимий емодзі профілю");
+    }
+    patchData.profileEmoji = args.profileEmoji || undefined;
+
     if (args.avatarStorageId) {
       const imageUrl = await ctx.storage.getUrl(args.avatarStorageId);
 
-      if (imageUrl) {
-        patchData.image = imageUrl;
-        patchData.avatarStorageId = args.avatarStorageId;
-      }
+      if (!imageUrl) throw new Error("Завантажений аватар не знайдено");
+      patchData.image = imageUrl;
+      patchData.avatarStorageId = args.avatarStorageId;
     }
 
     await ctx.db.patch(me._id, patchData);
@@ -181,6 +211,7 @@ export const getUserProfile = query({
       email: user.email,
       image: user.image,
       username: user.username,
+      profileEmoji: user.profileEmoji,
       bio: user.bio,
       _creationTime: user._creationTime,
 

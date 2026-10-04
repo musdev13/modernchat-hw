@@ -9,9 +9,21 @@ export default defineSchema({
     image: v.optional(v.string()),
 
     username: v.optional(v.string()),
+    profileEmoji: v.optional(v.string()),
     bio: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
     pushToken: v.optional(v.string()),
+    isPremium: v.optional(v.boolean()),
+    themePreference: v.optional(
+      v.union(
+        v.literal("glass"),
+        v.literal("violet"),
+        v.literal("ocean"),
+        v.literal("sunset"),
+        v.literal("light"),
+      ),
+    ),
+    favoriteRoomIds: v.optional(v.array(v.id("chatRooms"))),
   })
     .index("by_token", ["tokenIdentifier"])
     .index("by_email", ["email"]),
@@ -19,6 +31,8 @@ export default defineSchema({
   chatRooms: defineTable({
     title: v.string(),
     description: v.optional(v.string()),
+    avatarStorageId: v.optional(v.id("_storage")),
+    avatarUrl: v.optional(v.string()),
     creatorId: v.id("users"),
     participantIds: v.optional(v.array(v.id("users"))),
     adminIds: v.optional(v.array(v.id("users"))),
@@ -31,9 +45,12 @@ export default defineSchema({
     senderId: v.id("users"),
     senderName: v.string(),
     senderPhoto: v.optional(v.string()),
+    forwardedFrom: v.optional(v.string()),
     content: v.optional(v.string()),
 
     imageUrl: v.optional(v.string()),
+    gifUrl: v.optional(v.string()),
+    gifId: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
 
     audioUrl: v.optional(v.string()),
@@ -54,6 +71,13 @@ export default defineSchema({
     replyToText: v.optional(v.string()),
   }).index("by_chat_room", ["chatRoomId"]),
 
+  messageAssetReferences: defineTable({
+    messageId: v.id("messages"),
+    storageId: v.id("_storage"),
+  })
+    .index("by_storage", ["storageId"])
+    .index("by_message", ["messageId"]),
+
   messageReactions: defineTable({
     messageId: v.id("messages"),
     userId: v.id("users"),
@@ -61,6 +85,27 @@ export default defineSchema({
   })
     .index("by_message", ["messageId"])
     .index("by_user_and_message", ["userId", "messageId"]),
+
+  savedMessages: defineTable({
+    userId: v.id("users"),
+    kind: v.union(v.literal("note"), v.literal("message")),
+    body: v.string(),
+    sourceMessageId: v.optional(v.id("messages")),
+    sourceRoomTitle: v.optional(v.string()),
+    sourceSenderName: v.optional(v.string()),
+    savedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_and_source_message", ["userId", "sourceMessageId"]),
+
+  stories: defineTable({
+    userId: v.id("users"),
+    storageId: v.id("_storage"),
+    mediaType: v.union(v.literal("image"), v.literal("video")),
+    expiresAt: v.number(),
+  })
+    .index("by_expiration", ["expiresAt"])
+    .index("by_user_and_expiration", ["userId", "expiresAt"]),
 
   typingIndicators: defineTable({
     chatRoomId: v.id("chatRooms"),

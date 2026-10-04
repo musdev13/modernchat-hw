@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { getAuthUser } from "./users";
+import { deleteMessageAssets, trackMessageAssets } from "./messageAssets";
 
 // TTL presence — если heartbeat старше, считаем что юзер ушёл из чата
 const PRESENCE_TTL_MS = 30_000;
@@ -127,10 +128,19 @@ export const getPaginatedMessages = query({
 
     const page = await Promise.all(
       paginated.page.map(async (message) => {
-        const reactions = await ctx.db
-          .query("messageReactions")
-          .withIndex("by_message", (q) => q.eq("messageId", message._id))
-          .collect();
+        const [reactions, sender, savedMessage] = await Promise.all([
+          ctx.db
+            .query("messageReactions")
+            .withIndex("by_message", (q) => q.eq("messageId", message._id))
+            .collect(),
+          ctx.db.get(message.senderId),
+          ctx.db
+            .query("savedMessages")
+            .withIndex("by_user_and_source_message", (q) =>
+              q.eq("userId", userId).eq("sourceMessageId", message._id),
+            )
+            .first(),
+        ]);
 
         const grouped = new Map<
           string,
@@ -149,6 +159,9 @@ export const getPaginatedMessages = query({
 
         return {
           ...message,
+          senderUsername: sender?.username,
+          senderEmoji: sender?.profileEmoji,
+          isSaved: savedMessage !== null,
           reactions: Array.from(grouped, ([emoji, reaction]) => ({
             emoji,
             ...reaction,
@@ -198,6 +211,96 @@ export const toggleReaction = mutation({
 
     await ctx.db.patch(existing._id, { emoji: args.emoji });
     return { action: "updated", emoji: args.emoji };
+  },
+});
+
+export const toggleSavedMessage = mutation({
+  args: { messageId: v.id("messages") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+
+    const message = await ctx.db.get(args.messageId);
+    if (!message) throw new Error("Повідомлення не знайдено");
+    await assertRoomMember(ctx, message.chatRoomId, me._id);
+
+    const existing = await ctx.db
+      .query("savedMessages")
+      .withIndex("by_user_and_source_message", (q) =>
+        q.eq("userId", me._id).eq("sourceMessageId", message._id),
+      )
+      .first();
+    if (existing) {
+      await ctx.db.delete(existing._id);
+      return false;
+    }
+
+    const room = await ctx.db.get(message.chatRoomId);
+    const body =
+      message.content?.trim() ||
+      (message.isVideoNote
+        ? "Відеоповідомлення"
+        : message.audioUrl
+          ? "Голосове повідомлення"
+          : message.imageUrl
+            ? "Фотографія"
+            : "Медіаповідомлення");
+
+    await ctx.db.insert("savedMessages", {
+      userId: me._id,
+      kind: "message",
+      body,
+      sourceMessageId: message._id,
+      sourceRoomTitle: room?.title,
+      sourceSenderName: message.senderName,
+      savedAt: Date.now(),
+    });
+    return true;
+  },
+});
+
+export const createSavedNote = mutation({
+  args: { body: v.string() },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    const body = args.body.trim();
+    if (!body) throw new Error("Нотатка не може бути порожньою");
+    if (body.length > 3000) {
+      throw new Error("Нотатка не може містити більше 3000 символів");
+    }
+    await ctx.db.insert("savedMessages", {
+      userId: me._id,
+      kind: "note",
+      body,
+      savedAt: Date.now(),
+    });
+  },
+});
+
+export const listSavedMessages = query({
+  args: {},
+  handler: async (ctx) => {
+    const me = await getAuthUser(ctx);
+    if (!me) return [];
+    return await ctx.db
+      .query("savedMessages")
+      .withIndex("by_user", (q) => q.eq("userId", me._id))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const deleteSavedMessage = mutation({
+  args: { savedMessageId: v.id("savedMessages") },
+  handler: async (ctx, args) => {
+    const me = await getAuthUser(ctx);
+    if (!me) throw new Error("Unauthorized: Потрібна авторизація");
+    const saved = await ctx.db.get(args.savedMessageId);
+    if (!saved || saved.userId !== me._id) {
+      throw new Error("Збережене повідомлення не знайдено");
+    }
+    await ctx.db.delete(saved._id);
   },
 });
 
@@ -310,15 +413,21 @@ export const deleteMessage = mutation({
 
     const message = await ctx.db.get(args.messageId);
     if (!message) throw new Error("Message not found: Повідомлення не знайдено");
-    await assertRoomMember(ctx, message.chatRoomId, userId);
+    const room = await assertRoomMember(ctx, message.chatRoomId, userId);
 
-    if (message.senderId !== userId) {
-      throw new Error("Forbidden: Ви можете видаляти лише власні повідомлення");
+    const canManageMessages =
+      room.creatorId === userId || (room.adminIds ?? []).includes(userId);
+    if (
+      message.senderId !== userId &&
+      !canManageMessages
+    ) {
+      throw new Error("Forbidden: Видалити це повідомлення може лише автор або адміністратор кімнати");
+    }
+    if (message.isSystem && !canManageMessages) {
+      throw new Error("Forbidden: Системні повідомлення може видалити лише адміністратор кімнати");
     }
 
-    if (message.storageId) await ctx.storage.delete(message.storageId);
-    if (message.audioStorageId) await ctx.storage.delete(message.audioStorageId);
-    if (message.videoStorageId) await ctx.storage.delete(message.videoStorageId);
+    await deleteMessageAssets(ctx, message._id, message);
 
     const reactions = await ctx.db
       .query("messageReactions")
@@ -334,12 +443,91 @@ export const deleteMessage = mutation({
       .order("desc")
       .first();
 
-    await ctx.db.patch(message.chatRoomId, {
-      lastMessage: lastRemainingMessage
-        ? `${lastRemainingMessage.senderName}: ${lastRemainingMessage.content ?? ""}`
-        : "Повідомлень немає",
-      lastMessageAt: lastRemainingMessage?._creationTime ?? Date.now(),
+    if (
+      !lastRemainingMessage ||
+      lastRemainingMessage._creationTime < message._creationTime
+    ) {
+      await ctx.db.patch(message.chatRoomId, {
+        lastMessage: lastRemainingMessage
+          ? `${lastRemainingMessage.senderName}: ${lastRemainingMessage.content ?? ""}`
+          : "Повідомлень немає",
+        lastMessageAt: lastRemainingMessage?._creationTime ?? Date.now(),
+      });
+    }
+  },
+});
+
+export const forwardMessage = mutation({
+  args: {
+    messageId: v.id("messages"),
+    targetRoomId: v.id("chatRooms"),
+  },
+  handler: async (ctx, args) => {
+    const user = await getAuthUser(ctx);
+    if (!user) throw new Error("Unauthorized: Потрібна авторизація");
+    const source = await ctx.db.get(args.messageId);
+    if (!source || source.isSystem) {
+      throw new Error("Це повідомлення неможливо переслати");
+    }
+    await assertRoomMember(ctx, source.chatRoomId, user._id);
+    const targetRoom = await assertRoomMember(ctx, args.targetRoomId, user._id);
+    if (source.chatRoomId === args.targetRoomId) {
+      throw new Error("Оберіть іншу кімнату для пересилання");
+    }
+
+    const originalSender = await ctx.db.get(source.senderId);
+    const senderName = user.name ?? user.email ?? "Користувач";
+    const messageId = await ctx.db.insert("messages", {
+      chatRoomId: args.targetRoomId,
+      senderId: user._id,
+      senderName,
+      senderPhoto: user.image,
+      forwardedFrom: originalSender?.username
+        ? `@${originalSender.username}`
+        : source.senderName,
+      content: source.content,
+      imageUrl: source.imageUrl,
+      gifUrl: source.gifUrl,
+      gifId: source.gifId,
+      storageId: source.storageId,
+      audioUrl: source.audioUrl,
+      audioStorageId: source.audioStorageId,
+      audioDuration: source.audioDuration,
+      waveform: source.waveform,
+      videoUrl: source.videoUrl,
+      videoStorageId: source.videoStorageId,
+      videoDuration: source.videoDuration,
+      isVideoNote: source.isVideoNote,
+      replyToSender: source.replyToSender,
+      replyToText: source.replyToText,
     });
+    await trackMessageAssets(ctx, source._id, source);
+    await trackMessageAssets(ctx, messageId, source);
+
+    const previewText =
+      source.content?.trim() ||
+      (source.isVideoNote
+        ? "📹 Відеоповідомлення"
+        : source.audioUrl
+          ? "🎤 Голосове повідомлення"
+          : source.imageUrl
+            ? "📷 Фотографія"
+            : "Переслане повідомлення");
+    await ctx.db.patch(args.targetRoomId, {
+      lastMessage: `${senderName}: ${previewText}`,
+      lastMessageAt: Date.now(),
+    });
+    await schedulePushForNewMessage(ctx, {
+      roomId: args.targetRoomId,
+      senderId: user._id,
+      senderName,
+      previewText: `Переслано: ${previewText}`,
+      roomTitle: targetRoom.title,
+      participantIds: (targetRoom.participantIds ?? [
+        targetRoom.creatorId,
+      ]) as Id<"users">[],
+    });
+    return messageId;
   },
 });
 

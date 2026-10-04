@@ -1,6 +1,5 @@
-import { useEffect, useRef } from "react";
-import { Animated, Pressable, Text, View } from "react-native";
-import { COLORS } from "@/constants/theme";
+import { Pressable, Text, View } from "react-native";
+import { getThemeColors, useAppTheme } from "@/components/AppThemeProvider";
 
 export interface ReactionItem {
   emoji: string;
@@ -21,59 +20,42 @@ function ReactionPill({
   item: ReactionItem;
   onToggle: () => void;
 }) {
-  const scale = useRef(new Animated.Value(0.5)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: 1,
-        damping: 12,
-        stiffness: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [opacity, scale]);
+  const { theme } = useAppTheme();
+  const colors = getThemeColors(theme);
 
   return (
-    <Animated.View style={{ opacity, transform: [{ scale }] }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Реакція ${item.emoji}, ${item.count}`}
-        onPress={onToggle}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Реакція ${item.emoji}, ${item.count}`}
+      onPress={onToggle}
+      style={{
+        minHeight: 28,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        paddingHorizontal: 9,
+        paddingVertical: 3,
+        borderRadius: 14,
+        borderWidth: item.hasReacted ? 1.5 : 1,
+        backgroundColor: item.hasReacted
+          ? `${colors.primary}47`
+          : "rgba(255, 255, 255, 0.08)",
+        borderColor: item.hasReacted
+          ? colors.primary
+          : "rgba(255, 255, 255, 0.28)",
+      }}
+    >
+      <Text style={{ fontSize: 14 }}>{item.emoji}</Text>
+      <Text
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 3,
-          paddingHorizontal: 8,
-          paddingVertical: 4,
-          borderRadius: 16,
-          borderWidth: 1,
-          backgroundColor: item.hasReacted
-            ? "rgba(59, 130, 246, 0.24)"
-            : "rgba(255, 255, 255, 0.08)",
-          borderColor: item.hasReacted
-            ? COLORS.primary
-            : "rgba(255, 255, 255, 0.15)",
+          color: item.hasReacted ? colors.white : colors.textMuted,
+          fontSize: 11,
+          fontWeight: "700",
         }}
       >
-        <Text style={{ fontSize: 13 }}>{item.emoji}</Text>
-        <Text
-          style={{
-            color: item.hasReacted ? "#BFDBFE" : COLORS.textMuted,
-            fontSize: 11,
-            fontWeight: "700",
-          }}
-        >
-          {item.count}
-        </Text>
-      </Pressable>
-    </Animated.View>
+        {item.count}
+      </Text>
+    </Pressable>
   );
 }
 

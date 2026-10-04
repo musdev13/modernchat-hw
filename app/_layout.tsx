@@ -2,18 +2,14 @@ import "@expo/metro-runtime";
 import "../global.css";
 
 import InitialLayout from "@/components/InitialLayout";
-import { COLORS } from "@/constants/theme";
+import { AppThemeProvider, getThemeColors, useAppTheme } from "@/components/AppThemeProvider";
 import { api } from "@/convex/_generated/api";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
-import {
-  Authenticated,
-  ConvexReactClient,
-  useMutation,
-} from "convex/react";
+import { ConvexReactClient, useConvexAuth, useMutation } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -46,47 +42,12 @@ const tokenCache = {
   },
 };
 
-// Clerk's Convex integration puts the claims in the default session token,
-// so we must not request the legacy "convex" JWT template.
-function useConvexClerkAuth() {
-  const auth = useAuth();
-  const { getToken } = auth;
-  const getDefaultToken = useCallback(
-    async (options?: { skipCache?: boolean }) =>
-      getToken({ skipCache: options?.skipCache }),
-    [getToken],
-  );
-  return { ...auth, getToken: getDefaultToken } as unknown as ReturnType<
-    typeof useAuth
-  >;
-}
-
-function AuthDebugger() {
-  const { isSignedIn, isLoaded, getToken, userId } = useAuth();
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    console.log("🔍 [Clerk Auth] isLoaded:", isLoaded, "isSignedIn:", isSignedIn, "userId:", userId);
-    if (isSignedIn) {
-      getToken()
-        .then((token) => {
-          console.log("🔍 [Clerk Auth] Token for template 'convex':", token ? `VALID (length ${token.length})` : "NULL");
-        })
-        .catch((err) => {
-          console.error("❌ [Clerk Auth] Error getting 'convex' token (перевірте чи створено JWT Template 'convex' у Clerk):", err);
-        });
-    }
-  }, [isLoaded, isSignedIn, userId, getToken]);
-
-  return null;
-}
-
 function UserSync() {
-  const { isSignedIn } = useAuth();
+  const { isAuthenticated } = useConvexAuth();
   const storeUser = useMutation(api.users.store);
 
   useEffect(() => {
-    if (!isSignedIn) return;
+    if (!isAuthenticated) return;
 
     storeUser()
       .then((userId) => {
@@ -95,16 +56,16 @@ function UserSync() {
       .catch((err) => {
         console.error("❌ [UserSync] Помилка синхронізації з Convex:", err);
       });
-  }, [isSignedIn, storeUser]);
+  }, [isAuthenticated, storeUser]);
 
   return null;
 }
 
 function AppContent() {
+  const { theme } = useAppTheme();
   return (
     <>
-      <StatusBar style="light" />
-      <AuthDebugger />
+      <StatusBar style={getThemeColors(theme).statusBar} />
       <UserSync />
       <InitialLayout />
     </>
@@ -116,8 +77,10 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-          <ConvexProviderWithClerk client={convex} useAuth={useConvexClerkAuth}>
-            <AppContent />
+          <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+            <AppThemeProvider>
+              <AppContent />
+            </AppThemeProvider>
           </ConvexProviderWithClerk>
         </ClerkProvider>
       </SafeAreaProvider>

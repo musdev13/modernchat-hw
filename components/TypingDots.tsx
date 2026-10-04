@@ -61,10 +61,9 @@ export function TypingDots({ typingUsers }: Props) {
 
   return (
     <View
-      className="flex-row items-center px-4 py-1.5"
-      style={{ backgroundColor: "#0A0F1D" }}
+      className="flex-row items-center bg-background px-4 py-1.5"
     >
-      <Text className="text-xs mr-2" style={{ color: "#94A3B8" }}>
+      <Text className="text-xs mr-2 text-textMuted">
         {text}
       </Text>
 

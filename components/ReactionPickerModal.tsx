@@ -1,4 +1,5 @@
 import * as Haptics from "expo-haptics";
+import { getThemeColors, useAppTheme } from "@/components/AppThemeProvider";
 import { useEffect, useMemo, useRef } from "react";
 import {
   Animated,
@@ -33,6 +34,8 @@ export function ReactionPickerModal({
   onClose,
   onSelectEmoji,
 }: Props) {
+  const { theme } = useAppTheme();
+  const colors = getThemeColors(theme);
   const scale = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -107,9 +110,9 @@ export function ReactionPickerModal({
           justifyContent: "space-around",
           paddingHorizontal: HORIZONTAL_PADDING,
           borderRadius: 27,
-          backgroundColor: "#1C1C1E",
+          backgroundColor: colors.surface,
           borderWidth: 1,
-          borderColor: "rgba(255, 255, 255, 0.1)",
+          borderColor: colors.surfaceLight,
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 8 },
           shadowOpacity: 0.5,

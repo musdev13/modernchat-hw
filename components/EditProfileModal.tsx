@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation } from "convex/react";
 import { File } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,7 @@ interface EditProfileModalProps {
   visible: boolean;
   initialName: string;
   initialUsername?: string;
+  initialProfileEmoji?: string;
   initialBio?: string;
   initialImage?: string;
   onClose: () => void;
@@ -32,6 +33,7 @@ export function EditProfileModal({
   visible,
   initialName,
   initialUsername,
+  initialProfileEmoji,
   initialBio,
   initialImage,
   onClose,
@@ -42,6 +44,7 @@ export function EditProfileModal({
 
   const [name, setName] = useState(initialName);
   const [username, setUsername] = useState(initialUsername ?? "");
+  const [profileEmoji, setProfileEmoji] = useState(initialProfileEmoji ?? "");
   const [bio, setBio] = useState(initialBio ?? "");
 
   const [image, setImage] = useState<string | undefined>(initialImage);
@@ -55,20 +58,6 @@ export function EditProfileModal({
     useState<string>("image/jpeg");
 
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-
-    setName(initialName);
-    setUsername(initialUsername ?? "");
-    setBio(initialBio ?? "");
-    setImage(initialImage);
-    setImageError(false);
-    setSelectedImageUri(undefined);
-    setSelectedImageMimeType("image/jpeg");
-  }, [visible, initialName, initialUsername, initialBio, initialImage]);
 
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -112,25 +101,12 @@ export function EditProfileModal({
       throw new Error("Выбранное изображение не найдено.");
     }
 
-    const base64 = await file.base64();
-
-    if (!base64) {
-      throw new Error("Не удалось прочитать изображение.");
-    }
-
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-
     const uploadResponse = await fetch(uploadUrl, {
       method: "POST",
       headers: {
-        "Content-Type": mimeType,
+        "Content-Type": file.type || mimeType,
       },
-      body: bytes,
+      body: file,
     });
 
     if (!uploadResponse.ok) {
@@ -177,6 +153,7 @@ export function EditProfileModal({
       await updateProfile({
         name: trimmedName,
         username: username.trim() || undefined,
+        profileEmoji,
         bio: bio.trim() || undefined,
         ...(avatarStorageId ? { avatarStorageId } : {}),
       });
@@ -249,6 +226,27 @@ export function EditProfileModal({
               Изменить аватар
             </Text>
           </TouchableOpacity>
+
+          <Text className="text-textMuted text-sm mb-2">Емодзі біля імені</Text>
+          <View className="mb-4 flex-row flex-wrap gap-2">
+            {["", "✨", "💜", "🔥", "🌙", "🦋", "🌸", "⚡", "💎"].map((emoji) => (
+              <TouchableOpacity
+                key={emoji || "none"}
+                onPress={() => setProfileEmoji(emoji)}
+                disabled={saving}
+                className={`h-10 min-w-10 items-center justify-center rounded-xl border px-2 ${
+                  profileEmoji === emoji
+                    ? "border-primary bg-primary/20"
+                    : "border-surfaceLight bg-surface"
+                }`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: profileEmoji === emoji }}
+                accessibilityLabel={emoji || "Без емодзі"}
+              >
+                <Text className="text-lg">{emoji || "∅"}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <Text className="text-textMuted text-sm mb-2">Имя</Text>
 

@@ -129,7 +129,9 @@ export function AddMembersModal({ visible, roomId, participantIds, onClose }: Pr
                     )}
 
                     <View className="flex-1">
-                      <Text className="font-semibold text-white">{item.name}</Text>
+                      <Text className="font-semibold text-white">
+                        {item.name} {item.profileEmoji}
+                      </Text>
                       <Text className="text-xs text-textMuted">
                         {item.username ? `@${item.username}` : ""}
                       </Text>

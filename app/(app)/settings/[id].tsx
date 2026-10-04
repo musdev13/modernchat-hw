@@ -4,6 +4,8 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
+import { File } from "expo-file-system";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -28,8 +30,11 @@ export default function RoomSettingsScreen() {
   const currentUser = useQuery(api.users.currentUser);
   const deleteRoom = useMutation(api.rooms.deleteRoom);
   const updateParticipantRole = useMutation(api.rooms.updateParticipantRole);
+  const updateRoomAvatar = useMutation(api.rooms.updateRoomAvatar);
+  const generateAvatarUploadUrl = useMutation(api.users.generateAvatarUploadUrl);
   const removeParticipant = useMutation(api.rooms.removeParticipant);
   const [isAddMembersVisible, setIsAddMembersVisible] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   const isLoading = room === undefined || currentUser === undefined;
 
@@ -40,6 +45,56 @@ export default function RoomSettingsScreen() {
     currentUser !== undefined &&
     room.creatorId === currentUser._id;
   const canManageMembers = room?.canManageMembers ?? false;
+
+  const handleChangeAvatar = async () => {
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Потрібен дозвіл", "Надайте доступ до галереї.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset) return;
+
+      setIsUploadingAvatar(true);
+      const uploadUrl = await generateAvatarUploadUrl();
+      const file = new File(asset.uri);
+      if (!file.exists) throw new Error("Вибране фото не знайдено.");
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type || asset.mimeType || "image/jpeg" },
+        body: file,
+      });
+      if (!response.ok) {
+        throw new Error(`Не вдалося завантажити фото (${response.status}).`);
+      }
+      const resultData = await response.json();
+      if (!resultData.storageId) {
+        throw new Error("Сервер не повернув ідентифікатор фото.");
+      }
+      await updateRoomAvatar({
+        roomId: id as Id<"chatRooms">,
+        avatarStorageId: resultData.storageId as Id<"_storage">,
+      });
+    } catch (error) {
+      console.error("Не вдалося змінити аватар кімнати:", error);
+      Alert.alert(
+        "Помилка",
+        error instanceof Error
+          ? error.message
+          : "Не вдалося оновити аватар кімнати.",
+      );
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   const handleRole = async (
     targetUserId: Id<"users">,
@@ -212,13 +267,21 @@ export default function RoomSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="items-center mb-7">
-          <View className="w-20 h-20 rounded-2xl bg-primary/15 border border-primary/30 items-center justify-center">
-            <Ionicons
-              name="chatbubbles-outline"
-              size={38}
-              color={COLORS.primary}
+          {room.avatarUrl ? (
+            <Image
+              source={{ uri: room.avatarUrl }}
+              className="h-20 w-20 rounded-2xl"
+              resizeMode="cover"
             />
-          </View>
+          ) : (
+            <View className="w-20 h-20 rounded-2xl bg-primary/15 border border-primary/30 items-center justify-center">
+              <Ionicons
+                name="chatbubbles-outline"
+                size={38}
+                color={COLORS.primary}
+              />
+            </View>
+          )}
 
           <Text className="text-white text-2xl font-bold text-center mt-4">
             {room.title}
@@ -227,6 +290,22 @@ export default function RoomSettingsScreen() {
           <Text className="text-textMuted text-sm mt-1">
             Інформація про кімнату
           </Text>
+          {canManageMembers && (
+            <TouchableOpacity
+              onPress={handleChangeAvatar}
+              disabled={isUploadingAvatar}
+              className="mt-3 flex-row items-center rounded-xl bg-primary/15 px-4 py-2.5"
+            >
+              {isUploadingAvatar ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <Ionicons name="camera-outline" size={17} color={COLORS.primary} />
+              )}
+              <Text className="ml-2 font-semibold text-primary">
+                Змінити аватар
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View className="bg-secondary border border-surfaceLight rounded-2xl overflow-hidden">
@@ -315,7 +394,7 @@ export default function RoomSettingsScreen() {
 
                 <View className="flex-1">
                   <Text className="font-semibold text-white">
-                    {participant.name}
+                    {participant.name} {participant.profileEmoji}
                   </Text>
                   <Text className="text-xs text-textMuted">
                     {participant.role === "creator"

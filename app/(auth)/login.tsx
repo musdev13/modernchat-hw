@@ -1,4 +1,5 @@
 import { COLORS } from "@/constants/theme";
+import { BrandLogo } from "@/components/BrandLogo";
 import { useAuth, useSSO, useSignIn, useSignUp } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import * as AuthSession from "expo-auth-session";
@@ -171,31 +172,36 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-surface"
+      className="flex-1 bg-background"
     >
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <View className="items-center mt-20">
-          <View className="w-20 h-20 rounded-3xl bg-primary/20 items-center justify-center border border-primary/30">
-            <Ionicons name="chatbubbles" size={38} color={COLORS.primary} />
-          </View>
+        <View className="relative items-center mt-14 px-6 pt-8">
+          <View className="absolute right-8 top-0 h-32 w-32 rounded-full bg-primary/10" />
+          <View className="absolute left-8 top-14 h-16 w-16 rounded-full bg-accent/10" />
+          <BrandLogo size={88} />
 
-          <Text className="text-3xl font-bold text-white mt-5 tracking-tight">
-            Modern Chat
+          <Text className="text-[11px] font-bold text-accent mt-6 tracking-[3px]">
+            ТВОЄ КОЛО ЛЮДЕЙ
+          </Text>
+          <Text className="text-[34px] leading-[40px] font-bold text-white mt-2 tracking-tight">
+            Modern{" "}
+            <Text className="text-primary">Chat</Text>
           </Text>
 
-          <Text className="text-sm text-textMuted mt-2 text-center px-6">
+          <Text className="text-sm text-textMuted mt-2 text-center leading-5">
             {isSignUp
-              ? "Створіть акаунт для спілкування в кімнатах"
-              : "Увійдіть, щоб продовжити спілкування"}
+              ? "Створи акаунт і збирай своїх людей в одному місці"
+              : "Місце, де свої завжди на зв’язку"}
           </Text>
         </View>
 
-        <View className="px-6 mt-12 w-full items-center gap-4">
+        <View className="px-6 mt-9 w-full items-center gap-4">
           {isSignUp && (
-            <View className="flex-row items-center bg-secondary border border-surfaceLight rounded-2xl px-4 w-full max-w-sm">
+            <View className="flex-row items-center bg-surface border border-surfaceLight rounded-[20px] px-4 w-full max-w-sm">
               <Ionicons
                 name="person-outline"
                 size={20}
@@ -214,7 +220,7 @@ export default function LoginScreen() {
             </View>
           )}
 
-          <View className="flex-row items-center bg-secondary border border-surfaceLight rounded-2xl px-4 w-full max-w-sm">
+          <View className="flex-row items-center bg-surface border border-surfaceLight rounded-[20px] px-4 w-full max-w-sm">
             <Ionicons
               name="mail-outline"
               size={20}
@@ -234,7 +240,7 @@ export default function LoginScreen() {
             />
           </View>
 
-          <View className="flex-row items-center bg-secondary border border-surfaceLight rounded-2xl px-4 w-full max-w-sm">
+          <View className="flex-row items-center bg-surface border border-surfaceLight rounded-[20px] px-4 w-full max-w-sm">
             <Ionicons
               name="lock-closed-outline"
               size={20}
@@ -254,7 +260,7 @@ export default function LoginScreen() {
           </View>
 
           <TouchableOpacity
-            className={`flex-row items-center justify-center bg-primary rounded-2xl py-4 w-full max-w-sm mt-3 active:bg-primaryDark ${
+            className={`flex-row items-center justify-center bg-primary rounded-[20px] py-4 w-full max-w-sm mt-2 active:bg-primaryDark ${
               isLoading || isGoogleLoading ? "opacity-60" : ""
             }`}
             activeOpacity={0.85}
@@ -264,7 +270,7 @@ export default function LoginScreen() {
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Text className="text-white text-base font-bold">
+              <Text className="text-background text-base font-bold">
                 {isSignUp ? "Зареєструватися" : "Увійти"}
               </Text>
             )}
@@ -279,7 +285,7 @@ export default function LoginScreen() {
           </View>
 
           <TouchableOpacity
-            className={`flex-row items-center justify-center bg-secondary border border-surfaceLight rounded-2xl py-4 w-full max-w-sm gap-2.5 ${
+            className={`flex-row items-center justify-center bg-surface border border-surfaceLight rounded-[20px] py-4 w-full max-w-sm gap-2.5 ${
               isLoading || isGoogleLoading ? "opacity-60" : ""
             }`}
             activeOpacity={0.85}

@@ -8,11 +8,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from "react-native";
 import { useState } from "react";
 import { useRouter } from "expo-router";
 import { useMutation } from "convex/react";
+import { File } from "expo-file-system";
+import * as ImagePicker from "expo-image-picker";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { COLORS } from "@/constants/theme";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,10 +24,38 @@ import { Ionicons } from "@expo/vector-icons";
 export default function NewRoomScreen() {
   const router = useRouter();
   const createRoom = useMutation(api.rooms.createRoom);
+  const generateAvatarUploadUrl = useMutation(api.users.generateAvatarUploadUrl);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [avatarUri, setAvatarUri] = useState<string>();
+  const [avatarMimeType, setAvatarMimeType] = useState("image/jpeg");
   const [isLoading, setIsLoading] = useState(false);
+
+  const pickAvatar = async () => {
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Потрібен дозвіл", "Надайте доступ до галереї.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      const asset = result.assets?.[0];
+      if (!result.canceled && asset) {
+        setAvatarUri(asset.uri);
+        setAvatarMimeType(asset.mimeType ?? "image/jpeg");
+      }
+    } catch (error) {
+      console.error("Не вдалося вибрати аватар кімнати:", error);
+      Alert.alert("Помилка", "Не вдалося відкрити галерею.");
+    }
+  };
 
   const handleCreate = async () => {
     const trimmedTitle = title.trim();
@@ -37,15 +69,38 @@ export default function NewRoomScreen() {
     setIsLoading(true);
 
     try {
+      let avatarStorageId: Id<"_storage"> | undefined;
+      if (avatarUri) {
+        const uploadUrl = await generateAvatarUploadUrl();
+        const file = new File(avatarUri);
+        if (!file.exists) throw new Error("Вибране фото не знайдено.");
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type || avatarMimeType },
+          body: file,
+        });
+        if (!response.ok) {
+          throw new Error(`Не вдалося завантажити фото (${response.status}).`);
+        }
+        const result = await response.json();
+        if (!result.storageId) {
+          throw new Error("Сервер не повернув ідентифікатор фото.");
+        }
+        avatarStorageId = result.storageId as Id<"_storage">;
+      }
       const roomId = await createRoom({
         title: trimmedTitle,
         description: trimmedDescription || undefined,
+        ...(avatarStorageId ? { avatarStorageId } : {}),
       });
 
       router.replace(`/chat/${roomId}`);
     } catch (error) {
       console.error("Error creating room:", error);
-      Alert.alert("Помилка", "Не вдалося створити кімнату.");
+      Alert.alert(
+        "Помилка",
+        error instanceof Error ? error.message : "Не вдалося створити кімнату.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -83,6 +138,33 @@ export default function NewRoomScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View className="gap-6">
+            <TouchableOpacity
+              onPress={pickAvatar}
+              disabled={isLoading}
+              className="items-center"
+              accessibilityRole="button"
+              accessibilityLabel="Обрати аватар кімнати"
+            >
+              {avatarUri ? (
+                <Image
+                  source={{ uri: avatarUri }}
+                  className="h-24 w-24 rounded-[28px]"
+                  resizeMode="cover"
+                />
+              ) : (
+                <View className="h-24 w-24 items-center justify-center rounded-[28px] border border-primary/30 bg-primary/15">
+                  <Ionicons
+                    name="camera-outline"
+                    size={34}
+                    color={COLORS.primary}
+                  />
+                </View>
+              )}
+              <Text className="mt-2 font-semibold text-primary">
+                {avatarUri ? "Змінити аватар кімнати" : "Додати аватар кімнати"}
+              </Text>
+            </TouchableOpacity>
+
             {/* Title */}
             <View>
               <Text className="text-white text-base font-semibold mb-2">
@@ -112,7 +194,7 @@ export default function NewRoomScreen() {
                 Опис
                 <Text className="text-textMuted font-normal">
                   {" "}
-                  (необов'язково)
+                  (необов&apos;язково)
                 </Text>
               </Text>
 
