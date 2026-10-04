@@ -99,7 +99,7 @@ export default function ProfileScreen() {
       <StretchyProfile
         name={profile.name}
         imageUrl={profile.image}
-        status="у мережі"
+        status="в мережі"
         statusAccent
         busy={uploading}
         rightIcon="create-outline"

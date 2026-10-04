@@ -154,18 +154,34 @@ export function isStickerContent(content?: string | null): boolean {
 }
 
 
-/** Статус активності користувача: «зараз у чаті» або «був(ла) сьогодні о 14:05». */
-export function activityLabel(
-  lastActiveAt?: number | null,
-  inChatNow?: boolean,
+const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Статус користувача як у Telegram: «в мережі», «був(ла) щойно», «був(ла) 5 хв. тому»,
+ * «був(ла) сьогодні о 14:05», «був(ла) вчора о 14:05», «був(ла) 03.09.26», «давно не заходив(ла)».
+ * hidden — користувач приховав час входу: «був(ла) нещодавно».
+ */
+export function formatLastSeen(
+  lastSeenAt?: number | null,
+  online?: boolean,
+  hidden?: boolean,
   now: number = Date.now(),
 ): string {
-  if (inChatNow) return "зараз у чаті";
-  if (!lastActiveAt) return "давно не заходив(ла)";
-  const key = dayKey(lastActiveAt);
-  if (key === dayKey(now)) return `був(ла) сьогодні о ${formatTime(lastActiveAt)}`;
+  if (online) return "в мережі";
+  if (hidden) return "був(ла) нещодавно";
+  if (!lastSeenAt) return "давно не заходив(ла)";
+  const diff = now - lastSeenAt;
+  if (diff < 60 * 1000) return "був(ла) щойно";
+  if (diff < 60 * 60 * 1000) return `був(ла) ${Math.floor(diff / 60000)} хв. тому`;
+  const key = dayKey(lastSeenAt);
+  if (key === dayKey(now)) return `був(ла) сьогодні о ${formatTime(lastSeenAt)}`;
   if (key === dayKey(now - 24 * 60 * 60 * 1000)) {
-    return `був(ла) вчора о ${formatTime(lastActiveAt)}`;
+    return `був(ла) вчора о ${formatTime(lastSeenAt)}`;
   }
-  return `був(ла) ${dayLabel(lastActiveAt, now)}`;
+  if (diff > MONTH_MS) return "давно не заходив(ла)";
+  const d = new Date(lastSeenAt);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  return `був(ла) ${dd}.${mm}.${yy}`;
 }

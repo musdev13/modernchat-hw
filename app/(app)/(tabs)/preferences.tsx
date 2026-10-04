@@ -1,3 +1,4 @@
+import { ActionSheet } from "@/components/ActionSheet";
 import { EditProfileModal, ProfileField } from "@/components/EditProfileModal";
 import { GlassProvider, GlassSurface, GlassTarget } from "@/components/Glass";
 import { MainTabBar, useTabBarSpace } from "@/components/MainTabBar";
@@ -8,7 +9,7 @@ import { api } from "@/convex/_generated/api";
 import { useChatPalette, withAlpha } from "@/hooks/useChatPalette";
 import { useSignOut } from "@/hooks/useSignOut";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -141,6 +142,8 @@ export default function PreferencesScreen() {
   const signOut = useSignOut();
 
   const currentUser = useQuery(api.users.currentUser);
+  const setHideLastSeen = useMutation(api.users.setHideLastSeen);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [focusField, setFocusField] = useState<ProfileField | undefined>();
   const [notifStatus, setNotifStatus] = useState<Notifications.PermissionStatus | null>(null);
@@ -293,6 +296,19 @@ export default function PreferencesScreen() {
                 label="Про себе"
                 value={currentUser?.bio ? currentUser.bio : "Не вказано"}
                 onPress={() => openEdit("bio")}
+              />
+            </View>
+
+            {/* Конфіденційність */}
+            <View style={{ backgroundColor: c.header, marginTop: 10 }}>
+              <SectionTitle text="Конфіденційність" />
+              <SettingsRow
+                first
+                icon="time-outline"
+                tint="#10B981"
+                label="Час останнього входу"
+                value={currentUser?.hideLastSeen ? "Ніхто" : "Усі"}
+                onPress={() => setPrivacyVisible(true)}
               />
             </View>
 
@@ -466,6 +482,23 @@ export default function PreferencesScreen() {
         </View>
 
         <MainTabBar active="preferences" />
+
+        <ActionSheet
+          visible={privacyVisible}
+          onClose={() => setPrivacyVisible(false)}
+          title="Хто бачить мій час останнього входу"
+          subtitle="Якщо вибрати «Ніхто», інші бачитимуть «був(ла) нещодавно»"
+          actions={[false, true].map((hide) => ({
+            key: hide ? "nobody" : "everybody",
+            label: hide ? "Ніхто" : "Усі",
+            icon: (!!currentUser?.hideLastSeen === hide
+              ? "checkmark-circle"
+              : "ellipse-outline") as any,
+            onPress: () => {
+              setHideLastSeen({ hide }).catch(() => {});
+            },
+          }))}
+        />
 
         <EditProfileModal
           visible={editVisible}

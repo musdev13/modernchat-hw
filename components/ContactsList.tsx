@@ -2,7 +2,7 @@ import { RoomAvatar } from "@/components/RoomAvatar";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette } from "@/hooks/useChatPalette";
-import { activityLabel } from "@/utils/chat";
+import { formatLastSeen } from "@/utils/chat";
 import { useQuery } from "convex/react";
 import { ReactNode, useEffect, useState } from "react";
 import {
@@ -19,8 +19,9 @@ export interface Contact {
   name: string;
   username?: string;
   image?: string;
-  inChatNow: boolean;
-  lastActiveAt?: number;
+  online: boolean;
+  lastSeenAt?: number;
+  lastSeenHidden: boolean;
 }
 
 /** Контакти з серверним пошуком (із затримкою, щоб не слати запит на кожну літеру). */
@@ -64,7 +65,7 @@ export function ContactRow({
     >
       <View>
         <RoomAvatar title={contact.name} imageUrl={contact.image} size={50} />
-        {contact.inChatNow ? (
+        {contact.online ? (
           <View
             style={{
               position: "absolute",
@@ -87,13 +88,13 @@ export function ContactRow({
         <Text
           numberOfLines={1}
           style={{
-            color: contact.inChatNow ? c.accent : c.muted,
+            color: contact.online ? c.accent : c.muted,
             fontSize: 13,
             marginTop: 2,
           }}
         >
           {contact.username ? `@${contact.username} · ` : ""}
-          {activityLabel(contact.lastActiveAt, contact.inChatNow)}
+          {formatLastSeen(contact.lastSeenAt, contact.online, contact.lastSeenHidden)}
         </Text>
       </View>
       {busy ? <ActivityIndicator color={c.accent} /> : null}

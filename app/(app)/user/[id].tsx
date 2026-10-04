@@ -1,9 +1,10 @@
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from "react-native";
 
+import { MuteSheet } from "@/components/MuteSheet";
 import { ActionButtons, InfoRow, Section, StatsRow } from "@/components/ProfileParts";
 import { RoomAvatar } from "@/components/RoomAvatar";
 import { StretchyProfile } from "@/components/StretchyProfile";
@@ -11,7 +12,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useChatPalette } from "@/hooks/useChatPalette";
 import { useOpenDirectChat } from "@/hooks/useOpenDirectChat";
-import { dayLabel, formatTime, membersLabel } from "@/utils/chat";
+import { dayLabel, formatLastSeen, membersLabel } from "@/utils/chat";
 import { copyText } from "@/utils/clipboard";
 
 export default function UserProfileScreen() {
@@ -41,6 +42,7 @@ export default function UserProfileScreen() {
   );
   const setMuted = useMutation(api.roomSettings.setMuted);
   const { open: openChat, busyId } = useOpenDirectChat("navigate");
+  const [muteVisible, setMuteVisible] = useState(false);
 
   if (profile === undefined || isSelf) {
     return (
@@ -68,11 +70,7 @@ export default function UserProfileScreen() {
     );
   }
 
-  const status = profile.inChatNow
-    ? "зараз у чаті"
-    : profile.lastActiveAt
-      ? `остання активність: ${dayLabel(profile.lastActiveAt)}, ${formatTime(profile.lastActiveAt)}`
-      : undefined;
+  const status = formatLastSeen(profile.lastSeenAt, profile.online, profile.lastSeenHidden);
 
   const handleCopy = async (text: string) => {
     const result = await copyText(text);
@@ -93,9 +91,12 @@ export default function UserProfileScreen() {
       icon: directRoom.muted ? "notifications-outline" : "notifications-off-outline",
       label: directRoom.muted ? "Увімкнути" : "Без звуку",
       onPress: () => {
-        setMuted({ chatRoomId: directRoom.roomId, muted: !directRoom.muted }).catch(
-          (error: any) =>
-            Alert.alert("Помилка", error?.message ?? "Не вдалося змінити сповіщення"),
+        if (!directRoom.muted) {
+          setMuteVisible(true);
+          return;
+        }
+        setMuted({ chatRoomId: directRoom.roomId, muted: false }).catch((error: any) =>
+          Alert.alert("Помилка", error?.message ?? "Не вдалося змінити сповіщення"),
         );
       },
     });
@@ -110,11 +111,12 @@ export default function UserProfileScreen() {
   }
 
   return (
+    <>
     <StretchyProfile
       name={profile.name}
       imageUrl={profile.image}
       status={status}
-      statusAccent={profile.inChatNow}
+      statusAccent={profile.online}
       onBack={() => router.back()}
     >
       <ActionButtons items={actions} />
@@ -179,5 +181,20 @@ export default function UserProfileScreen() {
         </Section>
       ) : null}
     </StretchyProfile>
+
+    <MuteSheet
+      visible={muteVisible}
+      title={profile.name}
+      onClose={() => setMuteVisible(false)}
+      onPick={(durationMs) => {
+        setMuteVisible(false);
+        if (!directRoom) return;
+        setMuted({ chatRoomId: directRoom.roomId, muted: true, durationMs }).catch(
+          (error: any) =>
+            Alert.alert("Помилка", error?.message ?? "Не вдалося змінити сповіщення"),
+        );
+      }}
+    />
+    </>
   );
 }

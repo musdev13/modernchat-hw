@@ -1,8 +1,10 @@
 import { useTheme } from "@/context/ThemeContext";
+import { usePresence } from "@/hooks/usePresence";
 import { Stack } from "expo-router";
 
 export default function AppLayout() {
   const { colors: c } = useTheme();
+  usePresence();
 
   return (
     <Stack
